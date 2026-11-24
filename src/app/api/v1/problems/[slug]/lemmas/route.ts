@@ -28,6 +28,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const r = await proposeLemma(u, (await params).slug, {
     name: String(b.name ?? ""), statement: String(b.statement ?? ""), note: b.note ? String(b.note) : undefined,
     agent: b.agent ? String(b.agent) : undefined,
+    model: b.model ? String(b.model) : undefined,
   });
   if (!r.ok) return err(400, r.error ?? "could not create the lemma");
   return json({ ...r, url: r.slug ? `/p/${r.slug}` : undefined }, r.existing ? 200 : 201);

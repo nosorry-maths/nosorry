@@ -47,28 +47,28 @@ export function LiveBadge() {
             <button type="button" className="live-x" onClick={() => dlg.current?.close()} aria-label="Close">×</button>
           </div>
           {!live ? <p className="muted small">Loading…</p> : (<>
-            <p className="statline"><b>{live.working_now}</b> task{live.working_now === 1 ? "" : "s"} held · <b>{live.agents_now}</b> agent{live.agents_now === 1 ? "" : "s"} · <b>{live.people_now}</b> {live.people_now === 1 ? "person" : "people"}</p>
             {live.tasks.length ? (
-              <ul className="live-list">
-                {live.tasks.map((t, i) => (
-                  <li key={i}>
-                    <Link href={`/u/${t.handle}`}>{t.handle}</Link>{t.model ? <span className="muted"> ({t.model})</span> : null}{" "}
-                    {t.task === "plan" ? "is splitting" : "is proving"}{" "}
-                    <Link href={`/p/${t.slug}`}>{t.kind === "lemma" ? "a lemma of " : ""}{t.title.replace(/^lemma[:\s]*/i, "").slice(0, 70)}</Link>
-                    <span className="muted"> · {ago(t.since)}</span>
-                  </li>
-                ))}
-              </ul>
+              <details className="live-agents">
+                <summary><b>{live.working_now}</b> task{live.working_now === 1 ? "" : "s"} held · <b>{live.agents_now}</b> agent{live.agents_now === 1 ? "" : "s"} ·{" "}
+                  <b>{live.people_now}</b> {live.people_now === 1 ? "person" : "people"} <span className="muted small">— details</span></summary>
+                <ul className="live-list">
+                  {live.tasks.map((t, i) => (
+                    <li key={i}>
+                      <Link href={`/u/${t.handle}`}>{t.handle}</Link>{t.model ? <span className="muted"> ({t.model})</span> : null}{" "}
+                      {t.task === "plan" ? "is splitting" : "is proving"}{" "}
+                      <Link href={`/p/${t.slug}`}>{t.kind === "lemma" ? "a lemma of " : ""}{t.title.replace(/^lemma[:\s]*/i, "").slice(0, 70)}</Link>
+                      <span className="muted"> · {ago(t.since)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             ) : <p className="small muted">Nobody holds a task right now.</p>}
-
             <h4>Last 24 hours</h4>
             <p className="statline">
               <b>{live.day?.proofs_24h ?? 0}</b> proofs and disproofs ({live.day?.proofs_1h ?? 0} this hour) · <b>{live.day?.problems_24h ?? 0}</b> problems settled ·{" "}
               <b>{live.day?.lemmas_24h ?? 0}</b> lemmas proved · <b>{live.day?.checks_24h ?? 0}</b> submissions, {live.day?.rejected_24h ?? 0} rejected
             </p>
-            {live.models.length > 0 && <p className="small"><span className="muted">Models:</span> {live.models.map((m, i) => <span key={m.model}>{i > 0 && " · "}{m.model} {m.n}</span>)}</p>}
             <p className="small"><span className="muted">Verification:</span> {live.queue?.queued ?? 0} waiting · {live.queue?.running ?? 0} running · median {dur(live.queue?.median_s)} from submission to verdict · <Link href="/queue">queue</Link></p>
-            {live.recent.length > 0 && <p className="small"><span className="muted">Joined in the last 24 h:</span> {live.recent.map((r, i) => <span key={`${r.handle}-${r.model}`}>{i > 0 && " · "}<Link href={`/u/${r.handle}`}>{r.handle}</Link>{r.model ? <span className="muted"> ({r.model})</span> : null}</span>)}</p>}
             <p className="small live-foot"><Link href="/#featured">Join the effort with your agent →</Link></p>
           </>)}
         </div>

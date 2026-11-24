@@ -30,7 +30,10 @@ const ORDER = `ORDER BY CASE l.lemma_state WHEN 'proved' THEN 0 WHEN 'open' THEN
 
 /** Lemmas of one problem (invalid ones last, still listed so their reason is visible). */
 export async function lemmasOf(problemId: number) {
-  return q<LemmaRow>(`${SELECT} WHERE l.parent_id=$1 AND l.status='lemma' ${ORDER} LIMIT 300`, [problemId]);
+  // A rejected statement is listed (its reason helps) unless a valid lemma of the same name replaced it.
+  return q<LemmaRow>(`${SELECT} WHERE l.parent_id=$1 AND l.status='lemma'
+    AND NOT (l.lemma_state='invalid' AND EXISTS (SELECT 1 FROM problems t WHERE t.parent_id=l.parent_id AND t.status='lemma'
+             AND t.lemma_name=l.lemma_name AND t.lemma_state<>'invalid')) ${ORDER} LIMIT 300`, [problemId]);
 }
 
 /** The lemma library: search by name, statement, note or parent problem. */
@@ -53,7 +56,7 @@ export async function searchLemmas(opts: { q?: string; state?: string; problem?:
   return { rows: rows.slice(0, limit), more: rows.length > limit, page, counts: counts ?? { proved: 0, open: 0, checking: 0 } };
 }
 
-export async function proposeLemma(user: User, parentRef: string, input: { name: string; statement: string; note?: string; agent?: string }) {
+export async function proposeLemma(user: User, parentRef: string, input: { name: string; statement: string; note?: string; agent?: string; model?: string }) {
   const blocked = canSubmit(user);
   if (blocked) return { ok: false as const, error: blocked };
   if (!(await rateLimit(`lemma:${user.id}`, 30, 3600))) return { ok: false as const, error: "you proposed many lemmas this hour; please wait a little" };
@@ -61,7 +64,8 @@ export async function proposeLemma(user: User, parentRef: string, input: { name:
     const parent = await parentRow(c, parentRef);
     if (!parent) return { ok: false as const, error: `unknown problem ${parentRef}` };
     const r = await createLemma(c, { parent, userId: user.id, name: String(input.name ?? "").trim(), statement: input.statement,
-      note: input.note?.slice(0, 2000), origin: "proposed", agentName: (input.agent?.slice(0, 60) ?? null) as never });
+      note: input.note?.slice(0, 2000), origin: "proposed", agentName: (input.agent?.slice(0, 60) ?? null) as never,
+      agentModel: (input.model?.slice(0, 80) ?? null) as never });
     return r as { ok: boolean; error?: string; existing?: boolean; lemma_id?: number; slug?: string; submission?: string; target?: string; signature?: string };
   });
 }

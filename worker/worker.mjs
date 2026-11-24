@@ -157,10 +157,11 @@ async function verify(job) {
     await st.step("originality", async () => {
       await pool.query("UPDATE submissions SET proof_fingerprint=$2 WHERE id=$1", [sub.id, fp]);
       const { rows } = await pool.query(
+        // Per problem: one file may legitimately settle several statements (e.g. the parts of a problem).
         `SELECT public_id, user_id FROM submissions WHERE proof_fingerprint=$1 AND id < $2
          AND status IN ('verified','partial','accepted','needs_review')
-         AND (kind = 'formalization') = $3 ORDER BY id LIMIT 1`, [fp, sub.id, sub.kind === "formalization"]);
-      if (rows[0] && rows[0].user_id !== sub.user_id) throw new Reject("duplicate", `identical to earlier submission ${rows[0].public_id}`);
+         AND (kind = 'formalization') = $3 AND problem_id = $4 ORDER BY id LIMIT 1`, [fp, sub.id, sub.kind === "formalization", sub.problem_id]);
+      if (rows[0] && Number(rows[0].user_id) !== Number(sub.user_id)) throw new Reject("duplicate", `identical to earlier submission ${rows[0].public_id} on this problem`);
       return { detail: rows[0] ? `same as your own ${rows[0].public_id}` : "no identical earlier submission" };
     });
 
@@ -244,7 +245,13 @@ async function verify(job) {
       const r = await exec("compare", chkDir, "lean", args, { timeoutMs: 10 * 60_000, readOnly: true });
       let j;
       try { j = JSON.parse(r.out.trim().split("\n").pop()); } catch { throw new Error(`checker output unreadable:\n${tail(r.out, 2000)}`); }
-      if (j.error) throw new Reject("rejected", j.error);
+      if (j.error) {
+        // Say exactly which name a disproof must use (the reference name with its last part prefixed by not_).
+        const expected = target.replace(/\.([^.]+)$/, ".not_$1").replace(/^([^.]+)$/, "not_$1");
+        throw new Reject("rejected", sub.kind === "disproof" && /not found in the submission/.test(j.error)
+          ? `${j.error}. A disproof must declare \`theorem ${expected} : ¬ (<the reference statement>)\` — the reference name with its last part prefixed by not_.`
+          : j.error);
+      }
       const problems = [];
       if (!j.is_theorem) problems.push("target is not a theorem");
       if (!j.type_matches || !j.levels_match) problems.push(sub.kind === "disproof"

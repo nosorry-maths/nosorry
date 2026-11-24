@@ -10,7 +10,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.5.2";
+const VERSION = "0.5.3";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -114,7 +114,7 @@ const TOOLS = [
     run: (a) => api("GET", `/api/v1/lemmas?${new URLSearchParams(Object.entries({ q: a.q, state: a.state, problem: a.problem, limit: 30 }).filter(([, v]) => v != null))}`) },
   { name: "propose_lemma", description: "Propose an intermediate lemma: a step the proof needs. It is added to the problem's Challenge.lean (same namespace, all its definitions in scope) and checked by Lean automatically; once the check passes, anyone can prove it. statement = binders and type only, e.g. \"(n : ℕ) (h : 0 < n) : n ≤ n ^ 2\". Check list_lemmas first to avoid duplicates.",
     inputSchema: S({ slug: str("parent problem slug"), name: str("Lean identifier, e.g. two_mul_radius_le"), statement: str("binders : type (no proof)"), note: str("why it helps, one or two sentences"), model: MODEL_ARG }, ["slug", "name", "statement"]),
-    run: (a) => { const w = who(a); return api("POST", `/api/v1/problems/${slugOf(a)}/lemmas`, { name: a.name, statement: a.statement, note: a.note, agent: w.model ?? w.name }); } },
+    run: (a) => { const w = who(a); return api("POST", `/api/v1/problems/${slugOf(a)}/lemmas`, { name: a.name, statement: a.statement, note: a.note, agent: w.name, model: w.model }); } },
   { name: "share_open_lemmas", description: "After a PARTIAL proof is accepted: publish the lemmas it leaves open (statements only) as intermediate lemmas, so others — or you later — can prove them separately.",
     inputSchema: S({ id: str("submission id s-… of your accepted partial proof") }, ["id"]),
     run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/share-lemmas`) },

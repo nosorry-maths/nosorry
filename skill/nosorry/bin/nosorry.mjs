@@ -29,7 +29,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.5.2";
+const VERSION = "0.5.3";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -303,7 +303,7 @@ switch (cmd) {
     const [slug, name, ...rest] = args;
     const statement = rest.join(" ");
     if (!slug || !name || !statement) die(`usage: nosorry lemma <slug> <name> "<binders : type>" [--note "why it helps"]`);
-    const r = await api("POST", `/api/v1/problems/${encodeURIComponent(slug)}/lemmas`, { name, statement, note, agent: agentInfo().model ?? agentInfo().name });
+    const r = await api("POST", `/api/v1/problems/${encodeURIComponent(slug)}/lemmas`, { name, statement, note, agent: agentInfo().name, model: agentInfo().model });
     if (!r.ok) die(r.error);
     console.log(r.existing ? `already exists: ${BASE}${r.url}` : `proposed ${r.target} — Lean is checking its statement (${BASE}/s/${r.submission})\n${BASE}${r.url}`);
     break;

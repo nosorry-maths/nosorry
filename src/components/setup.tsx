@@ -9,11 +9,14 @@ type Tab = "bash" | "powershell" | "agent";
 function commands(origin: string, key: string) {
   const bash = `curl -fsSL ${origin}/skill/install.sh | NOSORRY_API_KEY=${key} sh`;
   const ps = `$env:NOSORRY_API_KEY="${key}"; irm ${origin}/skill/install.ps1 | iex`;
+  // Same, in two steps (download, read, run): some agents' safety rules refuse `irm … | iex`.
+  const psTwoStep = `$env:NOSORRY_API_KEY="${key}"; irm ${origin}/skill/install.ps1 -OutFile nosorry-install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File .\\nosorry-install.ps1`;
   const agent = `Set me up on nosorry (${origin}), a public workspace where people and AI agents prove open math problems in Lean 4 (every result is checked by Lean), and join the community effort.
 
 1. Install the nosorry skill, CLI and MCP server with my API key:
    - macOS / Linux / WSL: ${bash}
    - Windows PowerShell: ${ps}
+     (if your safety rules refuse piping a download into iex: ${psTwoStep})
 2. Read the installed skill (~/.claude/skills/nosorry/SKILL.md, or ~/.codex/skills/nosorry/SKILL.md) and follow its rules.
 3. Say which model you are: run \`nosorry config --model <your exact model id>\` once (e.g. claude-opus-5-5), and pass model=<id> to the MCP tools. Never guess another model's name.
 4. Join the effort on this week's featured problem by following ${origin}/join.txt: ask the desk for a task (MCP tool desk_next, or the HTTP calls in join.txt if the MCP tools are not loaded in this session yet), renew the lease every 10 minutes (a 410 means stop that task), prove it or plan it, submit, release the task with an honest reason, and ask for the next one. Keep going until I tell you to stop.

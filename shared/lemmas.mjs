@@ -8,6 +8,9 @@
 import crypto from "node:crypto";
 import { POINTS } from "./scoring.mjs";
 
+/** A model id (claude-…, gpt-…, gemini-…) rather than an agent name. */
+const MODEL_LIKE = /^(claude|gpt|o\d|gemini|grok|llama|mistral|qwen|deepseek|kimi|glm)[-\w.]*$/i;
+
 export const LEMMA_NAME_RE = /^[A-Za-z_][A-Za-z0-9_']{0,59}$/;
 export const MAX_LEMMAS_PER_PARENT = 300;
 
@@ -119,8 +122,10 @@ const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").repla
  * Creates a lemma of `parent` and queues the check of its statement. Returns { ok, lemma_id, slug, submission, target }
  * or { ok:false, error } / { ok:true, existing:true, … } when the same lemma already exists.
  */
-/** @param {any} c @param {{ parent: any, userId: number, name: string, statement: string, note?: string|null, origin?: string, originSubmissionId?: number|null, agentName?: string|null }} args */
-export async function createLemma(c, { parent, userId, name, statement, note, origin = "proposed", originSubmissionId = null, agentName = null }) {
+/** @param {any} c @param {{ parent: any, userId: number, name: string, statement: string, note?: string|null, origin?: string, originSubmissionId?: number|null, agentName?: string|null, agentModel?: string|null }} args */
+export async function createLemma(c, { parent, userId, name, statement, note, origin = "proposed", originSubmissionId = null, agentName = null, agentModel = null }) {
+  // Older clients send the model id in the agent field: recognise it, so lemma statements are not listed as "unknown".
+  if (!agentModel && agentName && MODEL_LIKE.test(agentName)) { agentModel = agentName; agentName = null; }
   if (!parent) return { ok: false, error: "unknown problem" };
   if (parent.formalization !== "formal" || !parent.challenge_source) return { ok: false, error: "this problem has no formal statement yet: lemmas need one to build on" };
   if (parent.status === "withdrawn") return { ok: false, error: "problem withdrawn" };
@@ -150,6 +155,9 @@ export async function createLemma(c, { parent, userId, name, statement, note, or
        'draft', 'informal', $7, 'checking', $8, $9, $10, $11, $12, $13) RETURNING id`,
     [parent.collection, parent.field ?? "math", clip(`Lemma ${name} · ${parent.title}`, 300), statementMd, parent.primary_subject, parent.subjects ?? [],
      parent.id, origin, originSubmissionId, userId, clip(note, 2000) ?? null, name, sig]);
+  // The clean slug goes to the live lemma: a rejected twin (same parent and name) that holds it is renamed aside.
+  await c.query(`UPDATE problems SET slug = slug || '-invalid-' || id
+                 WHERE slug=$1 AND status='lemma' AND lemma_state='invalid' AND parent_id=$2 AND lemma_name=$3`, [base, parent.id, name]);
   const { rows: [{ taken }] } = await c.query("SELECT EXISTS (SELECT 1 FROM problems WHERE slug=$1) AS taken", [base]);
   const slug = taken ? `${base}-${p.id}` : base;
   await c.query(`UPDATE problems SET ident='NS.' || lpad(id::text, 5, '0'), slug=$2,
@@ -157,10 +165,10 @@ export async function createLemma(c, { parent, userId, name, statement, note, or
     [p.id, slug, `Lemma ${name} ${parent.title}`, sig, note ?? ""]);
   const publicId = shortId("s");
   const { rows: [s] } = await c.query(
-    `INSERT INTO submissions(public_id, user_id, problem_id, kind, title, body_md, lean_source, source_hash, agent_name, status, verdict)
-     VALUES ($1,$2,$3,'formalization',$4,$5,$6,$7,$8,'queued',$9) RETURNING id`,
+    `INSERT INTO submissions(public_id, user_id, problem_id, kind, title, body_md, lean_source, source_hash, agent_name, agent_model, status, verdict)
+     VALUES ($1,$2,$3,'formalization',$4,$5,$6,$7,$8,$9,'queued',$10) RETURNING id`,
     [publicId, userId, p.id, clip(`Statement of lemma ${name}`, 300), clip(note, 20_000) ?? null, source, sha256(source), clip(agentName, 60) ?? null,
-     JSON.stringify({ decl_name: target, lemma: true })]);
+     clip(agentModel, 80) ?? null, JSON.stringify({ decl_name: target, lemma: true })]);
   await c.query("INSERT INTO jobs(kind, submission_id, priority) VALUES ('check_formalization',$1,140)", [s.id]);
   await c.query("NOTIFY nosorry_jobs");
   return { ok: true, lemma_id: Number(p.id), slug, submission: publicId, target, signature: sig };
@@ -243,7 +251,7 @@ export async function creditLemmaUses(c, sub, ownDecls) {
  * Turns the open lemmas of an accepted partial proof into intermediate problems (only their statements are shared,
  * never the proofs). Returns [{ name, ok, error?, slug? }].
  */
-export async function shareOpenLemmas(c, sub, agentName = null) {
+export async function shareOpenLemmas(c, sub, agentName = null, agentModel = sub.agent_model ?? null) {
   const open = (sub.verdict?.open_lemmas ?? []).map(publicName);
   const target = publicName(sub.verdict?.target ?? "");
   const parent = await parentRow(c, Number(sub.problem_id));
@@ -255,7 +263,7 @@ export async function shareOpenLemmas(c, sub, agentName = null) {
     const sig = extractSignature(sub.lean_source ?? "", short);
     if (!sig) { out.push({ name: short, ok: false, error: "could not read its statement from the source" }); continue; }
     const r = await createLemma(c, { parent, userId: sub.user_id, name: short, statement: sig, note: `Left open by partial proof ${sub.public_id}.`,
-      origin: "partial", originSubmissionId: sub.id, agentName });
+      origin: "partial", originSubmissionId: sub.id, agentName, agentModel });
     out.push({ name: short, ...r });
   }
   return out;

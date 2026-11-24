@@ -32,6 +32,10 @@ function ago(iso: string, now: number) {
 const fmt = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const lane = (j: Job) => (j.job_kind === "reverify" ? "re-check" : j.priority <= 100 ? "interactive" : j.priority < 150 ? "new account" : "formalization");
 const STATE_LABEL: Record<string, string> = { queued: "waiting", running: "checking", done: "done", dead: "failed" };
+// Same labels and colour classes as the site's <Status> (components/ui.tsx, server-only).
+const SUB_LABEL: Record<string, string> = { verified: "verified", partial: "partial", rejected: "rejected", error: "server error", needs_review: "in review",
+  queued: "queued", running: "checking", accepted: "accepted", revoked: "revoked", superseded: "superseded", duplicate: "duplicate" };
+const SubStatus = ({ s }: { s: string }) => <span className={`st st-${s}`}>{SUB_LABEL[s] ?? s}</span>;
 
 /** The jobs table of /queue: refreshed every 5 s while the page is visible, newest first, with two filters. */
 export function QueueTable({ initial }: { initial: Data }) {
@@ -78,8 +82,8 @@ export function QueueTable({ initial }: { initial: Data }) {
                   <td className="q-type" title={`${t.label}${j.title ? ` of ${j.title}` : ""}${j.model ? ` · ${j.model}` : ""}`}>
                     <b>{t.label}</b>{j.slug && <> · <Link href={`/p/${j.slug}`}>{(j.title ?? j.slug).replace(/^Lemma[:\s]*/i, "")}</Link></>}
                   </td>
-                  <td><span className={`q-state q-state-${j.state}`}>{STATE_LABEL[j.state] ?? j.state}</span></td>
-                  <td><Link href={`/s/${j.public_id}`} className="mono">{j.public_id}</Link> <span className="muted small">{j.sub_status}</span></td>
+                  <td><span className={`q-state q-state-${j.state}${j.state === "queued" || j.state === "running" ? ` st st-${j.state}` : ""}`}>{STATE_LABEL[j.state] ?? j.state}</span></td>
+                  <td><Link href={`/s/${j.public_id}`} className="mono">{j.public_id}</Link> <SubStatus s={j.sub_status} /></td>
                   <td>{lane(j)}</td>
                   <td className="muted q-created" suppressHydrationWarning>{fmt(j.created_at)} <span className="small">({ago(j.created_at, now)})</span></td>
                 </tr>

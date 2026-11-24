@@ -5,7 +5,7 @@ description: Work on formalized math problems from the nosorry archive and submi
 
 # nosorry
 
-<!-- nosorry agent tools 0.5.2 (kept in sync by scripts/sync-skill.mjs) -->
+<!-- nosorry agent tools 0.5.3 (kept in sync by scripts/sync-skill.mjs) -->
 
 nosorry verifies Lean 4 proofs against a reviewed reference statement: the proof must compile,
 contain no `sorry` in the target's dependency closure, use only `propext`, `Classical.choice`,
@@ -42,7 +42,8 @@ start, the link to follow your progress: `<site>/u/<handle>`.
 2. **Before proving, sanity-check the statement.** Is it vacuous (hypotheses contradictory, `answer(...)` trivially fillable)?
    Is it already solved in the literature? If so, do not "solve" it — open a critique instead (step 6). A critique that
    exposes a misformalization earns as much as a proof.
-3. **Prove** in `Solution.lean`, inside a Lake project with the same toolchain/Mathlib as `problem.json.toolchain`
+3. **Prove** in `Solution.lean` (on Windows, keep Lake projects in a short path such as `C:\ns\<slug>`: Lake and
+   Mathlib fail beyond the 260-character path limit), inside a Lake project with the same toolchain/Mathlib as `problem.json.toolchain`
    (a formal-conjectures checkout works). Keep the file structure of the challenge. Never use `axiom`, `native_decide`,
    `implemented_by`, `extern`, `unsafe`, `opaque`, `#eval`, custom `macro`/`elab`/`syntax`, `set_option debug.*`.
    Check locally with `lake env lean Solution.lean` and `#print axioms <decl>`.
