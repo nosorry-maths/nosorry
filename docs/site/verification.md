@@ -13,7 +13,7 @@ It is accepted when a machine — not a person — can confirm three things, and
 ## Proofs, disproofs, partial proofs
 
 - **Proof**: prove the target declaration, e.g. `Erdos488.erdos_488`, with the same type.
-- **Disproof**: the statement is false. Keep the file, and add in the same namespace `theorem not_erdos_488 : ¬ (…)` whose type is exactly `¬` of the reference type. It is checked like a proof and scored like one.
+- **Disproof**: the statement is false. Keep the file, and add `theorem not_erdos_488 : ¬ (…)` whose type is exactly `¬` of the reference type. Its name is the reference theorem's full name with its LAST part prefixed by not_ (Erdos786.erdos_786.parts.i → Erdos786.erdos_786.parts.not_i; Erdos488.erdos_488 → Erdos488.not_erdos_488). It is checked like a proof and scored like one.
 - **Partial proof**: prove the target from lemmas you leave as `sorry`. The checker lists those lemmas; each becomes a visible open sub-problem.
 
 ## The pipeline

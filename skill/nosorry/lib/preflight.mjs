@@ -49,7 +49,7 @@ const RULES = [
   [/\bnative_decide\b|\bofReduceBool\b|\bofReduceNat\b|\btrustCompiler\b|decide\s*\+\s*native|\bnative\s*:=\s*true/, "native", "`native_decide` trusts the compiler and is not accepted"],
   [/#eval\b|#exit\b|#print\b|#check\w*\b|#reduce\b|#synth\b|\brun_cmd\b|\brun_elab\b|\brun_meta\b|\brun_tac\b|\bby_elab\b/, "command", "evaluation / debugging commands are not allowed"],
   // LeanSearchClient & friends: useful while searching, but they call the network (blocked in the sandbox) and are not proofs.
-  [/#(leansearch|loogle|moogle|statesearch)\b|\b(exact\?|apply\?|rw\?|hint)(?![\w?])/, "search", "search commands (#leansearch, #loogle, exact?…) must be replaced by the lemmas they found before submitting"],
+  [/#(leansearch|loogle|moogle|statesearch)\b|\b(exact\?|apply\?|rw\?)(?![\w?])|(^|\n|;|<;>|\bby\b|·)[ \t]*hint(?![\w?'.])/, "search", "search commands (#leansearch, #loogle, exact?…) must be replaced by the lemmas they found before submitting"],
   [/\b(elab|elab_rules|macro|macro_rules|syntax|declare_syntax_cat|notation3?|infixl?|infixr|prefix|postfix|deriving\s+instance)\b/, "meta", "custom syntax / elaborators are not allowed in solutions"],
   [/@\[[^\]]*\b(term_elab|command_elab|tactic|macro|init|env_linter|builtin_\w+|delab|app_unexpander|csimp|implemented_by)\b[^\]]*\]/, "meta-attr", "meta-level attributes are not allowed in solutions"],
   [/\binitialize\b|\bbuiltin_initialize\b/, "init", "initializers are not allowed"],

@@ -29,7 +29,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.5.1";
+const VERSION = "0.5.2";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -222,7 +222,7 @@ switch (cmd) {
       idempotency_key: crypto.createHash("sha256").update(slug + kind + src).digest("hex").slice(0, 40),
     });
     if (!r.ok) die(`${r.error} ${JSON.stringify(r.details ?? "")}`);
-    if (kind === "disproof") console.error("disproof: the file must declare <Namespace>.not_<name> : ¬ (statement)");
+    if (kind === "disproof") console.error("disproof: the file must declare ¬ (statement), named the reference theorem's full name with its LAST part prefixed by not_ (Erdos786.erdos_786.parts.i → Erdos786.erdos_786.parts.not_i; Erdos488.erdos_488 → Erdos488.not_erdos_488)");
     for (const w of r.warnings ?? []) console.error(`warn: ${w}`);
     console.log(`submitted ${r.id} (${r.status}) ${BASE}${r.url}`);
     if (doWait) report(await wait(r.id));

@@ -5,7 +5,7 @@ description: Work on formalized math problems from the nosorry archive and submi
 
 # nosorry
 
-<!-- nosorry agent tools 0.5.1 (kept in sync by scripts/sync-skill.mjs) -->
+<!-- nosorry agent tools 0.5.2 (kept in sync by scripts/sync-skill.mjs) -->
 
 nosorry verifies Lean 4 proofs against a reviewed reference statement: the proof must compile,
 contain no `sorry` in the target's dependency closure, use only `propext`, `Classical.choice`,
@@ -53,7 +53,8 @@ start, the link to follow your progress: `<site>/u/<handle>`.
    **Finding lemmas:** Mathlib already ships LeanSearchClient. In a scratch file (not in `Solution.lean`) use
    `#leansearch "natural-language description."`, `#loogle Nat.Prime, "dvd"` (name / type-pattern search) and
    `exact?` / `apply?` to locate the right Mathlib lemmas, then write the lemma names explicitly in the proof.
-   The server rejects `#leansearch`, `#loogle`, `#moogle`, `exact?`, `apply?`, `rw?`, `hint` in submissions: they need the
+   Disproof: prove `¬ (statement)` named the reference theorem's full name with its LAST part prefixed by not_ (Erdos786.erdos_786.parts.i -> Erdos786.erdos_786.parts.not_i; Erdos488.erdos_488 -> Erdos488.not_erdos_488).
+   The server rejects `#leansearch`, `#loogle`, `#moogle`, `exact?`, `apply?`, `rw?`, the `hint` tactic in submissions: they need the
    network (the verifier has none) and are not proofs.
 4. **Static check:** `nosorry check nosorry/<slug>/Solution.lean --slug <slug>`.
 5. **Submit:**

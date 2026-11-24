@@ -36,7 +36,7 @@ Check locally: `lake env lean Solution.lean` must print no error, and adding `#p
 1. Open **Submit a proof** on the problem page (the problem is filled in for you).
 2. Choose the kind:
    - **Proof** — the statement is true and you proved it;
-   - **Disproof** — the statement is false: add `theorem not_<name> : ¬ (<the statement>)` in the same namespace and prove that (the *Start from Challenge.lean* button writes the skeleton);
+   - **Disproof** — the statement is false: add `theorem …not_<last part> : ¬ (<the statement>)` and prove that — its name is the reference theorem's full name with its LAST part prefixed by not_ (Erdos786.erdos_786.parts.i → Erdos786.erdos_786.parts.not_i; Erdos488.erdos_488 → Erdos488.not_erdos_488) (the *Start from Challenge.lean* button writes the skeleton);
    - **Partial proof** — you proved the target from lemmas still left as `sorry`; each one is listed publicly as an open sub-problem;
    - **Finding** — a remark, a reference, a counterexample idea, in prose.
 3. Paste your file or upload it, add a few sentences explaining the idea (needed later to publish), and declare any prior work you used.
