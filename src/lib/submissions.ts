@@ -52,12 +52,12 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
     if (!["proof", "disproof", "partial"].includes(input.kind)) return { ok: false, error: "a repository can be submitted as a proof, disproof or partial proof" };
     const url = String(input.repository.url ?? "").trim().replace(/\.git$/, "").replace(/\/$/, "");
     const commit = String(input.repository.commit ?? "").trim().toLowerCase();
-    const module = String(input.repository.module ?? "").trim();
+    const rootModule = String(input.repository.module ?? "").trim();
     if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(url)) return { ok: false, error: "repository.url must be a public https://github.com/<owner>/<repo>" };
     if (!/^[0-9a-f]{40}$/.test(commit)) return { ok: false, error: "repository.commit must be a full 40-character commit hash" };
-    if (!/^[A-Za-z_][A-Za-z0-9_\x27]*(\.[A-Za-z_][A-Za-z0-9_\x27]*)*$/.test(module)) return { ok: false, error: "repository.module must be the Lean module that contains the theorem, e.g. MyProof.Main" };
-    source = { url, commit, module };
-    input.lean_source = `-- Repository submission: the proof is the Lake project below, at this exact commit.\n-- ${url}/tree/${commit}\n-- module: ${module}\n`;
+    if (!/^[A-Za-z_][A-Za-z0-9_\x27]*(\.[A-Za-z_][A-Za-z0-9_\x27]*)*$/.test(rootModule)) return { ok: false, error: "repository.module must be the Lean module that contains the theorem, e.g. MyProof.Main" };
+    source = { url, commit, module: rootModule };
+    input.lean_source = `-- Repository submission: the proof is the Lake project below, at this exact commit.\n-- ${url}/tree/${commit}\n-- module: ${rootModule}\n`;
   }
   const requestHash = sha256(JSON.stringify([input.problem, input.kind, input.lean_source, input.body_md, input.target_decl]));
   if (input.idempotency_key) {
