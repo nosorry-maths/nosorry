@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { one, q } from "@/lib/db";
 import { currentUser, isModerator } from "@/lib/auth";
 import { highlightLean, renderInline } from "@/lib/render";
-import { parseTranscript } from "@/lib/transcript";
+import { parseTranscript, redact } from "@/lib/transcript";
 import { fmtDateTime } from "@/lib/data";
 import { queuePosition } from "@/lib/submissions";
 import { Md, Status, reasonLabel } from "@/components/ui";
@@ -13,6 +13,7 @@ import { scoreOf, threadOf } from "@/lib/reviews";
 import { ReviewSection } from "@/components/review";
 import { shareLemmasAction } from "@/app/actions-research";
 import AutoRefresh from "./refresh";
+import { CopyText, Elapsed } from "@/components/clip";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ type S = {
   review_required: boolean; reviewed_at: string | null; reviewer: string | null; revision_of: string | null;
 };
 type Content = { body_md: string | null; explanation_md: string | null; lean_source: string | null; derived_from: string | null; open_lemmas: string[] | null; verdict: Record<string, unknown> | null };
-type Stage = { name: string; status: string; ms?: number; detail?: string | null };
+type Stage = { name: string; status: string; ms?: number; detail?: string | null; started?: string };
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   return { title: `Submission ${(await params).id}` };
@@ -73,7 +74,9 @@ export default async function Submission({ params, searchParams }: { params: Pro
     s.status === "queued" ? queuePosition(s.id) : null,
   ]);
   const code = content?.lean_source ? await highlightLean(content.lean_source.slice(0, 200_000)) : null;
-  const turns = transcript ? parseTranscript(transcript.format, transcript.content).slice(0, 400) : [];
+  // Cleaned again on display: transcripts stored before a cleaning rule existed benefit from it too.
+  const cleaned = transcript ? redact(transcript.content) : null;
+  const turns = transcript && cleaned ? parseTranscript(transcript.format, cleaned.text).slice(0, 400) : [];
   const answers = (content?.verdict?.answers as string[] | undefined) ?? [];
   const isProofKind = s.kind === "proof" || s.kind === "disproof" || s.kind === "partial";
   const Check = ({ v, title, yes, no }: { v: boolean | null; title: string; yes: string; no: string }) => (
@@ -176,6 +179,9 @@ export default async function Submission({ params, searchParams }: { params: Pro
               <li key={j}>
                 <b>{st.name}</b> — <span className={st.status === "pass" ? "yes" : st.status === "fail" || st.status === "error" ? "no" : "na"}>{st.status}</span>
                 {st.ms != null && <span className="ms">{(st.ms / 1000).toFixed(2)} s</span>}
+                {st.ms == null && st.status === "running" && !r.result && (
+                  <Elapsed since={st.started ?? new Date(new Date(r.started_at).getTime() + r.stages.slice(0, j).reduce((a, x) => a + (x.ms ?? 0), 0)).toISOString()} />
+                )}
                 {st.detail && showContent && <pre>{st.detail}</pre>}
               </li>
             ))}
@@ -201,16 +207,40 @@ export default async function Submission({ params, searchParams }: { params: Pro
           module <span className="mono">{s.source_module}</span>. It was built on the verifier with the repository&apos;s own toolchain, and every declaration of the
           repository the theorem depends on was replayed in the kernel.
           {content?.verdict?.foreign_toolchain ? <> <b>Checked with {String(content.verdict.toolchain)}</b>, not the statement&apos;s {String(content.verdict.reference_toolchain)}: the reference statement was compiled with the same versions as the proof.</> : null}</p>
-      </>) : code && (<><h2>Lean source</h2><div dangerouslySetInnerHTML={{ __html: code }} /></>)}
+      </>) : code && content?.lean_source && (
+        <details className="leansrc">
+          <summary><h2>Lean source</h2>
+            <span className="muted small">{content.lean_source.split("\n").length} lines · {(content.lean_source.length / 1024).toFixed(1)} KB<span className="when-closed"> · click to show</span></span>
+            <CopyText text={content.lean_source} label="Copy to clipboard" />
+          </summary>
+          <div dangerouslySetInnerHTML={{ __html: code }} />
+          {content.lean_source.length > 200_000 && <p className="small muted">Highlighted up to 200 KB; the copy button copies the whole file.</p>}
+        </details>
+      )}
       {!showContent && checked && (
         <div className="note">Its author has <b>sealed</b> this submission: its verdict and timestamp are public, the source is not.</div>
       )}
 
       {transcript && (<>
-        <h2>Agent transcript</h2>
+        <h2 className="tr-head">Agent transcript
+          {s.transcript_public
+            ? <span className="public-tag">public</span>
+            : <span className="private-tag">not public — only {owner ? "you" : "its author"} and moderators can see it</span>}
+          {owner && checked && s.status !== "revoked" && s.visibility !== "private" && (
+            <form action={setVisibility} className="inline-form">
+              <input type="hidden" name="id" value={s.public_id} />
+              <input type="hidden" name="transcript" value={s.transcript_public ? "private" : "public"} />
+              <button className={`btn small${s.transcript_public ? "" : " primary"}`}>{s.transcript_public ? "Make it private" : "Publish the transcript"}</button>
+            </form>
+          )}
+        </h2>
+        {owner && !s.transcript_public && (
+          <p className="small" style={{ marginTop: 0 }}>Read it before publishing: paths, e-mail addresses, IP addresses, private host names and secrets are removed automatically
+            ({cleaned?.count ?? 0} removed here), but anything else you or your agent typed would be public.</p>
+        )}
         <p className="muted small">
           {transcript.captured_by === "platform" ? "Captured by the nosorry agent connector." : "Self-reported by the submitter — a claim, not evidence; only the Lean proof is checked."}
-          {" "}{(transcript.byte_size / 1024).toFixed(0)} KB, {transcript.redactions} automatic redaction{transcript.redactions === 1 ? "" : "s"}.
+          {" "}{(transcript.byte_size / 1024).toFixed(0)} KB, {Math.max(transcript.redactions, cleaned?.count ?? 0)} automatic redaction{Math.max(transcript.redactions, cleaned?.count ?? 0) === 1 ? "" : "s"}.
         </p>
         <details>
           <summary>Show {turns.length} turns</summary>

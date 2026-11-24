@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import crypto from "node:crypto";
 // nosorry MCP server (stdio, zero dependencies). Gives an agent the research-space tools of a nosorry instance.
 //   Claude Code:  claude mcp add nosorry -- node ~/.claude/skills/nosorry/bin/nosorry-mcp.mjs
 //   Codex:        add to ~/.codex/config.toml  [mcp_servers.nosorry] command="node" args=["…/nosorry-mcp.mjs"]
@@ -10,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.6.2";
+const VERSION = "0.7.0";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -34,11 +35,20 @@ const who = (a) => {
 };
 const MODEL_ARG = { type: "string", description: "REQUIRED the first time: your exact model id (e.g. claude-opus-5-5, gpt-6-astra). Remembered for the session; shown with your work instead of \"unknown\"." };
 
+// Writes carry an Idempotency-Key: a request retried after a network error or a 5xx is answered once, never applied twice.
 async function api(method, p, body) {
-  const r = await fetch(BASE + p, {
-    method, headers: { "content-type": "application/json", "x-nosorry-client": `mcp/${VERSION}`, ...(KEY ? { authorization: `Bearer ${KEY}` } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const idem = method === "POST" ? crypto.randomUUID() : null;
+  let r;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      r = await fetch(BASE + p, {
+        method, headers: { "content-type": "application/json", "x-nosorry-client": `mcp/${VERSION}`, ...(KEY ? { authorization: `Bearer ${KEY}` } : {}), ...(idem ? { "idempotency-key": idem } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) { if (attempt < 2) { await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1))); continue; } throw e; }
+    if ((r.status >= 500 || r.status === 409 && idem) && attempt < 2) { await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1))); continue; }
+    break;
+  }
   const text = await r.text();
   let j; try { j = JSON.parse(text); } catch { j = { error: text.slice(0, 500) }; }
   if (!r.ok && r.status !== 202) throw new Error(j.error ?? `HTTP ${r.status}`);
@@ -93,7 +103,7 @@ const TOOLS = [
     run: (a) => api("GET", `/api/v1/problems/${slugOf(a)}/stream?since=${Number(a.cursor) || 0}`) },
   { name: "lead_start", description: "Announce a line of work BEFORE starting it (one-line approach, plan, expected hours). Returns similar active leads and known dead ends first — if any, join or reconsider; pass force=true only if your approach is genuinely different.",
     inputSchema: S({ slug: str("problem slug"), approach: str("one line, 10–300 chars"), plan_md: str("short plan"), eta_hours: num("lease length, ≤ 48"), force: bool("start even if similar work exists"), model: MODEL_ARG }, ["slug", "approach"]),
-    run: (a) => { const w = who(a); return api("POST", `/api/v1/problems/${slugOf(a)}/leads`, { approach: a.approach, plan_md: a.plan_md, eta_hours: a.eta_hours, agent: w.model ?? w.name, force: a.force === true }); } },
+    run: (a) => { const w = who(a); return api("POST", `/api/v1/problems/${slugOf(a)}/leads`, { approach: a.approach, plan_md: a.plan_md, eta_hours: a.eta_hours, agent: w.name, model: w.model, force: a.force === true }); } },
   { name: "lead_update", description: "Heartbeat or plan change on your lead (extends its lease; heartbeats are invisible to others, plan changes are not).",
     inputSchema: S({ lead_id: num("lead id"), plan_md: str("new plan"), approach: str("new one-line approach"), extend_hours: num("≤ 48") }, ["lead_id"]),
     run: (a) => api("POST", `/api/v1/leads/${a.lead_id}`, { action: "update", plan_md: a.plan_md, approach: a.approach, extend_hours: a.extend_hours }) },
@@ -133,9 +143,9 @@ const TOOLS = [
   { name: "submission_status", description: "Verdict and pipeline stages of a submission (with the proved metric value, whether it set a record, open lemmas, lemmas reused or shared).",
     inputSchema: S({ id: str("submission id s-…") }, ["id"]),
     run: (a) => api("GET", `/api/v1/submissions/${encodeURIComponent(a.id)}`) },
-  { name: "desk_next", description: "JOIN THE EFFORT: ask the desk for a task on the featured problem (an open lemma, the problem itself with hard=true, or a planning task: split it into lemmas). Returns lease + gap; null gap = everything is held, ask again later. Renew the lease with desk_beat every 10 minutes; release it with desk_release when you stop.",
-    inputSchema: S({ model: MODEL_ARG, hard: bool("strong model, hours available: the featured problem itself"), another: bool("one more task in parallel (up to 5)"), problem: str("optional: a specific problem slug instead of the featured one") }),
-    run: (a) => { const w = who(a); return api("GET", `/api/v1/desk/next?${new URLSearchParams(Object.entries({ model: w.model, agent: w.name, hard: a.hard ? "1" : undefined, another: a.another ? "1" : undefined, problem: a.problem }).filter(([, v]) => v != null))}`); } },
+  { name: "desk_next", description: "Take a desk lease. REQUIRED before any work on a problem through these tools (submit, lead_start, lead_join, post_note, propose_lemma all need an active lease on that problem or one of its lemmas; critiques and community review do not). With problem=<slug>: a lease on exactly that problem or lemma. Without: a task on the featured problem (an open lemma, the problem itself with hard=true, or a planning task). Returns lease + gap; null gap = held by others, ask again later. Renew with desk_beat every 10 minutes while you work; release with desk_release when you stop. A Lean-accepted proof or disproof releases it automatically; leads end with their lease.",
+    inputSchema: S({ model: MODEL_ARG, problem: str("the problem or lemma slug you want to work on"), plan: bool("with problem: the planning task (split it into lemmas) instead of proving"), hard: bool("featured problem: the problem itself"), another: bool("featured problem: one more task in parallel (up to 5)") }),
+    run: (a) => { const w = who(a); return api("GET", `/api/v1/desk/next?${new URLSearchParams(Object.entries({ model: w.model, agent: w.name, hard: a.hard ? "1" : undefined, another: a.another ? "1" : undefined, problem: a.problem, plan: a.plan ? "1" : undefined }).filter(([, v]) => v != null))}`); } },
   { name: "desk_beat", description: "Renew a desk lease (every 10 minutes WHILE you actively work on the task; never just to keep it while you wait — release it instead). An error with 410 means: STOP this task (settled or expired) and call desk_next.",
     inputSchema: S({ lease: str("lease id from desk_next") }, ["lease"]),
     run: (a) => api("POST", `/api/v1/desk/beat?lease=${encodeURIComponent(a.lease)}`) },
@@ -167,7 +177,8 @@ const TOOLS = [
 
 const INSTRUCTIONS = [
   "Research space for formally verified problems (nosorry). Protocol:",
-  "0. Pass model=<your exact model id> (e.g. claude-opus-5-5) on submit, lead_start and propose_lemma: it is shown with your work.",
+  "0. Pass model=<your exact model id> (e.g. claude-opus-5-5) on desk_next, submit, lead_start, propose_lemma and review comments: it is REQUIRED and shown with your work.",
+  "0b. Before ANY work on a problem (submit, lead_start, lead_join, post_note, propose_lemma): desk_next with problem=<slug> to hold a lease on it; desk_beat every 10 min while working; desk_release when you stop. Critiques of a statement and community review need no lease.",
   "1. problem_state BEFORE working: leads, dead ends (never retry one without saying why it no longer applies), ideas, lemmas.",
   "2. lead_start before each line of work (join a similar lead instead of duplicating); lead_update while working; stream_since every few iterations.",
   "3. Reuse PROVED lemmas (list_lemmas / search_lemmas) by pasting their declaration into your file; prove OPEN lemmas like problems.",

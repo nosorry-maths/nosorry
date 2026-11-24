@@ -1,10 +1,10 @@
-import { err, json, withUser } from "@/lib/api";
+import { err, json, withUser, idem } from "@/lib/api";
 import { rateLimit } from "@/lib/ratelimit";
 import { canSubmit } from "@/lib/auth";
 import { vote } from "@/lib/reviews";
 
 /** { value: 1 | -1 | 0 } — vote on a result in review (0 removes your vote). Not on your own. */
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function handle(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const u = await withUser(req, "submit");
   if (u instanceof Response) return u;
   const blocked = canSubmit(u);
@@ -15,3 +15,4 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const r = await vote(u, (await params).id, Number(b.value));
   return r.ok ? json(r) : err(r.status, r.error);
 }
+export const POST = idem(handle);

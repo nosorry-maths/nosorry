@@ -3,6 +3,7 @@
 //   node scripts/e2e-desk.mjs [problem slug]        (default: an open formal problem without lemmas)
 import crypto from "node:crypto";
 import pg from "pg";
+import { MIN_CLIENT_VERSION } from "../shared/version.mjs";
 
 const BASE = process.env.NOSORRY_URL ?? "http://localhost:3100";
 const db = new pg.Client({ connectionString: process.env.DATABASE_URL ?? "postgres://nosorry:nosorry_dev@127.0.0.1:5433/nosorry" });
@@ -18,7 +19,7 @@ await db.query(`INSERT INTO api_keys(user_id, name, prefix, key_hash, scopes) VA
 const { rows: [before] } = await db.query("SELECT id FROM focus_history WHERE ended_at IS NULL");
 const t0 = new Date();
 const api = async (method, p, body) => {
-  const r = await fetch(BASE + p, { method, headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(BASE + p, { method, headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "x-nosorry-client": `cli/${MIN_CLIENT_VERSION}` }, body: body ? JSON.stringify(body) : undefined });
   let j; try { j = await r.json(); } catch { j = null; }
   return { status: r.status, j };
 };

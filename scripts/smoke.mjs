@@ -5,6 +5,7 @@
 // pages, the public API, real Lean verification (proof / sorry / axiom / metric), the research board,
 // the stream and the MCP server. The key is revoked at the end. Exit code 1 if anything failed.
 import pg from "pg";
+import { MIN_CLIENT_VERSION } from "../shared/version.mjs";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -83,7 +84,7 @@ const KEY = `ns_${prefix}_${crypto.randomBytes(24).toString("base64url")}`;
 const { rows: [u] } = await db.query("INSERT INTO users(handle, password_hash) VALUES ($1, 'scrypt$disabled') RETURNING id", [handle]);
 await db.query("INSERT INTO api_keys(user_id, name, prefix, key_hash, scopes) VALUES ($1,'smoke test',$2,$3,$4)",
   [u.id, prefix, crypto.createHash("sha256").update(KEY).digest("hex"), ["submit", "read"]]);
-const auth = { authorization: `Bearer ${KEY}`, "content-type": "application/json" };
+const auth = { authorization: `Bearer ${KEY}`, "content-type": "application/json", "x-nosorry-client": `cli/${MIN_CLIENT_VERSION}` };
 const post = (p, body) => get(p, { method: "POST", headers: auth, body: JSON.stringify(body) });
 { const r = await get("/api/v1/me", { headers: auth }); ok(`GET /me with key (${handle})`, r.status === 200 && r.json?.handle === handle, `status ${r.status}`); }
 

@@ -1,5 +1,5 @@
 import { q } from "@/lib/db";
-import { err, ipOf, json, withUser } from "@/lib/api";
+import { err, idempotent, ipOf, json, withUser } from "@/lib/api";
 import { config } from "@/lib/config";
 import { createSubmission, type SubmissionInput } from "@/lib/submissions";
 
@@ -26,6 +26,10 @@ export async function POST(req: Request) {
   const u = await withUser(req, "submit");
   if (u instanceof Response) return u;
   if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return err(413, "request too large");
+  return idempotent(req, u, "submissions", () => submit(req, u));
+}
+
+async function submit(req: Request, u: Exclude<Awaited<ReturnType<typeof withUser>>, Response>) {
   let body: SubmissionInput | { items: SubmissionInput[] };
   try { body = (await readJsonLimited(req, MAX_BODY)) as typeof body; }
   catch (e) { return (e as { status?: number }).status === 413 ? err(413, `request too large (max ${MAX_BODY / 1048576} MB)`) : err(400, "invalid JSON"); }
@@ -35,11 +39,11 @@ export async function POST(req: Request) {
     if (!Array.isArray(body.items) || body.items.length === 0) return err(400, "items must be a non-empty array");
     if (body.items.length > config.limits.bulkMaxItems) return err(400, `at most ${config.limits.bulkMaxItems} items per request`);
     const results = [];
-    for (const item of body.items) results.push(await createSubmission(u, item, ip));
+    for (const item of body.items) results.push(await createSubmission(u, item, ip, { api: true }));
     const accepted = results.filter((r) => r.ok).length;
     return json({ accepted, rejected: results.length - accepted, results }, accepted ? 202 : 400);
   }
-  const r = await createSubmission(u, body, ip);
+  const r = await createSubmission(u, body, ip, { api: true });
   return r.ok ? json(r, 202, { location: r.url }) : json(r, 400);
 }
 

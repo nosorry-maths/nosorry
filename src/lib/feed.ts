@@ -70,7 +70,7 @@ export async function expireLeases(problemId?: number) {
            AND created_at < now() - make_interval(days => ${IDEA_TTL_DAYS}) ${problemId ? "AND problem_id=$1" : ""}`, problemId ? [problemId] : []);
 }
 
-export type LeadStart = { approach: string; plan_md?: string; eta_hours?: number; agent?: string; force?: boolean };
+export type LeadStart = { approach: string; plan_md?: string; eta_hours?: number; agent?: string; model?: string; force?: boolean; deskLeaseId?: number | null };
 
 /** Start a lead. Returns similar active leads and proven dead ends FIRST; only creates when there are none or force=true. */
 export async function leadStart(user: User, problemRef_: string, input: LeadStart) {
@@ -97,8 +97,8 @@ export async function leadStart(user: User, problemRef_: string, input: LeadStar
   const hours = Math.min(LEASE_MAX_HOURS, Math.max(1, Number(input.eta_hours) || 6));
   const id = await tx(async (c) => {
     const { rows: [l] } = await c.query(
-      `INSERT INTO leads(problem_id, user_id, agent, approach, plan_md, lease_until) VALUES ($1,$2,$3,$4,$5, now() + make_interval(hours => $6)) RETURNING id`,
-      [p.id, user.id, input.agent?.slice(0, 80) ?? null, approach, input.plan_md?.slice(0, 10000) ?? null, hours]);
+      `INSERT INTO leads(problem_id, user_id, agent, approach, plan_md, lease_until, desk_lease_id) VALUES ($1,$2,$3,$4,$5, now() + make_interval(hours => $6), $7) RETURNING id`,
+      [p.id, user.id, ([input.agent, input.model && `(${input.model})`].filter(Boolean).join(" ").slice(0, 80) || null), approach, input.plan_md?.slice(0, 10000) ?? null, hours, input.deskLeaseId ?? null]);
     await emit(c as never, p.id, "lead.start", { userId: user.id, refType: "lead", refId: l.id, summary: `${user.handle} started: ${approach} (lease ${hours} h)` });
     return Number(l.id);
   });

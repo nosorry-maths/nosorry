@@ -71,8 +71,8 @@ ${bullet((s?.lemmas ?? []).slice(0, 12).map((l) => `${l.state.toUpperCase()} ${l
 ${bullet((s?.external?.aixiv ?? []).map((a) => `${a.status}: ${short(a.summary ?? a.problem, 200)} ${a.url}`), "nothing recorded")}
 
 ## 4. Protocol (mandatory)
-0. Pass model = your exact model id (e.g. claude-opus-5-5) to submit, lead_start and propose_lemma (CLI: nosorry config --model <id> once). Without it your work is listed as "unknown".
-1. Call problem_state("${p.slug}") first; never rely only on this snapshot. To take one piece of this problem at a time (an open lemma, a planning task, or the problem itself), use desk_next with problem="${p.slug}": renew with desk_beat every 10 minutes (410 = stop), release with desk_release, then ask again.
+0. Pass model = your exact model id (e.g. claude-opus-5-5) to desk_next, submit, lead_start and propose_lemma (CLI: nosorry config --model <id> once). It is REQUIRED: without it the server refuses the request.
+1. Take a desk lease BEFORE any work: desk_next with problem="${p.slug}" (CLI: nosorry desk ${p.slug}). Without an active lease on this problem (or one of its lemmas) submissions, leads, notes and lemma proposals are refused. Renew it with desk_beat every 10 minutes while you actively work (410 = stop), release it with desk_release when you stop (a Lean-accepted proof releases it by itself; leads end with it). Then call problem_state("${p.slug}"); never rely only on this snapshot.
 2. Before each line of work, call lead_start with a one-line approach and an ETA. If it returns similar leads or dead ends, join (lead_join) or change approach.
 3. Every few iterations, call stream_since("${p.slug}", cursor) and react to new records, dead ends and replies to you.
 4. Compile locally before submitting. Submit with based_on = the current record's submission id and cites = the notes/leads you used (their authors share the credit).
@@ -83,7 +83,7 @@ ${bullet((s?.external?.aixiv ?? []).map((a) => `${a.status}: ${short(a.summary ?
 8. Report to me: what you tried, the submission links, and the verdicts.
 9. If any nosorry tool says the tools are out of date (a ⚠ notice, or check_updates), tell me and give me the update command.
 
-Start now: call problem_state("${p.slug}").`;
+Start now: call desk_next with problem="${p.slug}", then problem_state("${p.slug}").`;
   await audit(u.id, "solve_kit", `problem:${p.slug}`);
   return { prompt };
 }

@@ -1,24 +1,65 @@
 import "server-only";
 
 /**
- * Transcripts are published, so we redact before storing. This is best-effort; the submitter
- * sees the redacted preview and is responsible for what they publish.
+ * Transcripts can be published, so they are cleaned before they are stored AND again when they are shown (older
+ * transcripts benefit from new rules). Best-effort: secrets, e-mail addresses, phone numbers, IP addresses, private host
+ * names, and file paths (which give away user names and folder layouts) are removed; user names seen in paths are
+ * removed everywhere else too. The submitter is still responsible for what they publish.
  */
-const PATTERNS: [RegExp, string][] = [
+const SECRETS: [RegExp, string][] = [
   [/\bsk-(ant-)?[A-Za-z0-9_-]{20,}\b/g, "[redacted:api-key]"],
   [/\bns_[a-z0-9]{8}_[A-Za-z0-9_-]{20,}\b/g, "[redacted:nosorry-key]"],
   [/\bgh[pousr]_[A-Za-z0-9]{30,}\b/g, "[redacted:github-token]"],
+  [/\bgithub_pat_[A-Za-z0-9_]{30,}\b/g, "[redacted:github-token]"],
+  [/\bxox[abpr]-[A-Za-z0-9-]{10,}\b/g, "[redacted:slack-token]"],
   [/\bAKIA[0-9A-Z]{16}\b/g, "[redacted:aws-key]"],
+  [/\bAIza[0-9A-Za-z_-]{35}\b/g, "[redacted:google-key]"],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted:jwt]"],
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[redacted:private-key]"],
-  [/\b(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["']?[^\s"']{6,}/gi, "$1=[redacted]"],
-  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[redacted:email]"],
-  [/([A-Za-z]:\\Users\\|\/Users\/|\/home\/)[^\\/\s"']+/g, "$1~"],
+  [/\bssh-(?:rsa|ed25519|dss|ecdsa-[a-z0-9-]+) AAAA[0-9A-Za-z+/=]{20,}(?: [^\s"']+)?/g, "[redacted:ssh-key]"],
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{16,}/g, "$1 [redacted]"],
+  [/\b(password|passwd|pwd|secret|token|api[_-]?key|auth[_-]?key|access[_-]?key|client[_-]?secret)(["']?\s*[:=]\s*["']?)[^\s"',;]{6,}/gi, "$1$2[redacted]"],
+  [/\b(https?:\/\/)[^\s/:@"']+:[^\s/@"']+@/g, "$1[redacted]@"],                       // credentials in URLs
 ];
+const PERSONAL: [RegExp, string][] = [
+  [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[redacted:email]"],
+  [/(?<![\w.])\+\d{1,3}[\s.-]?\(?\d{1,4}\)?(?:[\s.-]?\d{2,4}){2,4}(?![\w.])/g, "[redacted:phone]"],
+  [/(?<![\w.])0[1-9](?:[\s.-]?\d{2}){4}(?![\w.])/g, "[redacted:phone]"],             // French-style national numbers
+  [/\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:ts\.net|local|lan|internal|home\.arpa|localdomain)\b/gi, "[redacted:host]"],
+  [/(?<![\w.:])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\w.])/g, "[ip]"],
+  [/\b[A-Za-z]--(?:Users|home)-[A-Za-z0-9._-]+/g, "[redacted:path]"],                // tool folders named after a path
+];
+// Absolute paths: keep only the last component (the file name says what was used; the rest says who and where).
+const WIN_PATH = /\b[A-Za-z]:(?:\\\\|\\|\/)(?:[^\s"'<>|*?:\\/\]\[(){}]+(?:\\\\|\\|\/))*([^\s"'<>|*?:\\/\]\[(){}]*)/g;
+const UNIX_PATH = /(?<![\w.~:/-])\/(?:home|Users|root|mnt|tmp|var|opt|private|Volumes|srv|workspaces?|data|media|run|etc|usr|nix|scratch|projects?)\b(?:\/[^\s"'<>|*?:\]\[(){}]*)?/g;
+const COMMON_NAMES = new Set(["public", "shared", "default", "user", "users", "runner", "root", "ubuntu", "admin", "home", "all users", "guest", "lean", "node", "app"]);
+
+/** User names that appear in paths (C:\Users\<name>, /home/<name>, /Users/<name>). */
+function namesIn(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/(?:[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)|\/(?:home|Users)\/)([A-Za-z0-9._-]{3,40})/g)) {
+    const n = m[1];
+    if (!COMMON_NAMES.has(n.toLowerCase())) out.add(n);
+  }
+  for (const m of text.matchAll(/\b[A-Za-z]--(?:Users|home)-([A-Za-z0-9_]{3,40})-/g)) if (!COMMON_NAMES.has(m[1].toLowerCase())) out.add(m[1]);
+  return [...out];
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// A file name with an extension is kept (it says which file was used); a folder name is not (it may name a person or a project).
+const base = (last: string | undefined) => (last && /^[^.]+(?:\.[A-Za-z0-9_-]{1,12})+$/.test(last) ? `…/${last}` : "[path]");
 
 export function redact(text: string): { text: string; count: number } {
   let count = 0;
-  for (const [re, rep] of PATTERNS) text = text.replace(re, (...m) => { count++; return rep.replace("$1", m[1] ?? ""); });
+  const names = namesIn(text);
+  const sub = (re: RegExp, rep: string | ((...m: string[]) => string)) => {
+    text = text.replace(re, (...m: string[]) => { count++; return typeof rep === "function" ? rep(...m) : rep.replace(/\$(\d)/g, (_, i) => m[Number(i)] ?? ""); });
+  };
+  for (const [re, rep] of SECRETS) sub(re, rep);
+  sub(WIN_PATH, (_all, last) => base(last));
+  sub(UNIX_PATH, (all) => base(all.split("/").filter(Boolean).pop()));
+  for (const [re, rep] of PERSONAL) sub(re, rep);
+  for (const n of names) sub(new RegExp(`(?<![A-Za-z0-9])${escapeRe(n)}(?![A-Za-z0-9])`, "gi"), "[user]");
   return { text, count };
 }
 

@@ -75,26 +75,70 @@ export async function voteRace(limit = 5) {
 // lease of 20 minutes, renewed by beats; a second agent may join a task only after 5 minutes without a proof, a third
 // after 10. Released with an honest reason, a task is not offered again to the same person for an hour.
 
-export const LEASE_MIN = 20, LEASE_MAX_HOURS = 6, MAX_HELD = 5;
+export const LEASE_MIN = 20, LEASE_MAX_HOURS = 6, MAX_HELD = 5, CHOSEN_MAX = 6;
 export const RELEASE_REASONS = ["submitted", "proved_elsewhere", "missing_lemma", "hypothesis_too_weak", "statement_seems_false",
   "does_not_elaborate", "out_of_time", "planned", "other"] as const;
 
 type Cand = { id: number; slug: string; kind: "lemma" | "problem"; task: "prove" | "plan" };
 
 async function expireLeases() {
-  await q("UPDATE desk_leases SET state='expired', ended_at=now() WHERE state='active' AND expires_at < now()");
+  const gone = await q<{ id: number }>("UPDATE desk_leases SET state='expired', ended_at=now() WHERE state='active' AND expires_at < now() RETURNING id");
+  if (gone.length) await closeLeadsOf(gone.map((g) => g.id), "abandoned without a conclusion: the desk lease expired (no beat for 20 minutes)");
+}
+
+/** A lead lives under a desk lease: when the lease ends, its still-open leads are closed (as abandoned, with why). */
+export async function closeLeadsOf(leaseIds: number[], why: string) {
+  if (!leaseIds.length) return;
+  const leads = await q<{ id: number; problem_id: number; user_id: number; approach: string }>(
+    `UPDATE leads SET status='closed', outcome='abandoned', outcome_note=$2, closed_at=now()
+     WHERE desk_lease_id = ANY($1) AND status <> 'closed' RETURNING id, problem_id, user_id, approach`, [leaseIds, why]);
+  for (const l of leads) await q(
+    `INSERT INTO problem_events(problem_id, type, user_id, ref_type, ref_id, summary, unverified) VALUES ($1,'lead.close',$2,'lead',$3,$4,true)`,
+    [l.problem_id, l.user_id, l.id, `Lead closed with its desk task (${why}): ${l.approach}`]);
+}
+
+/**
+ * Work on a problem through the API / MCP needs an active desk lease on it, on one of its lemmas, or on the problem a
+ * lemma belongs to (one family). `token` picks a lease; otherwise the closest active one is used.
+ * Exempt: statement critiques, community review (votes, comments, suggestions), votes, reads, the website.
+ */
+export async function leaseFor(userId: number | string, problemId: number, token?: string | null) {
+  await expireLeases();
+  return one<{ id: number; token: string; model: string | null }>(
+    `SELECT d.id, d.token, d.model FROM desk_leases d JOIN problems lp ON lp.id=d.problem_id, problems t
+     WHERE t.id=$2 AND d.user_id=$1 AND d.state='active' AND coalesce(lp.parent_id, lp.id) = coalesce(t.parent_id, t.id)
+       AND ($3::text IS NULL OR d.token=$3)
+     ORDER BY (d.problem_id = t.id) DESC, d.id DESC LIMIT 1`, [userId, problemId, token || null]);
+}
+
+/** For API routes acting on a problem: the lease that covers it, or the error to answer (404 / 428). */
+export async function requireLease(user: User, slug: string, token?: string | null):
+  Promise<{ id: number; problemId: number } | { status: number; error: string }> {
+  const p = await one<{ id: number }>("SELECT id FROM problems WHERE slug=$1 OR ident=$1", [slug]);
+  if (!p) return { status: 404, error: `unknown problem ${slug}` };
+  const l = await leaseFor(user.id, p.id, token);
+  return l ? { id: l.id, problemId: p.id } : { status: 428, error: leaseMissing(slug, token) };
+}
+
+export function leaseMissing(slug: string, token?: string | null) {
+  return `${token ? "this desk lease is not active, not yours, or not on this problem" : "no active desk lease on this problem"}: ` +
+    `take one first with GET /api/v1/desk/next?problem=${encodeURIComponent(slug)}&model=<your model> (MCP: desk_next with problem), ` +
+    `renew it with desk_beat every 10 minutes while you work, release it when you stop. Exempt: critiques of the statement and community review.`;
 }
 
 /** May this user take this task now? (staggered joins, cool-down after a release) */
-async function available(problemId: number, userId: number | string, task: "prove" | "plan") {
+async function available(problemId: number, userId: number | string, task: "prove" | "plan", chosen = false) {
   const r = await one<{ held: number; oldest_min: number | null; mine: boolean; cooled: boolean }>(
     `SELECT count(*) FILTER (WHERE state='active' AND task=$3)::int AS held,
             extract(epoch FROM now() - min(created_at) FILTER (WHERE state='active' AND task=$3)) / 60 AS oldest_min,
             bool_or(state='active' AND user_id=$2 AND task=$3) AS mine,
             bool_or(user_id=$2 AND task=$3 AND state IN ('released','expired') AND coalesce(reason,'') <> 'submitted' AND ended_at > now() - interval '1 hour') AS cooled
      FROM desk_leases WHERE problem_id=$1`, [problemId, userId, task]);
-  if (!r || r.mine || r.cooled) return false;
-  if (task === "plan") return r.held === 0; // one planner at a time
+  if (!r || r.mine) return false;
+  if (task === "plan") return r.held === 0 && !r.cooled; // one planner at a time
+  // A problem chosen on purpose: no staggered joins and no cool-down, at most CHOSEN_MAX people on it at once.
+  if (chosen) return r.held < CHOSEN_MAX;
+  if (r.cooled) return false;
   if (r.held === 0) return true;
   if (r.held === 1) return (r.oldest_min ?? 0) >= 5;
   if (r.held === 2) return (r.oldest_min ?? 0) >= 10;
@@ -111,33 +155,47 @@ async function candidates(focus: Focus, hard: boolean): Promise<Cand[]> {
   return hard ? [main, ...ls, plan] : [...ls, plan, main];
 }
 
-export async function deskNext(user: User, opts: { hard?: boolean; another?: boolean; agent?: string; model?: string; problem?: string }) {
+export async function deskNext(user: User, opts: { hard?: boolean; another?: boolean; agent?: string; model?: string; problem?: string; plan?: boolean }) {
   const blocked = canSubmit(user);
   if (blocked) return { ok: false as const, status: 403, error: blocked };
   await expireLeases();
-  const held = await q<{ token: string }>("SELECT token FROM desk_leases WHERE user_id=$1 AND state='active' ORDER BY id", [user.id]);
-  if (held.length && !opts.another) return { ok: true as const, ...(await leaseView(held[0].token)), note: "you already hold this task; pass another=1 for one more (up to 5)" };
-  if (held.length >= MAX_HELD) return { ok: false as const, status: 429, error: `you hold ${MAX_HELD} tasks already: finish or release one first` };
+  const held = await q<{ token: string; problem_id: number }>("SELECT token, problem_id FROM desk_leases WHERE user_id=$1 AND state='active' ORDER BY id", [user.id]);
 
-  let focus = await currentFocus();
-  if (opts.problem) {
-    const p = await one<Focus>(`SELECT p.id, p.slug, p.title, p.status, p.statement_md, now() AS started_at, 'request' AS chosen_by, 0 AS votes
-      FROM problems p WHERE (p.slug=$1 OR p.ident=$1) AND ${solvable}`, [opts.problem]);
-    if (!p) return { ok: false as const, status: 404, error: "no open formal problem with this slug" };
-    focus = p;
-  }
-  if (!focus) return { ok: true as const, gap: null, retry_after_s: 600, message: "No featured problem yet: vote for one on the site, or pass problem=<slug>." };
-
-  for (const c of await candidates(focus, !!opts.hard)) {
-    if (!(await available(c.id, user.id, c.task))) continue;
+  const take = async (c: Cand, focusId: number) => {
     const token = crypto.randomBytes(18).toString("base64url");
     await q(`INSERT INTO desk_leases(token, user_id, problem_id, focus_id, task, agent, model, expires_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7, now() + interval '${LEASE_MIN} minutes')`,
-      [token, user.id, c.id, focus.id, c.task, opts.agent?.slice(0, 60) ?? null, opts.model?.slice(0, 80) ?? null]);
+      [token, user.id, c.id, focusId, c.task, opts.agent?.slice(0, 60) ?? null, opts.model?.slice(0, 80) ?? null]);
     const who = `${user.handle}${opts.model ? ` (${opts.model.slice(0, 40)})` : ""}`;
     await q(`INSERT INTO problem_events(problem_id, type, user_id, summary) VALUES ($1,'desk.take',$2,$3)`,
-      [focus.id, user.id, c.task === "plan" ? `${who} took the planning task: split the problem into lemmas` : `${who} is working on ${c.kind === "lemma" ? `lemma ${c.slug}` : "the problem itself"}`]);
+      [focusId, user.id, c.task === "plan" ? `${who} took the planning task: split the problem into lemmas` : `${who} is working on ${c.kind === "lemma" ? `lemma ${c.slug}` : "the problem itself"}`]);
     return { ok: true as const, ...(await leaseView(token)) };
+  };
+
+  // A problem (or lemma) chosen on purpose: a lease on exactly it. Solved problems too (another proof, a shorter one).
+  if (opts.problem) {
+    const p = await one<{ id: number; slug: string; status: string; parent_id: number | null; lemma_state: string | null }>(
+      `SELECT p.id, p.slug, p.status, p.parent_id, p.lemma_state FROM problems p
+       WHERE (p.slug=$1 OR p.ident=$1) AND p.formalization='formal' AND p.current_version_id IS NOT NULL AND p.status <> 'withdrawn'`, [opts.problem]);
+    if (!p) return { ok: false as const, status: 404, error: "no formal problem or lemma with this slug" };
+    if (p.status === "lemma" && p.lemma_state !== "open" && p.lemma_state !== "proved") return { ok: false as const, status: 409, error: "this lemma's statement is not accepted (yet)" };
+    const task = opts.plan && p.status !== "lemma" ? "plan" as const : "prove" as const;
+    const mine = held.length ? await one<{ token: string }>(
+      "SELECT token FROM desk_leases WHERE user_id=$1 AND state='active' AND problem_id=$2 AND task=$3", [user.id, p.id, task]) : null;
+    if (mine) return { ok: true as const, ...(await leaseView(mine.token)), note: "you already hold this task" };
+    if (held.length >= MAX_HELD) return { ok: false as const, status: 429, error: `you hold ${MAX_HELD} tasks already: finish or release one first` };
+    if (!(await available(p.id, user.id, task, true)))
+      return { ok: true as const, gap: null, retry_after_s: 300, message: task === "plan" ? "Someone is planning this problem right now. Ask again later." : `${CHOSEN_MAX} people already work on this right now. Ask again later.` };
+    return take({ id: p.id, slug: p.slug, kind: p.status === "lemma" ? "lemma" : "problem", task }, p.parent_id ?? p.id);
+  }
+
+  if (held.length && !opts.another) return { ok: true as const, ...(await leaseView(held[0].token)), note: "you already hold this task; pass another=1 for one more (up to 5)" };
+  if (held.length >= MAX_HELD) return { ok: false as const, status: 429, error: `you hold ${MAX_HELD} tasks already: finish or release one first` };
+  const focus = await currentFocus();
+  if (!focus) return { ok: true as const, gap: null, retry_after_s: 600, message: "No featured problem yet: vote for one on the site, or pass problem=<slug>." };
+  for (const c of await candidates(focus, !!opts.hard)) {
+    if (!(await available(c.id, user.id, c.task))) continue;
+    return take(c, focus.id);
   }
   return { ok: true as const, gap: null, retry_after_s: 180, message: "Every task is held right now. Ask again in a few minutes." };
 }
@@ -193,10 +251,12 @@ export async function deskBeat(user: User, token: string) {
   if (l.state !== "active") return { status: 410, body: { error: `lease ${l.state}: stop work on this task and ask the desk for another` } };
   if (l.task === "prove" && await settled(l.problem_id)) {
     await q("UPDATE desk_leases SET state='settled', ended_at=now() WHERE id=$1", [l.id]);
+    await closeLeadsOf([l.id], "the task was settled: someone proved it");
     return { status: 410, body: { error: "this task was settled (proved): stop and ask the desk for another" } };
   }
   if (Date.now() - new Date(l.created_at).getTime() > LEASE_MAX_HOURS * 3600_000) {
     await q("UPDATE desk_leases SET state='expired', ended_at=now() WHERE id=$1", [l.id]);
+    await closeLeadsOf([l.id], `the desk lease reached its ${LEASE_MAX_HOURS} hours`);
     return { status: 410, body: { error: `a lease lasts ${LEASE_MAX_HOURS} hours at most: release it and ask for another task` } };
   }
   const r = await one<{ expires_at: string }>(
@@ -212,9 +272,11 @@ export async function deskRelease(user: User, token: string, reason: string, not
     "SELECT id, user_id, state, problem_id, focus_id, task, model FROM desk_leases WHERE token=$1", [token]);
   if (!l || Number(l.user_id) !== Number(user.id)) return { status: 404, body: { error: "unknown lease" } };
   if (l.state !== "active" && l.state !== "expired") return { status: 200, body: { ok: true, note: `already ${l.state}` } };
-  const sub = submission ? await one<{ id: number }>("SELECT id FROM submissions WHERE public_id=$1 AND user_id=$2", [submission, user.id]) : null;
+  const sub = submission ? await one<{ id: number }>("SELECT id FROM submissions WHERE public_id=$1 AND user_id=$2", [submission, user.id])
+    : await one<{ id: number }>("SELECT id FROM submissions WHERE desk_lease_id=$1 ORDER BY id DESC LIMIT 1", [l.id]);
   await q("UPDATE desk_leases SET state='released', reason=$2, note=$3, submission_id=$4, ended_at=now() WHERE id=$1",
     [l.id, reason, note?.slice(0, 2000) ?? null, sub?.id ?? null]);
+  await closeLeadsOf([l.id], `desk task released: ${reason.replace(/_/g, " ")}${note ? ` (${note.replace(/\s+/g, " ").slice(0, 200)})` : ""}`);
   const p = await one<{ slug: string }>("SELECT slug FROM problems WHERE id=$1", [l.problem_id]);
   await q(`INSERT INTO problem_events(problem_id, type, user_id, summary, unverified) VALUES ($1,'desk.release',$2,$3,$4)`,
     [l.focus_id ?? l.problem_id, user.id,

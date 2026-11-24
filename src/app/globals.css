@@ -600,3 +600,18 @@ details.elsewhere .ek { font-variant: small-caps; letter-spacing: .02em; color: 
 
 .live-agents { margin: 2px 0 4px; }
 .live-agents summary { cursor: pointer; font-size: 13.5px; }
+
+/* Folded Lean source on a submission page: the heading is the toggle, with size and a copy button beside it. */
+details.leansrc > summary { cursor: pointer; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; list-style: none; }
+details.leansrc > summary::-webkit-details-marker { display: none; }
+details.leansrc > summary::before { content: "▸"; color: #666; }
+details.leansrc[open] > summary::before { content: "▾"; }
+details.leansrc > summary h2 { display: inline; margin: 0; }
+details.leansrc > summary { margin: 1.6em 0 .5em; }
+details.leansrc[open] .when-closed { display: none; }
+.elapsed { font-variant-numeric: tabular-nums; color: var(--band); }
+h2 .private-tag { font-weight: normal; font-style: italic; font-size: 14px; color: #8a5a00; margin-left: 10px; }
+h2.tr-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+h2 .private-tag { margin-left: 0; }
+h2 .public-tag { font-weight: normal; font-size: 13px; color: var(--ok); }
+.inline-form { display: inline; margin: 0; }

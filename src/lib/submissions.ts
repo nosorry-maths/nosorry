@@ -7,6 +7,8 @@ import { redact } from "./transcript";
 import { canSubmit, type User } from "./auth";
 import { preflight } from "../../shared/preflight.mjs";
 import { normalizeRepo } from "./research";
+import { leaseFor, leaseMissing } from "./desk";
+import { modelError } from "./api";
 
 export type SubmissionInput = {
   problem?: string;              // slug or ident
@@ -24,6 +26,7 @@ export type SubmissionInput = {
   agent?: { name?: string; model?: string };
   transcript?: { format: "claude-code-jsonl" | "codex-jsonl" | "markdown" | "text"; content: string };
   idempotency_key?: string;
+  lease?: string;                // desk lease it is made under (default: the user's active lease on this problem)
   /** A proof made of a whole Lake project: public GitHub repository, exact commit, root module holding the theorem. */
   repository?: { url: string; commit: string; module: string };
 };
@@ -35,7 +38,8 @@ export type SubmissionResult =
 const KINDS = new Set(["proof", "disproof", "partial", "finding", "formalization"]);
 const clip = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n) : undefined);
 
-export async function createSubmission(user: User, input: SubmissionInput, ip: string | null): Promise<SubmissionResult> {
+/** `api`: made through the API / MCP: needs the model, and (except formalizations) a desk lease on the problem. */
+export async function createSubmission(user: User, input: SubmissionInput, ip: string | null, opts: { api?: boolean } = {}): Promise<SubmissionResult> {
   const blocked = canSubmit(user);
   if (blocked) return { ok: false, error: blocked };
   if (!input || !KINDS.has(input.kind)) return { ok: false, error: "kind must be proof | disproof | partial | finding | formalization" };
@@ -91,6 +95,17 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
     problem = { id: p.id, current_version_id: input.kind === "formalization" ? null as unknown as number : p.current_version_id!, challenge_source: p.challenge_source ?? "", status: p.status };
   }
 
+  let leaseId: number | null = null;
+  if (opts.api) {
+    const bad = modelError(input.agent?.model);
+    if (bad) return { ok: false, error: bad };
+    if (problem && input.kind !== "formalization") {
+      const lease = await leaseFor(user.id, problem.id, input.lease);
+      if (!lease) return { ok: false, error: leaseMissing(String(input.problem), input.lease) };
+      leaseId = lease.id;
+    }
+  }
+
   const needsLean = input.kind !== "finding";
   let warnings: string[] = [];
   if (needsLean && !source) {
@@ -116,15 +131,15 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
     const { rows: [s] } = await c.query(
       `INSERT INTO submissions(public_id, user_id, problem_id, problem_version_id, kind, title, body_md, explanation_md, lean_source,
          source_hash, agent_name, agent_model, status, idempotency_key, client_ip, derived_from, verdict, request_hash, repo_url, based_on, cites, share_lemmas,
-         source_repo, source_commit, source_module)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+         source_repo, source_commit, source_module, desk_lease_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
       [publicId, user.id, problem?.id ?? null, problem?.current_version_id ?? null, input.kind, clip(input.title, 300), input.body_md ?? null,
        input.explanation_md ?? null, input.lean_source ?? null, input.lean_source ? sha256(input.lean_source) : null,
        clip(input.agent?.name, 60), clip(input.agent?.model, 80), needsLean ? "queued" : "needs_review",
        clip(input.idempotency_key, 100) ?? null, ip, clip(input.derived_from, 2000) ?? null,
        input.kind === "formalization" ? JSON.stringify({ decl_name: input.target_decl }) : null, requestHash, repo, basedOn, JSON.stringify(cites),
-       input.share_lemmas === true && input.kind === "partial", source?.url ?? null, source?.commit ?? null, source?.module ?? null]);
+       input.share_lemmas === true && input.kind === "partial", source?.url ?? null, source?.commit ?? null, source?.module ?? null, leaseId]);
     if (!s) return null; // concurrent request with the same idempotency key won the race
     if (input.transcript?.content) {
       const r = redact(input.transcript.content);

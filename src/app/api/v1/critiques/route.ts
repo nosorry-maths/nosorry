@@ -1,12 +1,12 @@
 import { one, q } from "@/lib/db";
 import { emit } from "@/lib/feed";
-import { err, json, withUser } from "@/lib/api";
+import { err, json, withUser, idem } from "@/lib/api";
 import { rateLimit } from "@/lib/ratelimit";
 import { canSubmit } from "@/lib/auth";
 
 const KINDS = ["misformalization", "too_weak", "too_strong", "ambiguity", "already_solved", "duplicate", "other"];
 
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const u = await withUser(req, "submit");
   if (u instanceof Response) return u;
   const blocked = canSubmit(u);
@@ -25,3 +25,4 @@ export async function POST(req: Request) {
     summary: `${u.handle} says the statement may be wrong (${b.kind}): ${String(b.body_md).replace(/^\s*#+\s*/, "").replace(/\s+/g, " ")}` });
   return json({ ok: true, id: c.id, url: `/p/${p.slug}?tab=statement#critique-${c.id}` }, 201);
 }
+export const POST = idem(handle);

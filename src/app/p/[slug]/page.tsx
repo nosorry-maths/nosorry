@@ -335,7 +335,7 @@ export default async function Problem({ params, searchParams }: { params: Promis
           <b>To disprove it:</b> add <code>theorem {notName.split(".").pop()} : ¬ (…)</code> in the same namespace, stating exactly the negation, and submit it as a disproof.
           {p.needs_answer && <> This statement contains <code>answer(sorry)</code>: you supply the answer, and a moderator checks it is not vacuous before points are awarded.</>}
         </p>
-        <CodeBlock code={`nosorry fetch ${p.slug}\nnosorry submit ${p.slug} nosorry/${p.slug}/Solution.lean --wait`} /></>}
+        <CodeBlock code={`nosorry desk ${p.slug}      # a desk lease: required before submitting (renew: nosorry beat)\nnosorry fetch ${p.slug}\nnosorry submit ${p.slug} nosorry/${p.slug}/Solution.lean --wait`} /></>}
 
         {variants.length > 0 && (<>
           <h2>Formal variants</h2>

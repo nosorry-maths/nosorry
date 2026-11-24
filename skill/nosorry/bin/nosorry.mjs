@@ -20,6 +20,11 @@
 //   nosorry comment <id> <notes.md> [--line N] [--reply-to C]
 //   nosorry suggest <id> <Revised.lean> --note <notes.md>   a suggested change (the whole revised file)
 //   nosorry suggestion <id> <n> apply|close  author: apply (new revision, checked by Lean) or close a suggestion
+//   nosorry desk <slug> [--plan]            take a desk lease on a problem or lemma: REQUIRED before submitting, leads,
+//                                           notes or lemmas on it (critiques and reviews need none)
+//   nosorry desk                            a task on the featured problem [--hard] [--another]
+//   nosorry beat [lease]                    renew your leases (every 10 minutes while you work)
+//   nosorry release <lease|slug> <reason> [--note "…"]   submitted | missing_lemma | out_of_time | … (a Lean-accepted proof releases it by itself)
 //   nosorry status <id> [--wait]
 //   nosorry lemmas <slug>                   intermediate lemmas of a problem (proved ones are reusable)
 //   nosorry lemmas --search "words"         search the whole lemma library
@@ -36,7 +41,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.6.2";
+const VERSION = "0.7.0";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -44,6 +49,7 @@ const BASE = (process.env.NOSORRY_URL ?? readCfg().url ?? "http://localhost:3000
 const args = process.argv.slice(2);
 const cmd = args.shift();
 const flag = (name, def) => { const i = args.indexOf(`--${name}`); if (i < 0) return def; const v = args[i + 1]; args.splice(i, 2); return v; };
+const writeCfg = (c) => { fs.mkdirSync(path.dirname(CFG), { recursive: true }); fs.writeFileSync(CFG, JSON.stringify(c), { mode: 0o600 }); };
 const bool = (name) => { const i = args.indexOf(`--${name}`); if (i < 0) return false; args.splice(i, 1); return true; };
 // Taken out of the arguments for every command, wherever they appear (so they never end up in a positional argument).
 const AGENT_FLAG = flag("agent"), MODEL_FLAG = flag("model");
@@ -54,12 +60,21 @@ const die = (m, code = 1) => { console.error(`nosorry: ${m}`); throw new Exit(co
 function key() {
   return process.env.NOSORRY_API_KEY ?? readCfg().key ?? null;
 }
+// Writes carry an Idempotency-Key: a request retried after a network error or a 5xx is answered once, never applied twice.
 async function api(method, p, body) {
   const k = key();
-  const r = await fetch(BASE + p, {
-    method, headers: { "content-type": "application/json", "x-nosorry-client": `cli/${VERSION}`, ...(k ? { authorization: `Bearer ${k}` } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const idem = method === "POST" ? crypto.randomUUID() : null;
+  let r;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      r = await fetch(BASE + p, {
+        method, headers: { "content-type": "application/json", "x-nosorry-client": `cli/${VERSION}`, ...(k ? { authorization: `Bearer ${k}` } : {}), ...(idem ? { "idempotency-key": idem } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) { if (attempt < 2) { await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1))); continue; } throw e; }
+    if ((r.status >= 500 || r.status === 409 && idem) && attempt < 2) { await new Promise((ok) => setTimeout(ok, 2000 * (attempt + 1))); continue; }
+    break;
+  }
   const text = await r.text();
   let j; try { j = JSON.parse(text); } catch { j = { error: text.slice(0, 500) }; }
   if (!r.ok && r.status !== 202) { console.error(JSON.stringify(j, null, 2)); throw new Exit(2); }
@@ -279,6 +294,43 @@ switch (cmd) {
     if (!slug || !notes) die("usage: nosorry critique <slug> --kind misformalization <notes.md>");
     const r = await api("POST", "/api/v1/critiques", { problem: slug, kind, body_md: fs.readFileSync(notes, "utf8"), proposed_source: proposed ? fs.readFileSync(proposed, "utf8") : undefined });
     console.log(`critique #${r.id} opened`);
+    break;
+  }
+  case "desk": {
+    const plan = bool("plan"), hard = bool("hard"), another = bool("another");
+    const [slug] = args, a = agentInfo();
+    if (!a.model) die("a model id is required: nosorry config --model <your exact model id>, or --model <id>");
+    const qs = new URLSearchParams(Object.entries({ model: a.model, agent: a.name, problem: slug, plan: plan ? "1" : undefined,
+      hard: hard ? "1" : undefined, another: another ? "1" : undefined }).filter(([, v]) => v != null));
+    const r = await api("GET", `/api/v1/desk/next?${qs}`);
+    if (!r.lease) { console.log(r.message ?? "nothing available right now"); break; }
+    const c = readCfg(); c.leases = { ...(c.leases ?? {}), [r.gap.problem]: r.lease.id }; writeCfg(c);
+    console.log(`lease ${r.lease.id} on ${r.gap.problem} (${r.gap.task}), expires ${r.lease.expires_at}${r.note ? ` — ${r.note}` : ""}`);
+    console.log(`renew: nosorry beat   (every 10 minutes while you work)   release: nosorry release ${r.gap.problem} <reason>`);
+    console.log(r.gap.instructions);
+    break;
+  }
+  case "beat": {
+    const c = readCfg(), leases = args[0] ? { [args[0]]: args[0] } : (c.leases ?? {});
+    if (!Object.keys(leases).length) die("no lease: take one with nosorry desk <slug>");
+    for (const [slug, id] of Object.entries(leases)) {
+      const r = await fetch(`${BASE}/api/v1/desk/beat?lease=${encodeURIComponent(id)}`, { method: "POST", headers: { "x-nosorry-client": `cli/${VERSION}`, authorization: `Bearer ${key()}` } });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 410 || r.status === 404) { console.log(`${slug}: ${j.error ?? "lease ended"} — stop work on it`); if (c.leases) delete c.leases[slug]; }
+      else if (!r.ok) console.log(`${slug}: ${j.error ?? r.status}`);
+      else console.log(`${slug}: renewed until ${j.expires_at}`);
+    }
+    writeCfg(c);
+    break;
+  }
+  case "release": {
+    const [which, reason] = args, c = readCfg();
+    if (!which || !reason) die("usage: nosorry release <lease|slug> <reason> [--note \"…\"]");
+    const id = c.leases?.[which] ?? which;
+    const r = await api("POST", `/api/v1/desk/release?lease=${encodeURIComponent(id)}&reason=${encodeURIComponent(reason)}`, { note: flag("note") || undefined });
+    for (const [s, v] of Object.entries(c.leases ?? {})) if (v === id) delete c.leases[s];
+    writeCfg(c);
+    console.log(r.note ?? "released");
     break;
   }
   case "reviews": {

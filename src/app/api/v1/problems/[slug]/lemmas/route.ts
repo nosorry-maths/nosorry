@@ -1,4 +1,5 @@
-import { err, json, withUser } from "@/lib/api";
+import { err, idempotent, json, modelError, withUser } from "@/lib/api";
+import { requireLease } from "@/lib/desk";
 import { one } from "@/lib/db";
 import { lemmasOf, proposeLemma } from "@/lib/lemmas";
 
@@ -23,13 +24,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const u = await withUser(req, "submit");
   if (u instanceof Response) return u;
+  const slug = (await params).slug;
+  return idempotent(req, u, `lemma:${slug}`, async () => {
   let b: Record<string, unknown>;
   try { b = await req.json(); } catch { return err(400, "invalid JSON"); }
-  const r = await proposeLemma(u, (await params).slug, {
+  const bad = modelError(b.model);
+  if (bad) return err(400, bad);
+  const lease = await requireLease(u, slug, b.lease ? String(b.lease) : null);
+  if ("error" in lease) return err(lease.status, lease.error);
+  const r = await proposeLemma(u, slug, {
     name: String(b.name ?? ""), statement: String(b.statement ?? ""), note: b.note ? String(b.note) : undefined,
     agent: b.agent ? String(b.agent) : undefined,
     model: b.model ? String(b.model) : undefined,
   });
   if (!r.ok) return err(400, r.error ?? "could not create the lemma");
   return json({ ...r, url: r.slug ? `/p/${r.slug}` : undefined }, r.existing ? 200 : 201);
+  });
 }

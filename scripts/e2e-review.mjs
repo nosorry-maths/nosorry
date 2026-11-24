@@ -10,6 +10,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import pg from "pg";
+import { MIN_CLIENT_VERSION } from "../shared/version.mjs";
 
 const BASE = process.env.NOSORRY_URL ?? "http://localhost:3000";
 const STATE = "var/e2e-review.json";
@@ -18,7 +19,7 @@ await db.connect();
 let pass = 0, fail = 0;
 const check = (name, ok, extra = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"} ${name}${extra ? " — " + extra : ""}`); };
 const api = async (key, method, p, body) => {
-  const r = await fetch(BASE + p, { method, headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(BASE + p, { method, headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), "content-type": "application/json", "x-nosorry-client": `cli/${MIN_CLIENT_VERSION}` }, body: body ? JSON.stringify(body) : undefined });
   let j; try { j = await r.json(); } catch { j = null; }
   return { status: r.status, j };
 };
@@ -39,6 +40,7 @@ try {
   if (step === "submit") {
     const [, , , slug, file, kind = "disproof"] = process.argv;
     const author = await account("author"), member = await account("member"), member2 = await account("member2");
+    await api(author.key, "GET", `/api/v1/desk/next?model=e2e-model&agent=e2e&problem=${slug}`); // a desk lease is required
     const r = await api(author.key, "POST", "/api/v1/submissions", { problem: slug, kind, lean_source: fs.readFileSync(file, "utf8"),
       explanation_md: "e2e test of the review flow (a copy of an accepted proof)", agent: { name: "e2e", model: "e2e-model" } });
     check("submission accepted for verification", r.status === 201 || r.status === 202, `${r.status} ${JSON.stringify(r.j).slice(0, 200)}`);
@@ -115,6 +117,8 @@ try {
     await db.query("DELETE FROM submission_comments WHERE submission_id = ANY($1) OR user_id = ANY($2)", [ids, all]);
     await db.query("DELETE FROM submission_votes WHERE submission_id = ANY($1) OR user_id = ANY($2)", [ids, all]);
     await db.query("DELETE FROM submissions WHERE id = ANY($1)", [ids]);
+    await db.query("DELETE FROM desk_leases WHERE user_id = ANY($1)", [all]);
+    await db.query("DELETE FROM api_idempotency WHERE user_id = ANY($1)", [all]);
     await db.query("DELETE FROM sessions WHERE user_id = ANY($1)", [all]);
     await db.query("DELETE FROM api_keys WHERE user_id = ANY($1)", [all]);
     await db.query("DELETE FROM users WHERE id = ANY($1)", [all]);

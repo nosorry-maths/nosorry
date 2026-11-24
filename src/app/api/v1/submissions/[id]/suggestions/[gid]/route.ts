@@ -1,8 +1,8 @@
-import { err, json, withUser, ipOf } from "@/lib/api";
+import { err, json, withUser, ipOf, idem } from "@/lib/api";
 import { decideSuggestion } from "@/lib/reviews";
 
 /** { action: "apply" | "close" } — the submission's author (or a moderator) applies or closes a suggested change. */
-export async function POST(req: Request, { params }: { params: Promise<{ id: string; gid: string }> }) {
+async function handle(req: Request, { params }: { params: Promise<{ id: string; gid: string }> }) {
   const u = await withUser(req, "submit");
   if (u instanceof Response) return u;
   let b: { action?: string };
@@ -12,3 +12,4 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const r = await decideSuggestion(u, id, Number(gid), b.action, ipOf(req));
   return r.ok ? json(r) : err(r.status, r.error);
 }
+export const POST = idem(handle);

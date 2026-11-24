@@ -74,11 +74,12 @@ async function reapStale() {
 
 // ─────────── pipeline ───────────
 class Stages {
-  constructor() { this.list = []; }
+  constructor(onStart) { this.list = []; this.onStart = onStart; }
   async step(name, fn) {
     const t0 = Date.now();
-    const s = { name, status: "running" };
+    const s = { name, status: "running", started: new Date(t0).toISOString() };
     this.list.push(s);
+    this.onStart?.();
     try {
       const r = await fn();
       Object.assign(s, { status: r?.status ?? "pass", detail: r?.detail ?? null, ms: Date.now() - t0 });
@@ -140,7 +141,8 @@ async function verifyOne(job, sub, isRepo) {
     "INSERT INTO verification_runs(submission_id, job_id, worker_id, toolchain, sandbox) VALUES ($1,$2,$3,$4,$5) RETURNING id",
     [sub.id, job.id, WORKER_ID, toolchainFor(sub.workspace), REMOTE && sub.workspace !== "physlib" ? githubBackendName() : sandboxName(sub.workspace)],
   );
-  const st = new Stages();
+  // The page shows a live timer on the running stage: publish each stage as soon as it starts.
+  const st = new Stages(() => { flush().catch(() => {}); });
   const flush = () => pool.query("UPDATE verification_runs SET stages=$2 WHERE id=$1", [vr.id, JSON.stringify(st.list)]);
   const hb = setInterval(() => {
     pool.query("UPDATE jobs SET heartbeat_at=now() WHERE id=$1", [job.id]).catch((e) => log(`job ${job.id} heartbeat failed:`, e.message));
@@ -399,6 +401,24 @@ async function finish(sub, runId, stages, result, verdict, job) {
       if (review) await c.query(`INSERT INTO problem_events(problem_id, type, user_id, ref_type, ref_id, summary)
           SELECT $1,'review.hold',$2,'submission',$3, 'Lean accepts a ' || $4 || ' by ' || handle || ': in community review before it counts'
           FROM users WHERE id=$2`, [sub.pid, sub.user_id, sub.id, sub.kind]);
+      // A complete proof or disproof made under a desk lease ends the task: the lease is released ("submitted") and the
+      // leads opened under it are closed. A rejected attempt keeps the lease, so the agent can fix it and try again.
+      if (sub.desk_lease_id && job.kind === "verify" && (sub.kind === "proof" || sub.kind === "disproof") && (status === "verified" || status === "needs_review")) {
+        const { rows: rel } = await c.query(
+          `UPDATE desk_leases SET state='released', reason='submitted', submission_id=$2, ended_at=now()
+           WHERE id=$1 AND state='active' RETURNING id, problem_id, focus_id`, [sub.desk_lease_id, sub.id]);
+        if (rel.length) {
+          const { rows: leads } = await c.query(
+            `UPDATE leads SET status='closed', outcome='abandoned', outcome_note=$2, closed_at=now()
+             WHERE desk_lease_id=$1 AND status <> 'closed' RETURNING id, problem_id, approach`,
+            [sub.desk_lease_id, `desk task done: ${sub.public_id} accepted by Lean`]);
+          for (const l of leads) await c.query(
+            `INSERT INTO problem_events(problem_id, type, user_id, ref_type, ref_id, summary, unverified) VALUES ($1,'lead.close',$2,'lead',$3,$4,true)`,
+            [l.problem_id, sub.user_id, l.id, `Lead closed with its desk task (${sub.public_id} accepted by Lean): ${l.approach}`]);
+          await c.query(`INSERT INTO problem_events(problem_id, type, user_id, summary) VALUES ($1,'desk.release',$2,$3)`,
+            [rel[0].focus_id ?? rel[0].problem_id, sub.user_id, `Desk task done: ${sub.public_id} accepted by Lean (lease released automatically)`]);
+        }
+      }
       // Lemmas: their statement check is accepted automatically (no human review: a lemma only matters when used).
       if (sub.kind === "formalization" && sub.problem_status === "lemma") {
         if (status === "needs_review") {

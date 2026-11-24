@@ -1,8 +1,9 @@
-import { err, json, withUser } from "@/lib/api";
+import { err, json, modelError, withUser } from "@/lib/api";
 import { deskNext } from "@/lib/desk";
 
 /**
- * Ask the desk for a task: GET /api/v1/desk/next?hard=1&another=1&model=<id>&agent=<name>&problem=<slug>
+ * Ask the desk for a task: GET /api/v1/desk/next?model=<id>&agent=<name>[&problem=<slug>[&plan=1]][&hard=1][&another=1]
+ * problem=<slug>: a lease on exactly that problem or lemma (needed before any work on it through the API / MCP).
  * Returns { lease, gap } (gap null when everything is held: ask again later).
  */
 async function handle(req: Request) {
@@ -13,7 +14,9 @@ async function handle(req: Request) {
   if (req.method === "POST") { try { b = await req.json(); } catch { b = {}; } }
   const get = (k: string) => (b[k] ?? sp.get(k) ?? undefined) as string | undefined;
   const flag = (k: string) => ["1", "true", "yes"].includes(String(get(k) ?? "").toLowerCase()) || b[k] === true;
-  const r = await deskNext(u, { hard: flag("hard"), another: flag("another"), model: get("model"), agent: get("agent"), problem: get("problem") });
+  const bad = modelError(get("model"));
+  if (bad) return err(400, bad);
+  const r = await deskNext(u, { hard: flag("hard"), another: flag("another"), model: get("model"), agent: get("agent"), problem: get("problem"), plan: flag("plan") });
   if (!r.ok) return err(r.status, r.error);
   const { ok, ...rest } = r; void ok;
   return json(rest);

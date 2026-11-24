@@ -3,6 +3,7 @@
 // of the database: it creates accounts, lemmas and submissions.
 //   DATABASE_URL=postgres://…/nosorry_preview node scripts/e2e-lemmas.mjs --url http://localhost:3101
 import pg from "pg";
+import { MIN_CLIENT_VERSION } from "../shared/version.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -28,7 +29,7 @@ async function user(handle) {
   return { id: u.id, handle, key };
 }
 async function call(u, method, p, body) {
-  const r = await fetch(BASE + p, { method, headers: { "content-type": "application/json", ...(u ? { authorization: `Bearer ${u.key}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(BASE + p, { method, headers: { "content-type": "application/json", "x-nosorry-client": `cli/${MIN_CLIENT_VERSION}`, ...(u ? { authorization: `Bearer ${u.key}` } : {}) }, body: body ? JSON.stringify(body) : undefined });
   const t = await r.text(); let j; try { j = JSON.parse(t); } catch { j = { raw: t.slice(0, 300) }; }
   return { status: r.status, j };
 }
