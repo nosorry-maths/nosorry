@@ -1,0 +1,9 @@
+[Unit]
+Description=nosorry: pull and deploy the latest images
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/nosorry/deploy.sh
+TimeoutStartSec=15min

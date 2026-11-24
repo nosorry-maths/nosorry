@@ -1,0 +1,11 @@
+# Queue consumer. It never runs Lean itself: it starts a nosorry-verifier container per job via the Docker socket.
+# (For stronger isolation in production, run sandboxes with gVisor: --runtime=runsc, or on a separate host.)
+FROM node:22-alpine
+RUN apk add --no-cache docker-cli
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
+COPY worker ./worker
+COPY shared ./shared
+ENV NODE_ENV=production JOBS_DIR=/jobs
+CMD ["node", "worker/worker.mjs"]

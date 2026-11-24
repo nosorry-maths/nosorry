@@ -1,0 +1,73 @@
+# nosorry — container stack.
+#   docker compose up -d db                       Postgres only (web + worker on the host with npm, for development)
+#   docker compose --profile full up -d --build   everything in containers: http://localhost:3100
+#   docker compose --profile full up -d --scale worker=4
+#
+# Verifier images (the throwaway sandboxes the worker starts, one per pipeline stage):
+#   docker build -f Dockerfile.verifier-core -t nosorry-verifier:core .   Lean only, ~1 GB  (default here; demo problems)
+#   docker build -f Dockerfile.verifier      -t nosorry-verifier:latest . Lean + Mathlib + formal-conjectures (~6 GB); then set VERIFIER_IMAGE
+name: nosorry
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped   # comes back by itself after a Docker Desktop crash/restart
+    environment:
+      POSTGRES_USER: nosorry
+      POSTGRES_PASSWORD: nosorry_dev
+      POSTGRES_DB: nosorry
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nosorry"]
+      interval: 5s
+
+  web:
+    profiles: [full]
+    build: { context: ., dockerfile: Dockerfile.web }
+    environment:
+      DATABASE_URL: postgres://nosorry:nosorry_dev@db:5432/nosorry
+      SITE_URL: ${SITE_URL:-http://localhost:3100}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+      OPERATOR_NAME: ${OPERATOR_NAME:-}
+      OPERATOR_URL: ${OPERATOR_URL:-}
+      OPERATOR_CONTACT: ${OPERATOR_CONTACT:-}
+      SECURITY_CONTACT: ${SECURITY_CONTACT:-}
+      OPERATOR_DESCRIPTION: ${OPERATOR_DESCRIPTION:-}
+    ports: ["127.0.0.1:3100:3000"]
+    depends_on: { db: { condition: service_healthy } }
+    restart: unless-stopped
+
+  worker:
+    profiles: [full]
+    build: { context: ., dockerfile: Dockerfile.worker }
+    environment:
+      DATABASE_URL: postgres://nosorry:nosorry_dev@db:5432/nosorry
+      VERIFIER_SANDBOX: docker
+      # One image per Lean workspace. formal-conjectures (every imported problem) needs Mathlib + formal-conjectures:
+      #   docker build -f Dockerfile.verifier -t nosorry-verifier:fc .     (~30 min, several GB)
+      VERIFIER_IMAGE: ${VERIFIER_IMAGE:-nosorry-verifier:fc}
+      VERIFIER_IMAGES: ${VERIFIER_IMAGES:-{"formal-conjectures":"nosorry-verifier:fc","core":"nosorry-verifier:core"}}
+      # VERIFIER_RUNTIME: runsc           # gVisor: strongly recommended in production
+      JOBS_DIR: /jobs
+      JOBS_VOLUME: nosorry-jobs           # sandboxes get only their stage sub-directory of this volume
+      CACHE_DIR: /jobs/cache
+      MAX_RUNNING_PER_USER: "2"
+      # Lean on GitHub Actions (nosorry-maths/nosorry-verify) instead of local sandboxes; docker = local.
+      VERIFIER_BACKEND: ${VERIFIER_BACKEND:-github}
+      GITHUB_VERIFY_REPO: nosorry-maths/nosorry-verify
+      GITHUB_VERIFY_TOKEN_FILE: /run/secrets-nosorry/github-token.txt
+    volumes:
+      # The worker starts sandboxes through the Docker daemon. In production put a socket proxy in front that only
+      # allows create/start/wait/remove of the verifier image, or run workers on dedicated sandbox hosts.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jobs:/jobs
+      # The token never enters the image or the environment: a read-only file.
+      - ./var/github-worker-token.txt:/run/secrets-nosorry/github-token.txt:ro
+    depends_on: { db: { condition: service_healthy } }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  jobs:
+    name: nosorry-jobs

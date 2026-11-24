@@ -1,0 +1,17 @@
+# Lightweight verifier image: pinned Lean toolchain only (no Mathlib). Enough for core-Lean problems such as the
+# demo problem, and for testing the sandbox end to end without the ~5 GB Mathlib download.
+#   docker build -f Dockerfile.verifier-core -t nosorry-verifier:core .
+FROM ubuntu:24.04
+ARG TOOLCHAIN=leanprover/lean4:v4.33.1
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV ELAN_HOME=/opt/elan
+RUN curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none --no-modify-path \
+ && /opt/elan/bin/elan toolchain install ${TOOLCHAIN} \
+ && ln -s "$(ls -d /opt/elan/toolchains/*/ | head -1)" /opt/lean \
+ && /opt/lean/bin/lean --version \
+ && echo 'export LEAN_PATH_BASE=""' > /etc/nosorry-env && chmod -R a+rX /opt/elan
+# The sandbox calls the toolchain binaries directly (no elan proxy, nothing to write at run time).
+ENV PATH=/opt/lean/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+COPY worker/ns-run.sh /usr/local/bin/ns-run
+RUN chmod 755 /usr/local/bin/ns-run
+USER 65534:65534

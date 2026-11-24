@@ -1,0 +1,37 @@
+# Build the web and worker images on every push to main and publish them on GitHub's registry (ghcr.io).
+# The server never builds (4 GB of RAM shared with other sites): it pulls these images (deploy/deploy.sh).
+name: images
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to ghcr.io (this run's token, write access to this repository's packages only)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push nosorry-web and nosorry-worker
+        run: |
+          set -eu
+          short=${GITHUB_SHA::12}
+          for img in web worker; do
+            tag=ghcr.io/nosorry-maths/nosorry-$img
+            docker build -f Dockerfile.$img \
+              --label org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY \
+              --label org.opencontainers.image.revision=$GITHUB_SHA \
+              -t $tag:latest -t $tag:$short .
+            docker push -q $tag:latest
+            docker push -q $tag:$short
+          done

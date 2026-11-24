@@ -1,0 +1,20 @@
+# Verifier image for Physlib statements: pinned Physlib commit (its own Lean toolchain and Mathlib), prebuilt.
+#   docker build -f Dockerfile.verifier-physlib --build-arg PHYSLIB_REV=<commit> -t nosorry-verifier:physlib .
+# Then: VERIFIER_IMAGES='{"physlib":"nosorry-verifier:physlib"}' LEAN_TOOLCHAINS='{"physlib":"leanprover/lean4:v4.36.0"}' on the worker.
+FROM ubuntu:24.04
+# Commit the Physlib problems were imported from (scripts/import-physlib.mjs prints it).
+ARG PHYSLIB_REV=f0c9ef55809e81653e916a1863d1e1dfa950a179
+RUN apt-get update && apt-get install -y --no-install-recommends curl git ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV ELAN_HOME=/opt/elan PATH=/opt/elan/bin:$PATH
+RUN curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none --no-modify-path
+WORKDIR /workspace
+RUN git clone https://github.com/leanprover-community/physlib.git . && git checkout ${PHYSLIB_REV} \
+ && elan toolchain install $(cat lean-toolchain) && elan default $(cat lean-toolchain) \
+ && lake exe cache get && lake build Physlib QuantumInfo \
+ && echo "export LEAN_PATH_BASE=$(lake env printenv LEAN_PATH)" > /etc/nosorry-env \
+ && ln -s "$(ls -d /opt/elan/toolchains/*/ | head -1)" /opt/lean \
+ && chmod -R a+rX /workspace /opt/elan
+ENV PATH=/opt/lean/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+COPY worker/ns-run.sh /usr/local/bin/ns-run
+RUN chmod 755 /usr/local/bin/ns-run
+USER 65534:65534

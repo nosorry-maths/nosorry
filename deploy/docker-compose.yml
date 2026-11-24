@@ -1,0 +1,87 @@
+# nosorry on a shared server. Nothing here publishes a port: the site is reached only through the Tailscale Funnel
+# sidecar (or an SSH tunnel), so this server's IP is never associated with nosorry. Every container has a memory cap,
+# none gets the Docker socket, and the database sits on an internal network without internet access.
+#   cd /opt/nosorry && docker compose up -d        (deploy.sh does it for updates)
+name: nosorry
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nosorry
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: nosorry
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40", "-c", "work_mem=8MB"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nosorry"]
+      interval: 10s
+    mem_limit: 512m
+    networks: [internal]
+
+  web:
+    image: ghcr.io/nosorry-maths/nosorry-web:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://nosorry:${DB_PASSWORD}@db:5432/nosorry
+      NODE_ENV: production
+      TRUST_PROXY_HOPS: "1"
+      DB_POOL_MAX: "8"
+    depends_on: { db: { condition: service_healthy } }
+    mem_limit: 768m
+    networks: [internal, edge]
+
+  worker:
+    image: ghcr.io/nosorry-maths/nosorry-worker:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://nosorry:${DB_PASSWORD}@db:5432/nosorry
+      NODE_ENV: production
+      # Lean runs on GitHub Actions (nosorry-maths/nosorry-verify), never on this server.
+      VERIFIER_BACKEND: github
+      VERIFIER_SANDBOX: docker          # no Docker socket here: local Lean (Physlib only) cannot run, by design
+      GITHUB_VERIFY_REPO: nosorry-maths/nosorry-verify
+      GITHUB_VERIFY_TOKEN_FILE: /run/secrets-nosorry/github-token.txt
+      WORKER_CONCURRENCY: "4"
+      JOBS_DIR: /jobs
+      CACHE_DIR: /jobs/cache
+      MAX_RUNNING_PER_USER: "2"
+    volumes:
+      - ./secrets/github-worker-token.txt:/run/secrets-nosorry/github-token.txt:ro
+      - jobs:/jobs
+    depends_on: { db: { condition: service_healthy } }
+    stop_grace_period: 10m
+    mem_limit: 384m
+    networks: [internal, edge]
+
+  # Public HTTPS address without a domain and without opening a port: https://<TS_HOSTNAME>.<tailnet>.ts.net
+  # Visitors reach Tailscale's servers, which forward to this container over an outbound connection.
+  tailscale:
+    image: tailscale/tailscale:stable
+    restart: unless-stopped
+    hostname: ${TS_HOSTNAME:-nosorry}
+    environment:
+      TS_AUTHKEY: file:/run/secrets-nosorry/tailscale-authkey.txt
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_EXTRA_ARGS: --advertise-tags=tag:nosorry
+    volumes:
+      - tsstate:/var/lib/tailscale
+      - ./tailscale:/config:ro
+      - ./secrets/tailscale-authkey.txt:/run/secrets-nosorry/tailscale-authkey.txt:ro
+    mem_limit: 128m
+    networks: [edge]
+    profiles: [public]
+
+volumes:
+  pgdata:
+  jobs:
+  tsstate:
+
+networks:
+  internal:
+    internal: true
+  edge: {}
