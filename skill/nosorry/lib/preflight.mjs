@@ -61,7 +61,7 @@ const RULES = [
 // Rules a reference statement may legitimately trip (statements define notation); solutions may reuse exactly those lines.
 const STATEMENT_EXEMPT = new Set(["meta"]);
 
-const ALLOWED_IMPORT = /^(Mathlib|Batteries|Aesop|Qq|Plausible|ProofWidgets|Init|Std|FormalConjecturesUtil|FormalConjecturesForMathlib|FormalConjectures\.Util|Physlib|QuantumInfo)(\.|$)/;
+const ALLOWED_IMPORT = /^(Mathlib|Batteries|Aesop|Qq|Plausible|ProofWidgets|Init|Std|FormalConjecturesUtil|FormalConjecturesForMathlib|FormalConjectures|Physlib|QuantumInfo)(\.|$)/; // FormalConjectures.*: trusted upstream modules (some statements import other numbered problems)
 // Libraries refused on purpose, with the reason shown to the submitter.
 const REFUSED_IMPORT = [
   [/^SciLean(\.|$)/, "SciLean is a scientific-computing library that relies on axioms and sorry by design; it cannot be used in proofs"],
@@ -86,7 +86,7 @@ export function preflight(src, opts = {}) {
     const ref = new Set(stripLean(opts.challenge).split("\n").map((l) => l.trim()).filter((l) => l.length > 3));
     exemptView = full.split("\n").map((l) => (ref.has(l.trim()) ? "" : l)).join("\n");
   }
-  const imports = [...full.matchAll(/(^|\n)\s*(public\s+|private\s+)?(meta\s+)?import\s+(all\s+)?([\w.]+)/g)].map((m) => m[5]);
+  const imports = [...full.matchAll(/(^|\n)\s*(public\s+|private\s+)?(meta\s+)?import\s+(all\s+)?([\w.«»]+)/g)].map((m) => m[5]); // «» quote names such as FormalConjectures.ErdosProblems.«28»
   for (const imp of imports) {
     const refused = REFUSED_IMPORT.find(([re]) => re.test(imp));
     if (refused) errors.push({ code: "import", message: `import ${imp} refused: ${refused[1]}` });

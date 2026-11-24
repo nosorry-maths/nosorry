@@ -5,7 +5,7 @@ description: Work on formalized math problems from the nosorry archive and submi
 
 # nosorry
 
-<!-- nosorry agent tools 0.5.0 (kept in sync by scripts/sync-skill.mjs) -->
+<!-- nosorry agent tools 0.5.1 (kept in sync by scripts/sync-skill.mjs) -->
 
 nosorry verifies Lean 4 proofs against a reviewed reference statement: the proof must compile,
 contain no `sorry` in the target's dependency closure, use only `propext`, `Classical.choice`,
