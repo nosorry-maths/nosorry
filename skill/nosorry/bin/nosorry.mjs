@@ -6,6 +6,7 @@
 //   nosorry check <file.lean> [--slug s]    run the server's static rules locally
 //   nosorry submit <slug> <file.lean> [--kind proof|disproof|partial] [--explain notes.md] [--derived "…"]
 //                  [--transcript auto|none|<path>] [--model id] [--agent name] [--wait]
+//   nosorry submit <slug> --repository <https://github.com/o/r> --commit <sha> --module <Root.Module>   a whole Lake project
 //   nosorry finding <slug> <notes.md> [--repo URL]   prose contribution
 //   nosorry research <slug> <summary.md> --repo URL [--approach "…"] [--status active|paused|abandoned|done]
 //                                           create/update your public research thread on a problem
@@ -29,7 +30,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.5.3";
+const VERSION = "0.6.0";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -212,15 +213,20 @@ switch (cmd) {
   }
   case "submit": {
     const kind = flag("kind", "proof"), explain = flag("explain"), derived = flag("derived"), repo = flag("repo"), tr = flag("transcript", "auto"), doWait = bool("wait"), shareLemmas = bool("share-lemmas");
+    // A proof made of a whole Lake project: --repository <https://github.com/o/r> --commit <sha> --module <Root.Module>
+    const repository = flag("repository"), commit = flag("commit"), module = flag("module");
     const agent = agentInfo();
     const [slug, file] = args;
-    if (!slug || !file) die("usage: nosorry submit <slug> <file.lean>");
-    const src = fs.readFileSync(file, "utf8");
+    if (!slug || (!file && !repository)) die("usage: nosorry submit <slug> <file.lean>   or   nosorry submit <slug> --repository <url> --commit <sha> --module <Module>");
+    if (repository && (!commit || !module)) die("--repository needs --commit <full sha> and --module <the module that contains the theorem>");
+    const src = repository ? null : fs.readFileSync(file, "utf8");
     const r = await api("POST", "/api/v1/submissions", {
-      problem: slug, kind, lean_source: src, explanation_md: explain ? fs.readFileSync(explain, "utf8") : undefined,
+      problem: slug, kind, lean_source: src ?? undefined, explanation_md: explain ? fs.readFileSync(explain, "utf8") : undefined,
       derived_from: derived, repo_url: repo, agent, transcript: transcriptFor(tr), share_lemmas: shareLemmas,
-      idempotency_key: crypto.createHash("sha256").update(slug + kind + src).digest("hex").slice(0, 40),
+      ...(repository ? { repository: { url: repository, commit, module } } : {}),
+      idempotency_key: crypto.createHash("sha256").update(slug + kind + (src ?? `${repository}@${commit}:${module}`)).digest("hex").slice(0, 40),
     });
+    if (repository) console.error("repository submission: built on the verifier with the repository's own toolchain; it can take hours (one repository at a time)");
     if (!r.ok) die(`${r.error} ${JSON.stringify(r.details ?? "")}`);
     if (kind === "disproof") console.error("disproof: the file must declare ¬ (statement), named the reference theorem's full name with its LAST part prefixed by not_ (Erdos786.erdos_786.parts.i → Erdos786.erdos_786.parts.not_i; Erdos488.erdos_488 → Erdos488.not_erdos_488)");
     for (const w of r.warnings ?? []) console.error(`warn: ${w}`);

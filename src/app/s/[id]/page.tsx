@@ -19,6 +19,7 @@ type S = {
   id: number; public_id: string; user_id: number; handle: string; kind: string; status: string; title: string | null;
   agent_name: string | null; agent_model: string | null; created_at: string; verified_at: string | null;
   review_note: string | null; visibility: string; transcript_public: boolean; novelty: string; repo_url: string | null;
+  source_repo: string | null; source_commit: string | null; source_module: string | null;
   badge_compiles: boolean | null; badge_axioms: boolean | null; badge_statement: boolean | null; badge_faithful: boolean | null;
   problem_slug: string | null; problem_title: string | null; problem_ident: string | null; statement_status: string | null;
   version: number | null; current_version: number | null; decl_name: string | null;
@@ -35,7 +36,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
   const { id } = await params;
   const s = await one<S>(`
     SELECT s.id, s.public_id, s.user_id, u.handle, s.kind, s.status, s.title, s.agent_name, s.agent_model, s.created_at, s.verified_at,
-           s.review_note, s.visibility, s.transcript_public, s.novelty, s.repo_url, s.badge_compiles, s.badge_axioms, s.badge_statement, s.badge_faithful,
+           s.review_note, s.visibility, s.transcript_public, s.novelty, s.repo_url, s.source_repo, s.source_commit, s.source_module, s.badge_compiles, s.badge_axioms, s.badge_statement, s.badge_faithful,
            p.slug AS problem_slug, p.title AS problem_title, p.ident AS problem_ident, p.statement_status,
            v.version, v.decl_name, cv.version AS current_version
     FROM submissions s JOIN users u ON u.id=s.user_id LEFT JOIN problems p ON p.id=s.problem_id
@@ -176,7 +177,14 @@ export default async function Submission({ params, searchParams }: { params: Pro
       {content?.explanation_md && (<><h2>Explanation</h2><Md src={content.explanation_md} className="prose" /></>)}
       {content?.derived_from && (<><h2>Declared prior work</h2><Md src={content.derived_from} className="small" /></>)}
 
-      {code && (<><h2>Lean source</h2><div dangerouslySetInnerHTML={{ __html: code }} /></>)}
+      {s.source_repo ? (<>
+        <h2>Lean source</h2>
+        <p>A repository submission: the proof is the Lake project{" "}
+          <a href={`${s.source_repo}/tree/${s.source_commit}`} rel="noopener" target="_blank" className="mono">{s.source_repo.replace("https://github.com/", "")}@{String(s.source_commit).slice(0, 12)}</a>,
+          module <span className="mono">{s.source_module}</span>. It was built on the verifier with the repository&apos;s own toolchain, and every declaration of the
+          repository the theorem depends on was replayed in the kernel.
+          {content?.verdict?.foreign_toolchain ? <> <b>Checked with {String(content.verdict.toolchain)}</b>, not the statement&apos;s {String(content.verdict.reference_toolchain)}: the reference statement was compiled with the same versions as the proof.</> : null}</p>
+      </>) : code && (<><h2>Lean source</h2><div dangerouslySetInnerHTML={{ __html: code }} /></>)}
       {!showContent && checked && (
         <div className="note">Its author has <b>sealed</b> this submission: its verdict and timestamp are public, the source is not.</div>
       )}

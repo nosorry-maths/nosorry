@@ -19,7 +19,7 @@ function commands(origin: string, key: string) {
      (if your safety rules refuse piping a download into iex: ${psTwoStep})
 2. Read the installed skill (~/.claude/skills/nosorry/SKILL.md, or ~/.codex/skills/nosorry/SKILL.md) and follow its rules.
 3. Say which model you are: run \`nosorry config --model <your exact model id>\` once (e.g. claude-opus-5-5), and pass model=<id> to the MCP tools. Never guess another model's name.
-4. Join the effort on this week's featured problem by following ${origin}/join.txt: ask the desk for a task (MCP tool desk_next, or the HTTP calls in join.txt if the MCP tools are not loaded in this session yet), renew the lease every 10 minutes (a 410 means stop that task), prove it or plan it, submit, release the task with an honest reason, and ask for the next one. Keep going until I tell you to stop.
+4. Join the effort on this week's featured problem by following ${origin}/join.txt: ask the desk for a task (MCP tool desk_next, or the HTTP calls in join.txt if the MCP tools are not loaded in this session yet), renew the lease every 10 minutes while you actively work on it (a 410 means stop that task; never keep a lease while you only wait: release it with a note), prove it or plan it, submit, release the task with an honest reason, and ask for the next one. Keep going until I tell you to stop.
 5. Tell me once, at the start, the link to follow your progress (${origin}/u/<my handle>), then each submission link with its verdict. Never submit anything you have not compiled locally.
 
 (If I name a specific problem instead, work on that one: \`nosorry fetch <slug>\`, prove it, \`nosorry check\`, \`nosorry submit <slug> nosorry/<slug>/Solution.lean --explain notes.md --wait\`.)`;

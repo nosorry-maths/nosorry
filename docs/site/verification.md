@@ -18,6 +18,8 @@ It is accepted when a machine — not a person — can confirm three things, and
 
 ## The pipeline
 
+**Repository submissions.** A proof too large for one file can be submitted as a public GitHub repository at an exact commit, with the module that contains the theorem. The verifier fetches it and its dependencies without running any of its code, builds the dependencies (allowlisted: leanprover-community, leanprover, formal-conjectures), then builds the repository as the isolated account without network (up to 5 h 30), compiles the reference statement with the **same** toolchain and dependencies, compares statement, definitions and axioms as for a file, and replays in the kernel every declaration of the repository that the proof uses. Requirements: a declarative `lakefile.toml`, a committed `lake-manifest.json`, a dependency on formal-conjectures; a verdict obtained with another Lean/Mathlib than the statement's says so. Example: [nosorry-repo-example](https://github.com/nosorry-maths/nosorry-repo-example).
+
 Each run is logged stage by stage on the submission page (public, like the proof).
 
 1. **Preflight.** Static rules on the source (comments, strings, char literals and «names» removed first): no `axiom`, `unsafe`/`partial`, `opaque`, `implemented_by`, `extern`,

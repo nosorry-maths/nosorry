@@ -39,13 +39,13 @@ export const githubBackendName = () => `github:${REPO}`;
 
 /**
  * Run the Lean stages of one job remotely.
- * @param {{jobId:number|string, kind:string, target:string, metricDecl?:string|null, challenge:string, solution?:string|null}} job
+ * @param {{jobId:number|string, kind:string, target:string, metricDecl?:string|null, challenge:string, solution?:string|null, repo?:{url:string,commit:string,module:string}|null}} job
  * @param {(msg:string)=>void} log
  */
 export async function runRemote(job, log = () => {}, { timeoutMs = 130 * 60_000 } = {}) {
   const nonce = crypto.randomBytes(16).toString("hex");
   const branch = `jobs/${String(job.jobId).replace(/[^0-9a-z-]/gi, "").toLowerCase()}-${Date.now().toString(36)}`;
-  const plan = { nonce, kind: job.kind, target: job.target, metric_decl: job.metricDecl ?? null };
+  const plan = { nonce, kind: job.kind, target: job.target, metric_decl: job.metricDecl ?? null, ...(job.repo ? { repo: job.repo } : {}) };
   // 1. the job commit (orphan: the branch holds only the job's files)
   const files = { "job/plan.json": JSON.stringify(plan), "job/Challenge.lean": job.challenge, ...(job.solution != null ? { "job/Solution.lean": job.solution } : {}) };
   const tree = [];
@@ -89,6 +89,8 @@ export async function runRemote(job, log = () => {}, { timeoutMs = 130 * 60_000 
     const b64 = lines[lines.length - 1].replace(/^\S+\s+NOSORRY-RESULT\s+/, "").trim();
     const result = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
     if (result.error) throw new Error(`verifier run failed: ${result.error} (${run.html_url})`);
+    // A repository refused by the trusted setup (lakefile.lean, dependency not allowed, …): a verdict, not a fault.
+    if (result.refused) return { ...result, refused: String(result.refused).slice(0, 2000), run_url: run.html_url, stages: {} };
     if (result.nonce !== nonce) throw new Error(`result does not belong to this job (${run.html_url})`);
     return { ...result, run_url: run.html_url, run_seconds: Math.round((new Date(run.updated_at) - new Date(run.run_started_at ?? run.created_at)) / 1000) };
   } finally {

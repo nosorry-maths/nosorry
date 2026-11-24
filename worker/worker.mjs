@@ -108,13 +108,14 @@ const tail = (s, n = 6000) => (s.length > n ? "…" + s.slice(-n) : s);
 
 // VERIFIER_BACKEND=github: Lean runs on GitHub Actions (worker/github-backend.mjs), not in a local sandbox.
 const REMOTE = process.env.VERIFIER_BACKEND === "github";
+let repoInFlight = 0;
 // Local Lean commands run one at a time even when several jobs are in flight (Docker memory).
 let localQueue = Promise.resolve();
 const localLean = (fn) => { const p = localQueue.then(fn, fn); localQueue = p.catch(() => {}); return p; };
 
 async function verify(job) {
   const { rows: [sub] } = await pool.query(
-    `SELECT s.*, v.challenge_source, v.decl_name, v.statement_hash, v.version AS statement_version,
+    `SELECT s.*, v.challenge_source, v.decl_name, v.statement_hash, v.version AS statement_version, v.toolchain AS ref_toolchain,
             p.status AS problem_status, p.statement_status, p.needs_answer, p.id AS pid, p.metric_decl, p.metric_name,
             COALESCE(v.workspace, CASE WHEN p.collection = 'physlib' THEN 'physlib' ELSE 'formal-conjectures' END) AS workspace
      FROM submissions s LEFT JOIN problem_versions v ON v.id = s.problem_version_id
@@ -122,6 +123,17 @@ async function verify(job) {
     [job.submission_id],
   );
   if (!sub) { await pool.query("UPDATE jobs SET state='done', finished_at=now(), last_error='submission gone' WHERE id=$1", [job.id]); return; }
+  // Repository submissions build for hours on GitHub: one at a time, the others wait their turn in the queue.
+  const isRepo = !!sub.source_repo;
+  if (isRepo && repoInFlight >= 1) {
+    await pool.query("UPDATE jobs SET state='queued', locked_by=NULL, attempts=greatest(attempts-1,0), run_after=now()+interval '3 minutes' WHERE id=$1", [job.id]);
+    return;
+  }
+  if (isRepo) repoInFlight++;
+  try { await verifyOne(job, sub, isRepo); } finally { if (isRepo) repoInFlight--; }
+}
+
+async function verifyOne(job, sub, isRepo) {
   await pool.query("UPDATE submissions SET status='running' WHERE id=$1", [sub.id]);
   const { rows: [vr] } = await pool.query(
     "INSERT INTO verification_runs(submission_id, job_id, worker_id, toolchain, sandbox) VALUES ($1,$2,$3,$4,$5) RETURNING id",
@@ -147,6 +159,10 @@ async function verify(job) {
 
     // 1. static checks
     await st.step("preflight", async () => {
+      if (isRepo) {
+        if (!REMOTE) throw new Reject("error", "repository submissions are checked on the GitHub verifier, which is not enabled on this worker");
+        return { detail: `repository ${sub.source_repo} @ ${String(sub.source_commit).slice(0, 12)}, module ${sub.source_module}: the static rules do not apply; every declaration of the repository that the proof uses is replayed in the kernel` };
+      }
       const pf = preflight(sub.lean_source, { kind: sub.kind, challenge: isFormalization ? undefined : challengeSrc });
       if (!pf.ok) throw new Reject("rejected", pf.errors.map((e) => e.message).join("; "));
       return { detail: pf.warnings.join("\n") || `imports: ${pf.imports.join(", ") || "none"}` };
@@ -170,8 +186,11 @@ async function verify(job) {
     let remote = null;
     if (REMOTE) {
       await st.step("github run", async () => {
-        remote = await runRemote({ jobId: job.id, kind: sub.kind, target, metricDecl: sub.metric_decl, challenge: challengeSrc,
-          solution: isFormalization ? null : sub.lean_source }, (m) => log(`job ${job.id}: ${m}`));
+        remote = await runRemote({ jobId: isRepo ? `repo-${job.id}` : job.id, kind: sub.kind, target, metricDecl: sub.metric_decl, challenge: challengeSrc,
+          solution: isFormalization || isRepo ? null : sub.lean_source,
+          repo: isRepo ? { url: sub.source_repo, commit: sub.source_commit, module: sub.source_module } : null },
+          (m) => log(`job ${job.id}: ${m}`), isRepo ? { timeoutMs: 6.5 * 3600_000 } : undefined);
+        if (remote.refused) throw new Reject("rejected", `repository refused: ${remote.refused}`);
         return { detail: `${remote.run_url} · ${remote.toolchain} · ${remote.run_seconds} s` };
       });
     }
@@ -267,6 +286,12 @@ async function verify(job) {
       return { detail, j };
     });
     verdict = cmp.j;
+    if (remote) {
+      verdict = { ...verdict, toolchain: remote.toolchain };
+      // A repository may use its own Lean/Mathlib: the statement was compiled with the same versions, and the verdict says so.
+      if (remote.toolchain && sub.ref_toolchain && remote.toolchain !== sub.ref_toolchain)
+        verdict = { ...verdict, foreign_toolchain: true, reference_toolchain: sub.ref_toolchain };
+    }
 
     // 5b. metric challenges: the cost theorem must also be proved; its value (the hole in the reference) is extracted.
     if (sub.metric_decl && sub.kind === "proof") {

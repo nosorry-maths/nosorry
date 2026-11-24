@@ -24,6 +24,8 @@ export type SubmissionInput = {
   agent?: { name?: string; model?: string };
   transcript?: { format: "claude-code-jsonl" | "codex-jsonl" | "markdown" | "text"; content: string };
   idempotency_key?: string;
+  /** A proof made of a whole Lake project: public GitHub repository, exact commit, root module holding the theorem. */
+  repository?: { url: string; commit: string; module: string };
 };
 
 export type SubmissionResult =
@@ -44,6 +46,19 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
   if ((input.body_md?.length ?? 0) + (input.explanation_md?.length ?? 0) > L.bodyBytes) return { ok: false, error: "text too large" };
 
   // Idempotency: agents may retry safely. The same key with different content is refused.
+  // Repository submissions: validated here, built on the verifier; lean_source becomes a short manifest.
+  let source: { url: string; commit: string; module: string } | null = null;
+  if (input.repository) {
+    if (!["proof", "disproof", "partial"].includes(input.kind)) return { ok: false, error: "a repository can be submitted as a proof, disproof or partial proof" };
+    const url = String(input.repository.url ?? "").trim().replace(/\.git$/, "").replace(/\/$/, "");
+    const commit = String(input.repository.commit ?? "").trim().toLowerCase();
+    const module = String(input.repository.module ?? "").trim();
+    if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(url)) return { ok: false, error: "repository.url must be a public https://github.com/<owner>/<repo>" };
+    if (!/^[0-9a-f]{40}$/.test(commit)) return { ok: false, error: "repository.commit must be a full 40-character commit hash" };
+    if (!/^[A-Za-z_][A-Za-z0-9_\x27]*(\.[A-Za-z_][A-Za-z0-9_\x27]*)*$/.test(module)) return { ok: false, error: "repository.module must be the Lean module that contains the theorem, e.g. MyProof.Main" };
+    source = { url, commit, module };
+    input.lean_source = `-- Repository submission: the proof is the Lake project below, at this exact commit.\n-- ${url}/tree/${commit}\n-- module: ${module}\n`;
+  }
   const requestHash = sha256(JSON.stringify([input.problem, input.kind, input.lean_source, input.body_md, input.target_decl]));
   if (input.idempotency_key) {
     const prev = await one<{ public_id: string; status: string; request_hash: string | null }>(
@@ -78,7 +93,7 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
 
   const needsLean = input.kind !== "finding";
   let warnings: string[] = [];
-  if (needsLean) {
+  if (needsLean && !source) {
     const pf = preflight(input.lean_source ?? "", { kind: input.kind as "proof" | "disproof" | "partial" | "formalization", challenge: input.kind === "formalization" ? undefined : problem?.challenge_source });
     if (!pf.ok) return { ok: false, error: "preflight failed", details: pf.errors };
     warnings = pf.warnings;
@@ -100,15 +115,16 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
   const inserted = await tx(async (c) => {
     const { rows: [s] } = await c.query(
       `INSERT INTO submissions(public_id, user_id, problem_id, problem_version_id, kind, title, body_md, explanation_md, lean_source,
-         source_hash, agent_name, agent_model, status, idempotency_key, client_ip, derived_from, verdict, request_hash, repo_url, based_on, cites, share_lemmas)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+         source_hash, agent_name, agent_model, status, idempotency_key, client_ip, derived_from, verdict, request_hash, repo_url, based_on, cites, share_lemmas,
+         source_repo, source_commit, source_module)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
        ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
       [publicId, user.id, problem?.id ?? null, problem?.current_version_id ?? null, input.kind, clip(input.title, 300), input.body_md ?? null,
        input.explanation_md ?? null, input.lean_source ?? null, input.lean_source ? sha256(input.lean_source) : null,
        clip(input.agent?.name, 60), clip(input.agent?.model, 80), needsLean ? "queued" : "needs_review",
        clip(input.idempotency_key, 100) ?? null, ip, clip(input.derived_from, 2000) ?? null,
        input.kind === "formalization" ? JSON.stringify({ decl_name: input.target_decl }) : null, requestHash, repo, basedOn, JSON.stringify(cites),
-       input.share_lemmas === true && input.kind === "partial"]);
+       input.share_lemmas === true && input.kind === "partial", source?.url ?? null, source?.commit ?? null, source?.module ?? null]);
     if (!s) return null; // concurrent request with the same idempotency key won the race
     if (input.transcript?.content) {
       const r = redact(input.transcript.content);
@@ -118,7 +134,8 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
     }
     if (needsLean) {
       // Bulk / new accounts go behind interactive single submissions.
-      const priority = (input.kind === "formalization" ? 150 : 100) + (young ? 20 : 0);
+      // Repository builds are long: they go behind single files.
+      const priority = (input.kind === "formalization" ? 150 : source ? 160 : 100) + (young ? 20 : 0);
       await c.query("INSERT INTO jobs(kind, submission_id, priority) VALUES ($1,$2,$3)",
         [input.kind === "formalization" ? "check_formalization" : "verify", s.id, priority]);
       await c.query("NOTIFY nosorry_jobs");

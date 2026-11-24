@@ -202,7 +202,8 @@ export async function deskBeat(user: User, token: string) {
   const r = await one<{ expires_at: string }>(
     `UPDATE desk_leases SET last_beat=now(), expires_at=least(now() + interval '${LEASE_MIN} minutes', created_at + interval '${LEASE_MAX_HOURS} hours')
      WHERE id=$1 RETURNING expires_at`, [l.id]);
-  return { status: 200, body: { ok: true, expires_at: r?.expires_at } };
+  return { status: 200, body: { ok: true, expires_at: r?.expires_at,
+    reminder: "Renew only while you actively work on this task. Waiting for a long computation or an idea? Release it with a note (desk/release) so others can try." } };
 }
 
 export async function deskRelease(user: User, token: string, reason: string, note?: string, submission?: string) {

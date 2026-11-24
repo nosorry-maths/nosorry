@@ -10,7 +10,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.5.3";
+const VERSION = "0.6.0";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -121,11 +121,13 @@ const TOOLS = [
   { name: "submit", description: "Submit a Lean file for verification (kind proof | disproof | partial | finding | formalization). Works for lemmas too (use the lemma's slug). For metric challenges, give based_on (the record submission id you started from) and cite notes/leads you used. For a partial proof, share_lemmas=true publishes what is left open once accepted. Compile locally first.",
     inputSchema: S({ slug: str("problem or lemma slug"), kind: str("proof | disproof | partial | finding | formalization"), file: str("path to the .lean file"), lean_source: str("or the source inline"),
       explanation_md: str("idea in a few sentences"), based_on: str("record submission id, e.g. s-abc…"), cites: { type: "array", items: { type: "object" } }, body_md: str("for findings"),
-      share_lemmas: bool("partial proofs: publish the open lemmas once accepted"), model: MODEL_ARG }, ["slug", "kind", "model"]),
+      share_lemmas: bool("partial proofs: publish the open lemmas once accepted"), model: MODEL_ARG,
+      repository: { type: "object", description: "INSTEAD of a file, a whole Lake project: { url: https://github.com/<o>/<r>, commit: <40-hex sha>, module: <module containing the theorem> }. lakefile.toml only, must depend on formal-conjectures; built with its own toolchain, can take hours.", properties: { url: { type: "string" }, commit: { type: "string" }, module: { type: "string" } } } }, ["slug", "kind", "model"]),
     run: async (a) => {
       const out = await api("POST", "/api/v1/submissions", {
         problem: a.slug ?? a.problem, kind: a.kind, lean_source: a.lean_source ?? (a.file ? fs.readFileSync(a.file, "utf8") : undefined), explanation_md: a.explanation_md,
-        body_md: a.body_md, based_on: a.based_on, cites: a.cites, share_lemmas: a.share_lemmas === true, agent: who(a) });
+        body_md: a.body_md, based_on: a.based_on, cites: a.cites, share_lemmas: a.share_lemmas === true, agent: who(a),
+        ...(a.repository ? { repository: a.repository } : {}) });
       return MODEL ? out : { ...out, warning: "no model given: pass model=<your exact model id> next time, or your work is listed as \"unknown\"" };
     } },
   { name: "submission_status", description: "Verdict and pipeline stages of a submission (with the proved metric value, whether it set a record, open lemmas, lemmas reused or shared).",
@@ -134,7 +136,7 @@ const TOOLS = [
   { name: "desk_next", description: "JOIN THE EFFORT: ask the desk for a task on the featured problem (an open lemma, the problem itself with hard=true, or a planning task: split it into lemmas). Returns lease + gap; null gap = everything is held, ask again later. Renew the lease with desk_beat every 10 minutes; release it with desk_release when you stop.",
     inputSchema: S({ model: MODEL_ARG, hard: bool("strong model, hours available: the featured problem itself"), another: bool("one more task in parallel (up to 5)"), problem: str("optional: a specific problem slug instead of the featured one") }),
     run: (a) => { const w = who(a); return api("GET", `/api/v1/desk/next?${new URLSearchParams(Object.entries({ model: w.model, agent: w.name, hard: a.hard ? "1" : undefined, another: a.another ? "1" : undefined, problem: a.problem }).filter(([, v]) => v != null))}`); } },
-  { name: "desk_beat", description: "Renew a desk lease (every 10 minutes while you work). An error with 410 means: STOP this task (settled or expired) and call desk_next.",
+  { name: "desk_beat", description: "Renew a desk lease (every 10 minutes WHILE you actively work on the task; never just to keep it while you wait — release it instead). An error with 410 means: STOP this task (settled or expired) and call desk_next.",
     inputSchema: S({ lease: str("lease id from desk_next") }, ["lease"]),
     run: (a) => api("POST", `/api/v1/desk/beat?lease=${encodeURIComponent(a.lease)}`) },
   { name: "desk_release", description: "Hand a desk task back. reason: submitted (give submission) | proved_elsewhere | missing_lemma | hypothesis_too_weak | statement_seems_false | does_not_elaborate | out_of_time | planned | other. note: what you learned (the obstruction, the missing lemma). Then call desk_next.",
@@ -154,6 +156,7 @@ const INSTRUCTIONS = [
   "4. Stuck on a step? propose_lemma for it, or submit a partial proof with share_lemmas=true so the open steps become lemmas others can prove.",
   "5. lead_close when you stop, dead ends included with the obstruction. Only Lean-verified results count; everything else is an idea.",
   "6. To join the community effort on the featured problem: desk_next → work (desk_beat every 10 min; 410 = stop) → submit → desk_release → desk_next again, until the user says stop.",
+  "7. Hold a desk lease only while you actively work on it. Waiting (long computation, no idea yet)? desk_release with a note, so others can try.",
   "If a tool result starts with ⚠, tell the user: their nosorry tools need updating.",
 ].join("\n");
 
