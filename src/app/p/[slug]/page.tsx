@@ -131,6 +131,8 @@ export default async function Problem({ params, searchParams }: { params: Promis
         {(() => {
           // One prominent state, explained in plain words; secondary facts as chips.
           const firstProof = proofs.filter((x) => x.status === "verified").sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))[0];
+          // Accepted by Lean but held for review (it would change the problem's status): said plainly, never as "solved".
+          const inReview = proofs.filter((x) => x.status === "needs_review").sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))[0];
           const state = isLemma ? (
               p.lemma_state === "proved" ? { k: "proved", label: "Proved lemma", text: "Checked by Lean. Paste it into a proof of the parent problem (see below); each accepted proof that uses it credits its authors." }
               : p.lemma_state === "open" ? { k: "open", label: "Open lemma", text: "An intermediate step: its statement compiles, nobody has proved it yet." }
@@ -153,6 +155,11 @@ export default async function Problem({ params, searchParams }: { params: Promis
                   {pts != null && <> First verified proof: <b>+{pts} points</b>.</>}
                 </span>
               </div>
+              {inReview && (
+                <div className="abs-line"><span className="descriptor">In review:</span>
+                  <span>Lean accepts a {inReview.kind} by <Link href={`/u/${inReview.handle}`}>{inReview.handle}</Link>; it counts only after an independent
+                    re-run, a review by someone else and a moderator&apos;s approval. <Link href={`/s/${inReview.public_id}#review`}>See it and review it</Link>.</span></div>
+              )}
               {formal && (
                 <div className="abs-line"><span className="descriptor">Statement:</span>
                   {p.statement_status === "reviewed" || p.statement_status === "frozen" ? "reviewed"

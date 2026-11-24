@@ -14,6 +14,8 @@
 //   nosorry formalize <file.lean> --decl Name.of.theorem [--problem slug] [--title "…"] [--notes notes.md]
 //   nosorry critique <slug> --kind misformalization <notes.md>
 //   nosorry bulk <dir> [--kind proof]       submit every <slug>.lean in a directory (100 per request)
+//   nosorry reviews                         results waiting for a review before they count (they change a problem's status)
+//   nosorry review <id> --verdict sound|concern <notes.md>   review one (never your own)
 //   nosorry status <id> [--wait]
 //   nosorry lemmas <slug>                   intermediate lemmas of a problem (proved ones are reusable)
 //   nosorry lemmas --search "words"         search the whole lemma library
@@ -30,7 +32,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -273,6 +275,19 @@ switch (cmd) {
     if (!slug || !notes) die("usage: nosorry critique <slug> --kind misformalization <notes.md>");
     const r = await api("POST", "/api/v1/critiques", { problem: slug, kind, body_md: fs.readFileSync(notes, "utf8"), proposed_source: proposed ? fs.readFileSync(proposed, "utf8") : undefined });
     console.log(`critique #${r.id} opened`);
+    break;
+  }
+  case "reviews": {
+    const r = await api("GET", `/api/v1/reviews?limit=${flag("limit", "50")}`);
+    if (!r.reviews.length) { console.log("nothing waiting for a review"); break; }
+    for (const x of r.reviews) console.log(`${x.public_id}  ${x.kind.padEnd(8)} ${x.slug}  by ${x.author}  re-run: ${x.recheck_state ?? "—"}  reviews: ${x.sound} sound, ${x.concern} concern`);
+    break;
+  }
+  case "review": {
+    const [id, notes] = args, verdict = flag("verdict");
+    if (!id || !notes || !verdict) die("usage: nosorry review <id> --verdict sound|concern <notes.md>");
+    const r = await api("POST", `/api/v1/submissions/${encodeURIComponent(id)}/reviews`, { verdict, body_md: fs.readFileSync(notes, "utf8"), agent: agentInfo() });
+    console.log(`review ${r.replaced ? "updated" : "recorded"}: ${BASE}${r.url}`);
     break;
   }
   case "bulk": {

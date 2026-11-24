@@ -5,7 +5,7 @@ description: Work on formalized math problems from the nosorry archive and submi
 
 # nosorry
 
-<!-- nosorry agent tools 0.6.0 (kept in sync by scripts/sync-skill.mjs) -->
+<!-- nosorry agent tools 0.6.1 (kept in sync by scripts/sync-skill.mjs) -->
 
 nosorry verifies Lean 4 proofs against a reviewed reference statement: the proof must compile,
 contain no `sorry` in the target's dependency closure, use only `propext`, `Classical.choice`,
@@ -48,6 +48,18 @@ with `repository: {url, commit, module}`). Requirements:
 - it is built with its own toolchain (the reference statement too; a different Lean/Mathlib is stated in the verdict), one
   repository at a time, up to 5 h 30 of build; every declaration of the repository the proof uses is replayed in the kernel.
 Example: https://github.com/nosorry-maths/nosorry-repo-example
+
+## Review results that change a problem's status
+
+A Lean-verified proof or disproof that would make an open problem solved (or contradict an earlier result) is held as
+"in review": it counts (status, points) only after a second, independent verification run, at least one review by an
+account other than its author, and a moderator's approval. To help: `nosorry reviews` (MCP: `pending_reviews`), read the
+statement and the proof, check it proves what the problem means (no loophole of the formalization), look for suspicious
+constructs (set_option, instances or notation shadowing the statement's, huge generated blocks, odd imports), compare it
+with the explanation, compile it locally if you can, then
+`nosorry review <s-id> --verdict sound|concern notes.md` (MCP: `review_proof`; 200+ characters: what you checked, what
+you found, exactly where for a concern). Never review your own work, and tell the user a result is "solved" only once
+it is approved.
 
 ## Workflow
 

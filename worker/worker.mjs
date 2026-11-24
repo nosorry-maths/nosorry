@@ -13,6 +13,7 @@ import pg from "pg";
 import { preflight, fingerprint } from "../shared/preflight.mjs";
 import { proofHold } from "../shared/scoring.mjs";
 import { rescoreProblem } from "../shared/ledger.mjs";
+import { REVIEW_HOLD, needsStatusReview, finishRecheck } from "../shared/review.mjs";
 import { checkRecord } from "../shared/records.mjs";
 import { acceptLemmaStatement, rejectLemmaStatement, onLemmaProved, creditLemmaUses, shareOpenLemmas } from "../shared/lemmas.mjs";
 import { maybeSyncAixiv } from "../shared/aixiv.mjs";
@@ -134,7 +135,10 @@ async function verify(job) {
 }
 
 async function verifyOne(job, sub, isRepo) {
-  await pool.query("UPDATE submissions SET status='running' WHERE id=$1", [sub.id]);
+  // recheck: the second, independent run of a result under review. It only records whether it agrees; the submission
+  // itself (status, badges, kind) is left as the first run set it.
+  const recheck = job.kind === "recheck";
+  if (!recheck) await pool.query("UPDATE submissions SET status='running' WHERE id=$1", [sub.id]);
   const { rows: [vr] } = await pool.query(
     "INSERT INTO verification_runs(submission_id, job_id, worker_id, toolchain, sandbox) VALUES ($1,$2,$3,$4,$5) RETURNING id",
     [sub.id, job.id, WORKER_ID, toolchainFor(sub.workspace), REMOTE && sub.workspace !== "physlib" ? githubBackendName() : sandboxName(sub.workspace)],
@@ -171,7 +175,7 @@ async function verifyOne(job, sub, isRepo) {
     // 2. duplicate / plagiarism
     const fp = fingerprint(sub.lean_source);
     await st.step("originality", async () => {
-      await pool.query("UPDATE submissions SET proof_fingerprint=$2 WHERE id=$1", [sub.id, fp]);
+      if (!recheck) await pool.query("UPDATE submissions SET proof_fingerprint=$2 WHERE id=$1", [sub.id, fp]);
       const { rows } = await pool.query(
         // Per problem: one file may legitimately settle several statements (e.g. the parts of a problem).
         `SELECT public_id, user_id FROM submissions WHERE proof_fingerprint=$1 AND id < $2
@@ -188,7 +192,8 @@ async function verifyOne(job, sub, isRepo) {
       await st.step("github run", async () => {
         remote = await runRemote({ jobId: isRepo ? `repo-${job.id}` : job.id, kind: sub.kind, target, metricDecl: sub.metric_decl, challenge: challengeSrc,
           solution: isFormalization || isRepo ? null : sub.lean_source,
-          repo: isRepo ? { url: sub.source_repo, commit: sub.source_commit, module: sub.source_module } : null },
+          repo: isRepo ? { url: sub.source_repo, commit: sub.source_commit, module: sub.source_module } : null,
+          fresh: recheck /* a recheck rebuilds formal-conjectures instead of restoring the Actions build cache */ },
           (m) => log(`job ${job.id}: ${m}`), isRepo ? { timeoutMs: 6.5 * 3600_000 } : undefined);
         if (remote.refused) throw new Reject("rejected", `repository refused: ${remote.refused}`);
         return { detail: `${remote.run_url} · ${remote.toolchain} · ${remote.run_seconds} s` };
@@ -215,7 +220,7 @@ async function verifyOne(job, sub, isRepo) {
     // 3. reference statement (cached by hash — compiled once per statement version)
     await st.step("compile reference statement", async () => {
       const cache = path.join(CACHE_DIR, "challenge", `${sub.workspace}-${sub.statement_hash ?? fp}`);
-      if (!remote && !isFormalization && fs.existsSync(path.join(cache, "Challenge.olean"))) {
+      if (!remote && !isFormalization && !recheck && fs.existsSync(path.join(cache, "Challenge.olean"))) {
         copyModule(cache, path.join(chkDir, "out"), "Challenge");
         return { detail: "from cache" };
       }
@@ -256,7 +261,7 @@ async function verifyOne(job, sub, isRepo) {
       if (remote ? r.no_olean : !copyModule(path.join(subDir, "out"), path.join(chkDir, "out"), "Solution")) throw new Reject("rejected", "compilation produced no Solution.olean");
       return {};
     });
-    await pool.query("UPDATE submissions SET badge_compiles=true WHERE id=$1", [sub.id]);
+    if (!recheck) await pool.query("UPDATE submissions SET badge_compiles=true WHERE id=$1", [sub.id]);
 
     // 5. statement + axioms (separate environments)
     const cmp = await st.step("statement & axioms", async () => {
@@ -306,9 +311,9 @@ async function verifyOne(job, sub, isRepo) {
         return { detail: `${sub.metric_name} = ${j.answer_nats[0]} (proved)`, value: j.answer_nats[0] };
       });
       verdict = { ...verdict, metric_value: m.value };
-      await pool.query("UPDATE submissions SET metric_value=$2 WHERE id=$1", [sub.id, m.value]);
+      if (!recheck) await pool.query("UPDATE submissions SET metric_value=$2 WHERE id=$1", [sub.id, m.value]);
     }
-    await pool.query("UPDATE submissions SET badge_statement=true, badge_axioms=$2, axioms=$3, open_lemmas=$4 WHERE id=$1",
+    if (!recheck) await pool.query("UPDATE submissions SET badge_statement=true, badge_axioms=$2, axioms=$3, open_lemmas=$4 WHERE id=$1",
       [sub.id, !cmp.j.has_sorry, cmp.j.axioms, cmp.j.open_lemmas]);
 
     // 6. kernel replay of everything the submission produced
@@ -337,7 +342,7 @@ async function verifyOne(job, sub, isRepo) {
     if (cmp.j.has_sorry) result = "partial";
     else if (cmp.j.answer_filled) result = "needs_review";
     else result = "verified";
-    if (sub.kind === "partial" && !cmp.j.has_sorry) {
+    if (sub.kind === "partial" && !cmp.j.has_sorry && !recheck) {
       // A "partial" proof with nothing left open is a complete proof.
       sub.kind = "proof";
       await pool.query("UPDATE submissions SET kind='proof', open_lemmas='{}' WHERE id=$1", [sub.id]);
@@ -375,21 +380,38 @@ async function finish(sub, runId, stages, result, verdict, job) {
       return;
     }
     await c.query("UPDATE verification_runs SET finished_at=now(), result=$2, stages=$3 WHERE id=$1", [runId, result, JSON.stringify(stages)]);
+    if (job.kind === "recheck") {
+      await finishRecheck(c, sub, stages, result, job);
+      await c.query("COMMIT");
+      log(`recheck of ${sub.public_id} → ${result}`);
+      return;
+    }
     const v = { ...verdict, problem_status: sub.problem_status, statement_version: sub.statement_version };
     if (result === "error" && job.attempts < job.max_attempts) {
       await c.query("UPDATE jobs SET state='queued', run_after=now() + interval '2 minutes', locked_by=NULL WHERE id=$1", [job.id]);
       await c.query("UPDATE submissions SET status='queued' WHERE id=$1", [sub.id]);
     } else {
       await c.query("UPDATE jobs SET state='done', finished_at=now() WHERE id=$1", [job.id]);
-      const hold = result === "verified" && sub.kind !== "partial" ? proofHold({ statementStatus: sub.statement_status, answerFilled: v.answer_filled }) : null;
+      let hold = result === "verified" && sub.kind !== "partial" ? proofHold({ statementStatus: sub.statement_status, answerFilled: v.answer_filled }) : null;
+      // A result that would change the problem's status (first proof or disproof of an open problem, or one contradicting
+      // the current resolution) is held for review: independent re-run, agent review, moderator approval.
+      const review = result === "verified" && !hold && await needsStatusReview(c, sub);
+      if (review) hold = REVIEW_HOLD;
       const status = hold && result === "verified" ? "needs_review" : result;
       await c.query(
-        `UPDATE submissions SET status=$2, verdict=$3, verified_at = CASE WHEN $2 IN ('verified','partial') THEN now() ELSE verified_at END,
+        `UPDATE submissions SET status=$2, verdict=$3, verified_at = CASE WHEN $2 IN ('verified','partial') OR $5 THEN now() ELSE verified_at END,
+         review_required = review_required OR $5, recheck_state = CASE WHEN $5 THEN 'pending' ELSE recheck_state END,
          review_note = COALESCE($4, review_note),
          visibility = CASE WHEN $2 IN ('verified','partial','needs_review') THEN visibility ELSE 'private' END
          WHERE id=$1`,
-        [sub.id, status, JSON.stringify(v), hold],
+        [sub.id, status, JSON.stringify(v), review ? null : hold /* the Review section of the page says it */, !!review],
       );
+      if (review) {
+        await c.query("INSERT INTO jobs(kind, submission_id, priority) VALUES ('recheck', $1, 130)", [sub.id]);
+        await c.query(`INSERT INTO problem_events(problem_id, type, user_id, ref_type, ref_id, summary)
+          SELECT $1,'review.hold',$2,'submission',$3, 'Lean accepts a ' || $4 || ' by ' || handle || ': in review before it counts (independent re-run, agent review, moderator)'
+          FROM users WHERE id=$2`, [sub.pid, sub.user_id, sub.id, sub.kind]);
+      }
       // Lemmas: their statement check is accepted automatically (no human review: a lemma only matters when used).
       if (sub.kind === "formalization" && sub.problem_status === "lemma") {
         if (status === "needs_review") {

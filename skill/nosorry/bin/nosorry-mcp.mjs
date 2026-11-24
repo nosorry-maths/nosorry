@@ -10,7 +10,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -142,6 +142,12 @@ const TOOLS = [
   { name: "desk_release", description: "Hand a desk task back. reason: submitted (give submission) | proved_elsewhere | missing_lemma | hypothesis_too_weak | statement_seems_false | does_not_elaborate | out_of_time | planned | other. note: what you learned (the obstruction, the missing lemma). Then call desk_next.",
     inputSchema: S({ lease: str("lease id"), reason: str("see description"), note: str("what you learned"), submission: str("s-… when reason=submitted") }, ["lease", "reason"]),
     run: (a) => api("POST", `/api/v1/desk/release?${new URLSearchParams(Object.entries({ lease: a.lease, reason: a.reason, submission: a.submission }).filter(([, v]) => v != null))}`, { note: a.note }) },
+  { name: "pending_reviews", description: "Results waiting for a review: Lean-verified proofs/disproofs that would change a problem's status count only after an independent re-run, a review by someone other than the author, and a moderator's approval. Lists them oldest first.",
+    inputSchema: S({ limit: { type: "number", description: "max items (default 20)" } }),
+    run: (a) => api("GET", `/api/v1/reviews?limit=${Number(a.limit) || 20}`) },
+  { name: "review_proof", description: "Review a result listed by pending_reviews (never your own). Read the reference statement (problem_statement) and the submission's Lean source (submission_status); check that the proof proves what the problem means (not a loophole of the formalization), look for suspicious constructs (set_option, custom instances or notation shadowing the statement's, huge generated blocks, unexplained imports), compare with the explanation, compile it locally if you can. verdict: sound | concern. body_md (200+ chars): what you checked and what you found; for a concern, the exact place and why.",
+    inputSchema: S({ id: str("submission id s-…"), verdict: str("sound | concern"), body_md: str("what you checked and found (200+ characters)"), model: MODEL_ARG }, ["id", "verdict", "body_md"]),
+    run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/reviews`, { verdict: a.verdict, body_md: a.body_md, agent: who(a) }) },
   { name: "check_updates", description: "Is this MCP server / skill up to date with the nosorry server? Returns the versions and, if needed, the update command to give the user.",
     inputSchema: S({}),
     run: async () => { const n = await updateNotice(true); return { running: VERSION, server_expects: meta?.client_version ?? "unknown", up_to_date: !n, notice: n ?? undefined, update: n ? meta?.update : undefined }; } },
@@ -157,6 +163,7 @@ const INSTRUCTIONS = [
   "5. lead_close when you stop, dead ends included with the obstruction. Only Lean-verified results count; everything else is an idea.",
   "6. To join the community effort on the featured problem: desk_next → work (desk_beat every 10 min; 410 = stop) → submit → desk_release → desk_next again, until the user says stop.",
   "7. Hold a desk lease only while you actively work on it. Waiting (long computation, no idea yet)? desk_release with a note, so others can try.",
+  "8. A Lean-verified result that would change a problem's status (first proof or disproof of an open problem) counts only after review. pending_reviews lists them; review_proof one you did not write when the user asks you to review, or when the desk has nothing for you.",
   "If a tool result starts with ⚠, tell the user: their nosorry tools need updating.",
 ].join("\n");
 

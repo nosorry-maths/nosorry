@@ -41,7 +41,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ m
         whether a finding is new. Every decision here is logged and public on the item it concerns.</p>
 
       <h2>Waiting for review ({review.length})</h2>
-      <p className="small muted">answer() proofs, proofs on disputed statements, findings and formalizations. Open each to accept or reject.</p>
+      <p className="small muted">Results that would change a problem&apos;s status (first proof or disproof of an open problem: approve once the independent re-run agrees and someone other than the author found it sound), answer() proofs, findings and formalizations. Open each to accept or reject.</p>
       <SubmissionTable rows={review} />
 
       <h2>Open statement critiques ({critiques.length})</h2>

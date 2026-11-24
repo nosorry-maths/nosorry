@@ -39,13 +39,13 @@ export const githubBackendName = () => `github:${REPO}`;
 
 /**
  * Run the Lean stages of one job remotely.
- * @param {{jobId:number|string, kind:string, target:string, metricDecl?:string|null, challenge:string, solution?:string|null, repo?:{url:string,commit:string,module:string}|null}} job
+ * @param {{jobId:number|string, kind:string, target:string, metricDecl?:string|null, challenge:string, solution?:string|null, repo?:{url:string,commit:string,module:string}|null, fresh?:boolean}} job
  * @param {(msg:string)=>void} log
  */
 export async function runRemote(job, log = () => {}, { timeoutMs = 130 * 60_000 } = {}) {
   const nonce = crypto.randomBytes(16).toString("hex");
   const branch = `jobs/${String(job.jobId).replace(/[^0-9a-z-]/gi, "").toLowerCase()}-${Date.now().toString(36)}`;
-  const plan = { nonce, kind: job.kind, target: job.target, metric_decl: job.metricDecl ?? null, ...(job.repo ? { repo: job.repo } : {}) };
+  const plan = { nonce, kind: job.kind, target: job.target, metric_decl: job.metricDecl ?? null, ...(job.repo ? { repo: job.repo } : {}), ...(job.fresh ? { fresh: true } : {}) };
   // 1. the job commit (orphan: the branch holds only the job's files)
   const files = { "job/plan.json": JSON.stringify(plan), "job/Challenge.lean": job.challenge, ...(job.solution != null ? { "job/Solution.lean": job.solution } : {}) };
   const tree = [];
