@@ -247,3 +247,40 @@ export async function focusProgress(focusId: number) {
             (SELECT count(*)::int FROM submissions s WHERE s.problem_id=$1 AND s.status='verified') AS proofs
      FROM problems l WHERE l.parent_id=$1 AND l.status='lemma'`, [focusId]);
 }
+
+/** Everything the "agents working now" panel shows. Public: handles and models are public on the site anyway. */
+export async function livePanel() {
+  await expireLeases();
+  const [tasks, people, day, models, queue, recent] = await Promise.all([
+    q<{ handle: string; model: string | null; agent: string | null; task: string; slug: string; title: string; kind: string; since: string }>(
+      `SELECT u.handle, d.model, d.agent, d.task, p.slug, p.title, CASE WHEN p.status='lemma' THEN 'lemma' ELSE 'problem' END AS kind, d.created_at AS since
+       FROM desk_leases d JOIN users u ON u.id=d.user_id JOIN problems p ON p.id=d.problem_id
+       WHERE d.state='active' ORDER BY d.created_at DESC LIMIT 30`),
+    one<{ people: number; agents: number }>(
+      `SELECT count(DISTINCT user_id)::int AS people, count(DISTINCT (user_id, coalesce(model, agent, '?')))::int AS agents
+       FROM desk_leases WHERE state='active'`),
+    one<{ proofs_1h: number; proofs_24h: number; lemmas_24h: number; problems_24h: number; checks_24h: number; rejected_24h: number }>(
+      `SELECT count(*) FILTER (WHERE s.status='verified' AND s.kind IN ('proof','disproof') AND s.verified_at > now()-interval '1 hour')::int AS proofs_1h,
+              count(*) FILTER (WHERE s.status='verified' AND s.kind IN ('proof','disproof') AND s.verified_at > now()-interval '1 day')::int AS proofs_24h,
+              count(*) FILTER (WHERE s.status='verified' AND p.status='lemma' AND s.verified_at > now()-interval '1 day')::int AS lemmas_24h,
+              count(DISTINCT s.problem_id) FILTER (WHERE s.status='verified' AND s.kind IN ('proof','disproof') AND p.status<>'lemma' AND s.verified_at > now()-interval '1 day')::int AS problems_24h,
+              count(*) FILTER (WHERE s.created_at > now()-interval '1 day')::int AS checks_24h,
+              count(*) FILTER (WHERE s.status='rejected' AND s.created_at > now()-interval '1 day')::int AS rejected_24h
+       FROM submissions s JOIN problems p ON p.id=s.problem_id`),
+    q<{ model: string; n: number }>(
+      `SELECT coalesce(nullif(agent_model,''), nullif(agent_name,''), 'unknown') AS model, count(*)::int AS n FROM submissions
+       WHERE created_at > now()-interval '1 day' GROUP BY 1 ORDER BY 2 DESC LIMIT 6`),
+    one<{ queued: number; running: number; median_s: number | null }>(
+      `SELECT count(*) FILTER (WHERE state='queued')::int AS queued, count(*) FILTER (WHERE state='running')::int AS running,
+              (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM finished_at - created_at)) FILTER (WHERE state='done' AND finished_at > now()-interval '1 day'))::int AS median_s
+       FROM jobs`),
+    q<{ handle: string; model: string | null; at: string }>(
+      `SELECT DISTINCT ON (d.user_id, coalesce(d.model,'')) u.handle, d.model, d.created_at AS at FROM desk_leases d JOIN users u ON u.id=d.user_id
+       WHERE d.created_at > now()-interval '24 hours' ORDER BY d.user_id, coalesce(d.model,''), d.created_at DESC`),
+  ]);
+  return {
+    working_now: tasks.length, agents_now: people?.agents ?? 0, people_now: people?.people ?? 0,
+    tasks, day, models, queue,
+    recent: recent.sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 8),
+  };
+}

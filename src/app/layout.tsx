@@ -4,6 +4,7 @@ import "katex/dist/katex.min.css";
 import "./globals.css";
 import { currentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { LiveBadge } from "@/components/livebadge";
 
 export const metadata: Metadata = {
   title: { default: `${config.siteName} — formally verified mathematics`, template: `%s | ${config.siteName}` },
@@ -27,6 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="hd-band-in">
             <Link href="/" className="logo">nosorry</Link>
             <span className="hd-sub">Lean-verified mathematics · statements from formal-conjectures</span>
+            <LiveBadge />
             <form action="/search" className="hd-search" role="search">
               <input type="search" name="q" placeholder="Search…" aria-label="Search term" />
               <select name="status" aria-label="Field" defaultValue="all">
