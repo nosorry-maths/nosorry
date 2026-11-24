@@ -12,7 +12,6 @@ type Data = { stats: Stats; workers: number; jobs: Job[] };
 /** What the job is about, in one word, then the problem. */
 function typeOf(j: Job): { key: string; label: string } {
   if (j.job_kind === "reverify") return { key: "recheck", label: "Re-check" };
-  if (j.job_kind === "recheck") return { key: "recheck", label: "Review re-run" };
   if (j.sub_kind === "formalization") return j.is_lemma ? { key: "lemma", label: "Lemma statement" } : { key: "formalization", label: "Formalization" };
   if (j.is_lemma) return { key: "lemma", label: "Lemma proof" };
   if (j.sub_kind === "disproof") return { key: "disproof", label: "Disproof" };
@@ -31,7 +30,7 @@ function ago(iso: string, now: number) {
   const d = Math.floor(s / 86400); return `${d} day${d > 1 ? "s" : ""} ago`;
 }
 const fmt = (iso: string) => new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const lane = (j: Job) => (j.job_kind === "recheck" ? "review re-run" : j.job_kind === "reverify" ? "re-check" : j.priority <= 100 ? "interactive" : j.priority < 150 ? "new account" : "formalization");
+const lane = (j: Job) => (j.job_kind === "reverify" ? "re-check" : j.priority <= 100 ? "interactive" : j.priority < 150 ? "new account" : "formalization");
 const STATE_LABEL: Record<string, string> = { queued: "waiting", running: "checking", done: "done", dead: "failed" };
 // Same labels and colour classes as the site's <Status> (components/ui.tsx, server-only).
 const SUB_LABEL: Record<string, string> = { verified: "verified", partial: "partial", rejected: "rejected", error: "server error", needs_review: "in review",

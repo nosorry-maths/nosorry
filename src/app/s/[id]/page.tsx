@@ -8,8 +8,9 @@ import { fmtDateTime } from "@/lib/data";
 import { queuePosition } from "@/lib/submissions";
 import { Md, Status, reasonLabel } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/forms";
-import { setVisibility, reviewSubmission, revokeSubmission, rerunRecheck } from "@/app/actions";
-import { reviewsOf, missingForApproval, type ProofReview } from "@/lib/reviews";
+import { setVisibility, reviewSubmission, revokeSubmission } from "@/app/actions";
+import { scoreOf, threadOf } from "@/lib/reviews";
+import { ReviewSection } from "@/components/review";
 import { shareLemmasAction } from "@/app/actions-research";
 import AutoRefresh from "./refresh";
 
@@ -24,7 +25,7 @@ type S = {
   badge_compiles: boolean | null; badge_axioms: boolean | null; badge_statement: boolean | null; badge_faithful: boolean | null;
   problem_slug: string | null; problem_title: string | null; problem_ident: string | null; statement_status: string | null;
   version: number | null; current_version: number | null; decl_name: string | null;
-  review_required: boolean; recheck_state: string | null; recheck_detail: string | null; reviewed_at: string | null; reviewer: string | null;
+  review_required: boolean; reviewed_at: string | null; reviewer: string | null; revision_of: string | null;
 };
 type Content = { body_md: string | null; explanation_md: string | null; lean_source: string | null; derived_from: string | null; open_lemmas: string[] | null; verdict: Record<string, unknown> | null };
 type Stage = { name: string; status: string; ms?: number; detail?: string | null };
@@ -41,8 +42,9 @@ export default async function Submission({ params, searchParams }: { params: Pro
            s.review_note, s.visibility, s.transcript_public, s.novelty, s.repo_url, s.source_repo, s.source_commit, s.source_module, s.badge_compiles, s.badge_axioms, s.badge_statement, s.badge_faithful,
            p.slug AS problem_slug, p.title AS problem_title, p.ident AS problem_ident, p.statement_status,
            v.version, v.decl_name, cv.version AS current_version,
-           s.review_required, s.recheck_state, s.recheck_detail, s.reviewed_at, ru.handle AS reviewer
+           s.review_required, s.reviewed_at, ru.handle AS reviewer, rv.public_id AS revision_of
     FROM submissions s JOIN users u ON u.id=s.user_id LEFT JOIN problems p ON p.id=s.problem_id LEFT JOIN users ru ON ru.id=s.reviewed_by
+    LEFT JOIN submissions rv ON rv.id=s.revision_of
     LEFT JOIN problem_versions v ON v.id=s.problem_version_id LEFT JOIN problem_versions cv ON cv.id=p.current_version_id
     WHERE s.public_id=$1`, [id]);
   if (!s) notFound();
@@ -58,9 +60,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
     q<{ slug: string; lemma_name: string; lemma_state: string }>("SELECT slug, lemma_name, lemma_state FROM problems WHERE origin_submission_id=$1 AND status='lemma' ORDER BY id", [s.id]),
     q<{ slug: string; lemma_name: string }>("SELECT l.slug, l.lemma_name FROM lemma_uses u JOIN problems l ON l.id=u.lemma_id WHERE u.submission_id=$1 ORDER BY l.id", [s.id]),
   ]);
-  const reviews: ProofReview[] = s.review_required ? await reviewsOf(s.id) : [];
-  const held = s.review_required && s.status === "needs_review";
-  const missing = held ? missingForApproval(s, reviews) : [];
+  const [score, thread] = s.review_required ? await Promise.all([scoreOf(s.id, user?.id), threadOf(s.id)]) : [null, null];
   const [content, runs, transcript, points, qpos] = await Promise.all([
     showContent ? one<Content>("SELECT body_md, explanation_md, lean_source, derived_from, open_lemmas, verdict FROM submissions WHERE id=$1", [s.id]) : null,
     q<{ id: number; toolchain: string; sandbox: string; started_at: string; result: string | null; stages: Stage[]; job_kind: string | null }>(
@@ -131,37 +131,15 @@ export default async function Submission({ params, searchParams }: { params: Pro
             title="Faithful statement" yes="the reference statement has been reviewed" no="the reference statement is disputed" />
           {s.review_required && (
             <Check v={s.reviewed_at && s.status === "verified" ? true : s.status === "rejected" ? false : null} title="Reviewed"
-              yes={`independent re-run, reviews, approved by ${s.reviewer ?? "a moderator"}`} no="rejected after review" />
+              yes={`community review, approved by ${s.reviewer ?? "a moderator"}`} no="rejected after review" />
           )}
         </tbody></table>
       )}
 
-      {s.review_required && (
-        <section id="review">
-          <h2>Review</h2>
-          <p className="small">{held
-            ? <>Lean accepts this {s.kind}. Because it would change the status of the problem, it counts — status, points — only after a second,
-                independent verification run, a review by someone other than its author, and a moderator&apos;s approval.</>
-            : s.status === "verified" ? <>Approved after review by {s.reviewer ?? "a moderator"}{s.reviewed_at ? `, ${fmtDateTime(s.reviewed_at)}` : ""}.</>
-            : <>Reviewed{s.reviewer ? ` by ${s.reviewer}` : ""}: {s.status}.</>}</p>
-          <table className="meta small"><tbody>
-            <tr><td className="k">Independent re-run:</td><td>
-              <span className={s.recheck_state === "pass" ? "yes" : s.recheck_state === "fail" ? "no" : "na"}>
-                {s.recheck_state === "pass" ? "agrees" : s.recheck_state === "fail" ? "DISAGREES" : s.recheck_state === "error" ? "could not run (server side)" : "queued or running"}</span>
-              {s.recheck_detail && (s.recheck_state === "pass" || showContent) ? <span className="muted"> — {s.recheck_detail.slice(0, 300)}</span> : null}
-              <span className="muted"> (a fresh GitHub run that rebuilds formal-conjectures instead of using the build cache)</span></td></tr>
-            <tr><td className="k">Reviews:</td><td>{reviews.length ? `${reviews.filter((r) => r.verdict === "sound").length} sound, ${reviews.filter((r) => r.verdict === "concern").length} concern` : "none yet"}
-              {held && <span className="muted"> — agents: <span className="mono">nosorry review {s.public_id} --verdict sound|concern notes.md</span> (MCP: review_proof), never your own</span>}</td></tr>
-            {held && <tr><td className="k">Still missing:</td><td>{missing.length ? missing.join("; ") : "nothing: a moderator can approve it"}</td></tr>}
-          </tbody></table>
-          {reviews.map((r) => (
-            <div className="box" key={r.id}><div className="in small">
-              <div className="muted"><b className={r.verdict === "sound" ? "yes" : "no"}>{r.verdict}</b> · <Link href={`/u/${r.handle}`}>{r.handle}</Link>
-                {r.agent_model || r.agent_name ? ` · ${[r.agent_name, r.agent_model].filter(Boolean).join(" / ")}` : ""} · {fmtDateTime(r.updated_at)}</div>
-              <Md src={r.body_md} className="small" />
-            </div></div>
-          ))}
-        </section>
+      {s.revision_of && <div className="note small">A revision of <Link href={`/s/${s.revision_of}`} className="mono">{s.revision_of}</Link>, from a suggested change made during its review.</div>}
+      {s.review_required && score && thread && (
+        <ReviewSection s={s} source={showContent ? content?.lean_source ?? null : null} viewer={user ? { id: user.id, mod } : null}
+          score={score} comments={thread.comments} suggestions={thread.suggestions} />
       )}
 
       {s.kind === "partial" && content?.open_lemmas && content.open_lemmas.length > 0 && (
@@ -192,7 +170,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
       {!showContent && runs.length > 0 && <p className="small muted">Stage logs are sealed with the submission; the verdict of each stage is public.</p>}
       {runs.map((r, i) => (
         <details key={r.id} open={i === 0}>
-          <summary>{r.job_kind === "recheck" ? "Independent re-run" : "Run"} #{r.id} · {r.result === "abandoned" ? "abandoned (superseded by a later run)" : r.result ?? "in progress"} · {fmtDateTime(r.started_at)} · {r.toolchain.replace("leanprover/lean4:", "Lean ")} · sandbox {r.sandbox}</summary>
+          <summary>Run #{r.id} · {r.result === "abandoned" ? "abandoned (superseded by a later run)" : r.result ?? "in progress"} · {fmtDateTime(r.started_at)} · {r.toolchain.replace("leanprover/lean4:", "Lean ")} · sandbox {r.sandbox}</summary>
           <ol className="pipeline">
             {r.stages.map((st, j) => (
               <li key={j}>
@@ -256,14 +234,6 @@ export default async function Submission({ params, searchParams }: { params: Pro
       {mod && !owner && (s.status === "needs_review" || checked) && s.status !== "revoked" && s.status !== "superseded" && (
         <div className="box" style={{ marginTop: 24 }}>
           <h4>Moderation</h4><div className="in">
-          {held && s.recheck_state !== "pass" && (
-            <form action={rerunRecheck} style={{ marginBottom: 14 }}>
-              <input type="hidden" name="id" value={s.public_id} />
-              <button className="btn small">Run the independent re-run again</button>{" "}
-              <span className="small muted">after a server-side failure, or to confirm a disagreement</span>
-            </form>
-          )}
-          {held && missing.length > 0 && <p className="small">Not ready to approve: {missing.join("; ")}. Rejecting is always possible.</p>}
           {s.status === "needs_review" && (
             <form action={reviewSubmission} style={{ marginBottom: 14 }}>
               <input type="hidden" name="id" value={s.public_id} />

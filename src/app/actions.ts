@@ -14,7 +14,6 @@ import { rescoreProblem } from "../../shared/ledger.mjs";
 import { preflight } from "../../shared/preflight.mjs";
 import { saveThread } from "@/lib/research";
 import { newApiKey } from "@/lib/apikeys";
-import { missingForApproval } from "@/lib/reviews";
 
 const str = (f: FormData, k: string, max = 100_000) => String(f.get(k) ?? "").slice(0, max).trim();
 const safeNext = (n: string) => (/^\/(?![/\\])/.test(n) ? n : "/");
@@ -207,23 +206,13 @@ async function reviewSubmissionImpl(f: FormData) {
     if (!s) throw new Error("this submission is not waiting for review (already decided?)");
     if (s.user_id === mod.id) throw new Error("you cannot review your own submission");
     if (s.kind === "partial" && points > 0 && !note) throw new Error("a public note is required when awarding points to a partial proof");
-    // A result that would change the problem's status: approved only once the independent re-run agrees and someone other
-    // than the author found it sound. A concern raised by a reviewer must be answered in the public note.
-    if (s.review_required && decision === "accept") {
-      const { rows: reviews } = await c.query("SELECT user_id, verdict FROM proof_reviews WHERE submission_id=$1", [s.id]);
-      const missing = missingForApproval(s, reviews);
-      if (missing.length) throw new Error(`not ready to approve: ${missing.join("; ")}`);
-      if (reviews.some((r: { verdict: string }) => r.verdict === "concern") && !note) throw new Error("a reviewer raised a concern: answer it in the public note");
-      if (reviews.some((r: { user_id: number; verdict: string }) => Number(r.user_id) === Number(mod.id) && r.verdict === "sound") && reviews.filter((r: { verdict: string }) => r.verdict === "sound").length < 2)
-        throw new Error("you are the only reviewer who found it sound: another review is needed before you approve it");
-    }
     const status = decision === "accept" ? (s.kind === "proof" || s.kind === "disproof" ? "verified" : s.kind === "partial" ? "partial" : "accepted") : "rejected";
     await c.query(`UPDATE submissions SET status=$2, review_note=$3, reviewed_by=$4,
                    reviewed_at = CASE WHEN review_required THEN now() ELSE reviewed_at END,
                    verified_at = CASE WHEN $2 = 'verified' THEN COALESCE(verified_at, now()) ELSE verified_at END WHERE id=$1`, [s.id, status, note, mod.id]);
     if (s.review_required && s.problem_id) {
       await emit(c, s.problem_id, "review.decision", { userId: mod.id, refType: "submission", refId: s.id,
-        summary: decision === "accept" ? `${s.public_id} approved after review: it now counts (${s.kind})` : `${s.public_id} rejected after review${note ? `: ${note}` : ""}` });
+        summary: decision === "accept" ? `${s.public_id} approved after community review: it now counts (${s.kind})` : `${s.public_id} rejected after review${note ? `: ${note}` : ""}` });
       if (decision === "accept") await emit(c, s.problem_id, "verified", { userId: s.user_id, refType: "submission", refId: s.id, summary: `Verified ${s.kind}, reviewed and approved` });
     }
     if (decision === "accept") {
@@ -271,22 +260,6 @@ async function reviewSubmissionImpl(f: FormData) {
   await refreshBoard();
   revalidatePath(`/s/${id}`);
   revalidatePath("/mod");
-}
-
-/** Run the independent re-check of a held result again (after a server-side failure, or to confirm a disagreement). */
-async function rerunRecheckImpl(f: FormData) {
-  const mod = await requireMod();
-  const id = str(f, "id", 40);
-  await tx(async (c) => {
-    const { rows: [s] } = await c.query("SELECT id FROM submissions WHERE public_id=$1 AND review_required AND status='needs_review' FOR UPDATE", [id]);
-    if (!s) throw new Error("this submission is not waiting for review");
-    const { rowCount } = await c.query("SELECT 1 FROM jobs WHERE submission_id=$1 AND kind='recheck' AND state IN ('queued','running')", [s.id]);
-    if (rowCount) throw new Error("a re-run is already queued or running");
-    await c.query("INSERT INTO jobs(kind, submission_id, priority) VALUES ('recheck', $1, 130)", [s.id]);
-    await c.query("UPDATE submissions SET recheck_state='pending', recheck_detail=NULL WHERE id=$1", [s.id]);
-    await c.query("INSERT INTO audit_log(actor_id, action, target, data, ip) VALUES ($1,'recheck',$2,'{}',$3)", [mod.id, id, await clientIp()]);
-  });
-  revalidatePath(`/s/${id}`);
 }
 
 /** Revoke a submission after the fact (cheating, wrong proof discovered, misattribution). Points are reversed in the ledger. */
@@ -439,7 +412,6 @@ async function guarded(f: FormData, fn: (f: FormData) => Promise<unknown>, back:
   }
 }
 export async function reviewSubmission(f: FormData) { await guarded(f, reviewSubmissionImpl, f => `/s/${str(f, "id", 40)}`); }
-export async function rerunRecheck(f: FormData) { await guarded(f, rerunRecheckImpl, f => `/s/${str(f, "id", 40)}`); }
 export async function revokeSubmission(f: FormData) { await guarded(f, revokeSubmissionImpl, f => `/s/${str(f, "id", 40)}`); }
 export async function resolveCritique(f: FormData) { await guarded(f, resolveCritiqueImpl, () => "/mod"); }
 export async function setStatementStatus(f: FormData) { await guarded(f, setStatementStatusImpl, f => `/p/${str(f, "slug", 200)}?tab=statement`); }

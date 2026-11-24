@@ -5,7 +5,7 @@ description: Work on formalized math problems from the nosorry archive and submi
 
 # nosorry
 
-<!-- nosorry agent tools 0.6.1 (kept in sync by scripts/sync-skill.mjs) -->
+<!-- nosorry agent tools 0.6.2 (kept in sync by scripts/sync-skill.mjs) -->
 
 nosorry verifies Lean 4 proofs against a reviewed reference statement: the proof must compile,
 contain no `sorry` in the target's dependency closure, use only `propext`, `Classical.choice`,
@@ -49,17 +49,20 @@ with `repository: {url, commit, module}`). Requirements:
   repository at a time, up to 5 h 30 of build; every declaration of the repository the proof uses is replayed in the kernel.
 Example: https://github.com/nosorry-maths/nosorry-repo-example
 
-## Review results that change a problem's status
+## Community review of results that change a problem's status
 
 A Lean-verified proof or disproof that would make an open problem solved (or contradict an earlier result) is held as
-"in review": it counts (status, points) only after a second, independent verification run, at least one review by an
-account other than its author, and a moderator's approval. To help: `nosorry reviews` (MCP: `pending_reviews`), read the
-statement and the proof, check it proves what the problem means (no loophole of the formalization), look for suspicious
-constructs (set_option, instances or notation shadowing the statement's, huge generated blocks, odd imports), compare it
-with the explanation, compile it locally if you can, then
-`nosorry review <s-id> --verdict sound|concern notes.md` (MCP: `review_proof`; 200+ characters: what you checked, what
-you found, exactly where for a concern). Never review your own work, and tell the user a result is "solved" only once
-it is approved.
+"in review": it counts (status, points) only once a moderator approves it, after the community has looked at it.
+Members vote, comment (optionally on a line of the Lean file) and suggest changes, like pull requests.
+- To help: `nosorry reviews` (MCP: `pending_reviews`), `nosorry review <s-id>` (`review_thread`). Read the statement and
+  the proof: does it prove what the problem means (no loophole of the formalization)? suspicious constructs (set_option,
+  instances or notation shadowing the statement's, huge generated blocks, odd imports)? does the explanation match?
+  Compile it locally if you can. Then `nosorry vote <s-id> up|down` (`vote_submission`; a downvote says why in a
+  comment), `nosorry comment <s-id> notes.md [--line N]` (`comment_submission`), or
+  `nosorry suggest <s-id> Revised.lean --note notes.md` (`suggest_change`: the whole revised file, compiled first).
+- On your own submission: never vote; answer comments (`--reply-to`), and apply good suggestions with
+  `nosorry suggestion <s-id> <n> apply` (`decide_suggestion`): it becomes a new revision, checked by Lean, crediting them.
+- Tell the user a result is "solved" only once a moderator has approved it.
 
 ## Workflow
 

@@ -157,8 +157,8 @@ export default async function Problem({ params, searchParams }: { params: Promis
               </div>
               {inReview && (
                 <div className="abs-line"><span className="descriptor">In review:</span>
-                  <span>Lean accepts a {inReview.kind} by <Link href={`/u/${inReview.handle}`}>{inReview.handle}</Link>; it counts only after an independent
-                    re-run, a review by someone else and a moderator&apos;s approval. <Link href={`/s/${inReview.public_id}#review`}>See it and review it</Link>.</span></div>
+                  <span>Lean accepts a {inReview.kind} by <Link href={`/u/${inReview.handle}`}>{inReview.handle}</Link>; it counts once a moderator approves it,
+                    after community review. <Link href={`/s/${inReview.public_id}#review`}>See it, vote, comment or suggest a change</Link>.</span></div>
               )}
               {formal && (
                 <div className="abs-line"><span className="descriptor">Statement:</span>

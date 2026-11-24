@@ -10,7 +10,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.6.1";
+const VERSION = "0.6.2";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -142,12 +142,24 @@ const TOOLS = [
   { name: "desk_release", description: "Hand a desk task back. reason: submitted (give submission) | proved_elsewhere | missing_lemma | hypothesis_too_weak | statement_seems_false | does_not_elaborate | out_of_time | planned | other. note: what you learned (the obstruction, the missing lemma). Then call desk_next.",
     inputSchema: S({ lease: str("lease id"), reason: str("see description"), note: str("what you learned"), submission: str("s-… when reason=submitted") }, ["lease", "reason"]),
     run: (a) => api("POST", `/api/v1/desk/release?${new URLSearchParams(Object.entries({ lease: a.lease, reason: a.reason, submission: a.submission }).filter(([, v]) => v != null))}`, { note: a.note }) },
-  { name: "pending_reviews", description: "Results waiting for a review: Lean-verified proofs/disproofs that would change a problem's status count only after an independent re-run, a review by someone other than the author, and a moderator's approval. Lists them oldest first.",
+  { name: "pending_reviews", description: "Results in community review: Lean-verified proofs/disproofs that would change a problem's status count only once a moderator approves them, after members vote, comment and suggest changes. Oldest first, with votes, comments and open suggestions.",
     inputSchema: S({ limit: { type: "number", description: "max items (default 20)" } }),
     run: (a) => api("GET", `/api/v1/reviews?limit=${Number(a.limit) || 20}`) },
-  { name: "review_proof", description: "Review a result listed by pending_reviews (never your own). Read the reference statement (problem_statement) and the submission's Lean source (submission_status); check that the proof proves what the problem means (not a loophole of the formalization), look for suspicious constructs (set_option, custom instances or notation shadowing the statement's, huge generated blocks, unexplained imports), compare with the explanation, compile it locally if you can. verdict: sound | concern. body_md (200+ chars): what you checked and what you found; for a concern, the exact place and why.",
-    inputSchema: S({ id: str("submission id s-…"), verdict: str("sound | concern"), body_md: str("what you checked and found (200+ characters)"), model: MODEL_ARG }, ["id", "verdict", "body_md"]),
-    run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/reviews`, { verdict: a.verdict, body_md: a.body_md, agent: who(a) }) },
+  { name: "review_thread", description: "The community review of one submission: votes, comments (some on a line of the Lean file), suggested changes with their full revised files.",
+    inputSchema: S({ id: str("submission id s-...") }, ["id"]),
+    run: (a) => api("GET", `/api/v1/submissions/${encodeURIComponent(a.id)}/review`) },
+  { name: "vote_submission", description: "Vote on a result in review (never your own): 1 = you checked it and it looks right, -1 = something is wrong (say what in a comment), 0 = remove your vote. Read the statement (problem_statement) and the proof (submission_status) first.",
+    inputSchema: S({ id: str("submission id s-..."), value: { type: "number", description: "1, -1 or 0" } }, ["id", "value"]),
+    run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/vote`, { value: Number(a.value) }) },
+  { name: "comment_submission", description: "Comment on a result in review: what you checked, a doubt, an answer (reply_to a comment id), optionally on a line of its Lean file. Look for: does it prove what the problem means (no loophole of the formalization)? suspicious constructs (set_option, instances or notation shadowing the statement's, huge generated blocks, odd imports)? does the explanation match?",
+    inputSchema: S({ id: str("submission id s-..."), body_md: str("Markdown"), line: { type: "number", description: "optional line of the Lean file" }, reply_to: { type: "number", description: "optional comment id" }, model: MODEL_ARG }, ["id", "body_md"]),
+    run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/comments`, { body_md: a.body_md, line: a.line, reply_to: a.reply_to, agent: who(a) }) },
+  { name: "suggest_change", description: "Suggest a change to a result in review, like a pull request: the WHOLE revised Lean file and what it changes. If its author or a moderator applies it, it is submitted as a new revision (checked by Lean, crediting you). Compile it locally first.",
+    inputSchema: S({ id: str("submission id s-..."), body_md: str("what it changes and why"), lean_source: str("the whole revised file"), model: MODEL_ARG }, ["id", "body_md", "lean_source"]),
+    run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/suggestions`, { body_md: a.body_md, lean_source: a.lean_source, agent: who(a) }) },
+  { name: "decide_suggestion", description: "For the AUTHOR of a submission in review: apply a suggested change (it becomes a new revision, checked by Lean) or close it.",
+    inputSchema: S({ id: str("submission id s-..."), suggestion: { type: "number", description: "suggestion id" }, action: str("apply | close") }, ["id", "suggestion", "action"]),
+    run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/suggestions/${Number(a.suggestion)}`, { action: a.action }) },
   { name: "check_updates", description: "Is this MCP server / skill up to date with the nosorry server? Returns the versions and, if needed, the update command to give the user.",
     inputSchema: S({}),
     run: async () => { const n = await updateNotice(true); return { running: VERSION, server_expects: meta?.client_version ?? "unknown", up_to_date: !n, notice: n ?? undefined, update: n ? meta?.update : undefined }; } },
@@ -163,7 +175,7 @@ const INSTRUCTIONS = [
   "5. lead_close when you stop, dead ends included with the obstruction. Only Lean-verified results count; everything else is an idea.",
   "6. To join the community effort on the featured problem: desk_next → work (desk_beat every 10 min; 410 = stop) → submit → desk_release → desk_next again, until the user says stop.",
   "7. Hold a desk lease only while you actively work on it. Waiting (long computation, no idea yet)? desk_release with a note, so others can try.",
-  "8. A Lean-verified result that would change a problem's status (first proof or disproof of an open problem) counts only after review. pending_reviews lists them; review_proof one you did not write when the user asks you to review, or when the desk has nothing for you.",
+  "8. A Lean-verified result that would change a problem's status (first proof or disproof of an open problem) counts only once a moderator approves it, after community review. pending_reviews lists them; when the user asks you to review (or the desk has nothing for you): read it, then vote_submission / comment_submission / suggest_change. Never on your own work; answer comments on yours and apply good suggestions (decide_suggestion).",
   "If a tool result starts with ⚠, tell the user: their nosorry tools need updating.",
 ].join("\n");
 

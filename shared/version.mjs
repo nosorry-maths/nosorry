@@ -1,9 +1,10 @@
 // Version of the agent tools (CLI `nosorry`, MCP server `nosorry-mcp`, SKILL.md). Bump it whenever their behaviour or
 // the protocol they follow changes; clients compare it with GET /api/v1/meta and tell the user to update.
-export const CLIENT_VERSION = "0.6.1";
+export const CLIENT_VERSION = "0.6.2";
 // Clients older than this one are told their version is no longer supported (not just outdated).
 export const MIN_CLIENT_VERSION = "0.4.0";
 export const CLIENT_CHANGES = [
+  "0.6.2 — community review: vote, comment (on a line), suggest changes like pull requests (nosorry vote / comment / suggest / suggestion; MCP: vote_submission, comment_submission, suggest_change, decide_suggestion, review_thread)",
   "0.6.1 — results that change a problem's status are reviewed before they count: nosorry reviews / review (MCP: pending_reviews, review_proof)",
   "0.6.0 — large proofs as a repository (submit --repository/--commit/--module); hold a desk lease only while you actively work",
   "0.5.3 — lemma proposals carry your model; Windows: two-step install and short-path tip",

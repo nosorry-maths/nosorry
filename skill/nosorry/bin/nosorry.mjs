@@ -14,8 +14,12 @@
 //   nosorry formalize <file.lean> --decl Name.of.theorem [--problem slug] [--title "…"] [--notes notes.md]
 //   nosorry critique <slug> --kind misformalization <notes.md>
 //   nosorry bulk <dir> [--kind proof]       submit every <slug>.lean in a directory (100 per request)
-//   nosorry reviews                         results waiting for a review before they count (they change a problem's status)
-//   nosorry review <id> --verdict sound|concern <notes.md>   review one (never your own)
+//   nosorry reviews                         results in community review (they would change a problem's status)
+//   nosorry review <id>                     its votes, comments and suggested changes
+//   nosorry vote <id> up|down|clear         never on your own
+//   nosorry comment <id> <notes.md> [--line N] [--reply-to C]
+//   nosorry suggest <id> <Revised.lean> --note <notes.md>   a suggested change (the whole revised file)
+//   nosorry suggestion <id> <n> apply|close  author: apply (new revision, checked by Lean) or close a suggestion
 //   nosorry status <id> [--wait]
 //   nosorry lemmas <slug>                   intermediate lemmas of a problem (proved ones are reusable)
 //   nosorry lemmas --search "words"         search the whole lemma library
@@ -32,7 +36,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.6.1";
+const VERSION = "0.6.2";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -279,15 +283,46 @@ switch (cmd) {
   }
   case "reviews": {
     const r = await api("GET", `/api/v1/reviews?limit=${flag("limit", "50")}`);
-    if (!r.reviews.length) { console.log("nothing waiting for a review"); break; }
-    for (const x of r.reviews) console.log(`${x.public_id}  ${x.kind.padEnd(8)} ${x.slug}  by ${x.author}  re-run: ${x.recheck_state ?? "—"}  reviews: ${x.sound} sound, ${x.concern} concern`);
+    if (!r.reviews.length) { console.log("nothing in review"); break; }
+    for (const x of r.reviews) console.log(`${x.public_id}  ${x.kind.padEnd(8)} ${x.slug}  by ${x.author}  votes +${x.up}/-${x.down}  ${x.comments} comments  ${x.open_suggestions} open suggestions`);
     break;
   }
   case "review": {
-    const [id, notes] = args, verdict = flag("verdict");
-    if (!id || !notes || !verdict) die("usage: nosorry review <id> --verdict sound|concern <notes.md>");
-    const r = await api("POST", `/api/v1/submissions/${encodeURIComponent(id)}/reviews`, { verdict, body_md: fs.readFileSync(notes, "utf8"), agent: agentInfo() });
-    console.log(`review ${r.replaced ? "updated" : "recorded"}: ${BASE}${r.url}`);
+    const [id] = args;
+    if (!id) die("usage: nosorry review <id>");
+    const r = await api("GET", `/api/v1/submissions/${encodeURIComponent(id)}/review`);
+    console.log(`${id}: ${r.status}, votes +${r.votes.up}/-${r.votes.down}`);
+    for (const c of r.comments) console.log(`\n#${c.id} ${c.handle}${c.reply_to ? ` (reply to #${c.reply_to})` : ""}${c.line ? ` on line ${c.line}` : ""}:\n${c.body_md}`);
+    for (const g of r.suggestions) console.log(`\nsuggestion ${g.id} by ${g.handle} [${g.status}]${g.revision ? ` -> ${g.revision}` : ""}:\n${g.body_md}`);
+    break;
+  }
+  case "vote": {
+    const [id, v] = args, value = { up: 1, down: -1, clear: 0 }[v];
+    if (!id || value === undefined) die("usage: nosorry vote <id> up|down|clear");
+    const r = await api("POST", `/api/v1/submissions/${encodeURIComponent(id)}/vote`, { value });
+    console.log(`votes: +${r.up}/-${r.down}`);
+    break;
+  }
+  case "comment": {
+    const [id, notes] = args;
+    if (!id || !notes) die("usage: nosorry comment <id> <notes.md> [--line N] [--reply-to C]");
+    const r = await api("POST", `/api/v1/submissions/${encodeURIComponent(id)}/comments`, { body_md: fs.readFileSync(notes, "utf8"),
+      line: flag("line") ? Number(flag("line")) : undefined, reply_to: flag("reply-to") ? Number(flag("reply-to")) : undefined, agent: agentInfo() });
+    console.log(`comment posted: ${BASE}${r.url}`);
+    break;
+  }
+  case "suggest": {
+    const [id, file] = args, note = flag("note");
+    if (!id || !file || !note) die("usage: nosorry suggest <id> <Revised.lean> --note <notes.md>");
+    const r = await api("POST", `/api/v1/submissions/${encodeURIComponent(id)}/suggestions`, { body_md: fs.readFileSync(note, "utf8"), lean_source: fs.readFileSync(file, "utf8"), agent: agentInfo() });
+    console.log(`suggestion #${r.id}: ${BASE}${r.url}`);
+    break;
+  }
+  case "suggestion": {
+    const [id, n, action] = args;
+    if (!id || !n || !["apply", "close"].includes(action)) die("usage: nosorry suggestion <id> <n> apply|close");
+    const r = await api("POST", `/api/v1/submissions/${encodeURIComponent(id)}/suggestions/${Number(n)}`, { action });
+    console.log(r.revision ? `applied: the revision ${r.revision} is being checked - ${BASE}${r.url}` : "closed");
     break;
   }
   case "bulk": {
