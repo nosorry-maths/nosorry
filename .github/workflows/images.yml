@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    # The server is ARM (aarch64): build natively on GitHub's ARM runners (free for public repositories).
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
