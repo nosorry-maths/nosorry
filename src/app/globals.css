@@ -624,8 +624,9 @@ h2 .public-tag { font-weight: normal; font-size: 13px; color: var(--ok); }
 .vote-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .vote-line form { display: inline-flex; margin: 0; }
 /* Transcript: what the cleaner removed is shown, not silently cut. */
-.redact { display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 6px; margin: 0 1px; border-radius: 9px; background: #eef3ea; border: 1px solid #b9cfae; color: #2f5a1f; white-space: nowrap; font-family: var(--font); cursor: help; }
-.redact.folder { padding: 0 4px; background: #f1f1f1; border-color: #ccc; color: #555; }
+.redact { display: inline-block; vertical-align: baseline; font: 600 9.5px/1.6 var(--font); letter-spacing: .06em; text-transform: uppercase;
+  padding: 0 6px; margin: 0 1px; border-radius: 2px; background: #3a3a3a; color: #e8e8e8; white-space: nowrap; cursor: help; }
+.redact.folder { background: #9a9a9a; color: #fff; padding: 0 4px; letter-spacing: 0; }
 .tr-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
 .tr-tools select { font-size: 13px; width: auto; max-width: 100%; }
 .tr-legend { font-size: 12px; color: #555; margin: 4px 0 8px; }

@@ -8,7 +8,7 @@ const LABEL: Record<string, string> = {
   path: "path", user: "user name", ip: "IP address", email: "e-mail", phone: "phone number", host: "host name",
   "api-key": "API key", "nosorry-key": "nosorry key", "github-token": "GitHub token", "slack-token": "Slack token",
   "aws-key": "AWS key", "google-key": "Google key", jwt: "token", "private-key": "private key", "ssh-key": "SSH key",
-  secret: "secret", folder: "folder",
+  secret: "secret", folder: "folder", setup: "agent setup",
 };
 
 /** Kind of each mark, for the legend and the badge. */
@@ -27,9 +27,10 @@ export function Redacted({ text }: { text: string }): ReactNode {
     const kind = kindOf(m as RegExpExecArray);
     out.push(
       <span key={i++} className={`redact${kind === "folder" ? " folder" : ""}`} title={`Removed automatically before publication: ${LABEL[kind] ?? kind}`}>
-        <span aria-hidden="true">🔒</span>{kind === "folder" ? "…/" : ` ${LABEL[kind] ?? kind} hidden`}
+        {kind === "folder" ? "…" : LABEL[kind] ?? kind}
       </span>,
     );
+    if (kind === "folder") out.push("/");
     last = at + m[0].length;
   }
   if (last < text.length) out.push(text.slice(last));

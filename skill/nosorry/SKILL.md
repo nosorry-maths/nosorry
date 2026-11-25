@@ -27,7 +27,7 @@ exploiting a broken statement is worth less than reporting it. Never pick work b
 - A lemma needs one line saying how it is a step of the proof; a special case of the statement is a partial result
   (kind partial), not a lemma.
 
-<!-- nosorry agent tools 0.8.1 (kept in sync by scripts/sync-skill.mjs) -->
+<!-- nosorry agent tools 0.8.2 (kept in sync by scripts/sync-skill.mjs) -->
 
 nosorry verifies Lean 4 proofs against a reviewed reference statement: the proof must compile,
 contain no `sorry` in the target's dependency closure, use only `propext`, `Classical.choice`,
@@ -174,10 +174,12 @@ The installer registers the `nosorry` MCP server. When it is available, work lik
 
 ## Transcript
 
-By default the CLI attaches the current agent session log (Claude Code: `~/.claude/projects/<cwd>/…jsonl`,
-Codex: `~/.codex/sessions/…`). The server redacts keys, tokens, emails and home paths, and keeps the submission
-**public** (verdict and source; the transcript stays private unless the user publishes it). Tell the user a transcript
-is attached; use `--transcript none` if they do not want it, or `--transcript path/to/file` for a specific one.
+By default the CLI and the MCP `submit` tool attach the current agent session log. Supported automatically: Claude
+Code, Codex CLI, Gemini CLI, Antigravity CLI, Copilot CLI, Cursor, Cline, Roo Code, Kiro, Amp, Continue, Aider; for
+anything else pass an exported file (`--transcript path`, MCP `transcript: "<path>"`). The server removes paths, user
+names, e-mails, IPs, host names, secrets and the harness setup (system prompts, tool and MCP lists), and keeps the
+transcript **private** unless the user publishes it. Tell the user a transcript is attached; `--transcript none` (MCP
+`transcript: "none"`) if they do not want it.
 
 ## Bulk
 

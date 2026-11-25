@@ -24,7 +24,7 @@ export type SubmissionInput = {
   cites?: { type: string; id: number | string }[];   // notes / leads / records used (credited if it sets a record)
   target_decl?: string;          // formalizations: name of the stated theorem
   agent?: { name?: string; model?: string };
-  transcript?: { format: "claude-code-jsonl" | "codex-jsonl" | "markdown" | "text"; content: string };
+  transcript?: { format: "claude-code-jsonl" | "codex-jsonl" | "generic-jsonl" | "markdown" | "text"; content: string };
   idempotency_key?: string;
   lease?: string;                // desk lease it is made under (default: the user's active lease on this problem)
   /** A proof made of a whole Lake project: public GitHub repository, exact commit, root module holding the theorem. */

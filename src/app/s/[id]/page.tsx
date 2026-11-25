@@ -246,7 +246,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
         </p>
         <TranscriptTools base={`/s/${s.public_id}/transcript`} />
         {legend.length > 0 && (
-          <p className="tr-legend"><span className="redact" title="Removed automatically before publication"><span aria-hidden="true">🔒</span> hidden</span>{" "}
+          <p className="tr-legend"><span className="redact" title="Removed automatically before publication">hidden</span>{" "}
             marks what was removed automatically before anyone could read it: {legend.map(([k, n], i) => <span key={k}>{i > 0 && ", "}{n} {k}{n === 1 ? "" : "s"}</span>)}.
             File names are kept; the folders above them are not.</p>
         )}

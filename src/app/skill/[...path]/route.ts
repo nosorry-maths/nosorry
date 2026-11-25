@@ -8,6 +8,7 @@ const FILES: Record<string, string> = {
   "bin/nosorry.mjs": "skill/nosorry/bin/nosorry.mjs",
   "bin/nosorry-mcp.mjs": "skill/nosorry/bin/nosorry-mcp.mjs",
   "lib/preflight.mjs": "skill/nosorry/lib/preflight.mjs",
+  "lib/transcripts.mjs": "skill/nosorry/lib/transcripts.mjs",
 };
 // The referee skill (same tools, another role), installed next to the prover skill.
 const REFEREE = "skill/nosorry-referee/SKILL.md";

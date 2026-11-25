@@ -45,17 +45,64 @@ function namesIn(text: string): string[] {
   return [...out];
 }
 
+// `ls -l` output names the file owner and group (often the person's account name): "-rw-r--r-- 1 owner group 977 …".
+// Also inside JSON strings, where the line breaks are written \n.
+const LS_LINE = /((?:^|\n|\\n)[-dlcbps][-rwxsStT]{9}[.+@]?\s+\d+\s+)([^\s\\"]+)(\s+)([^\s\\"]+)(?=\s+\d)/g;
+
+/**
+ * Agent harnesses write their own setup into the session log, not only the conversation: system prompts, the list of
+ * the user's tools, skills and MCP servers with their instructions, the working directory, the git state, the user's
+ * e-mail. None of it is the agent's work, and much of it identifies the person. For JSON-lines logs (Claude Code,
+ * Codex), those lines are dropped (each run replaced by one marker line) and <system-reminder> blocks inside messages
+ * are cut; metadata fields such as cwd and gitBranch are removed.
+ */
+const DROP_TYPES = new Set(["attachment", "system", "summary", "file-history-snapshot", "api-request-blob", "session_meta", "turn_context", "queue-operation"]);
+const DROP_ROLES = new Set(["system", "developer"]);
+const DROP_KEYS = ["cwd", "gitBranch", "userType", "entrypoint", "git", "git_state", "env", "instructions", "user_instructions", "base_instructions"];
+const SETUP_BLOCK = /<(system-reminder|environment_context|user_instructions|permissions instructions|app-context|skills_instructions|apps_instructions|collaboration_mode)>[\s\S]*?<\/\1>/g;
+
+function stripHarness(text: string): { text: string; count: number } {
+  const lines = text.split("\n");
+  const jsonish = lines.filter((l) => l.trim().startsWith("{")).length;
+  if (jsonish < Math.max(3, lines.filter((l) => l.trim()).length * 0.6)) return { text, count: 0 };
+  let count = 0, dropped = 0;
+  const out: string[] = [];
+  const flush = () => { if (dropped) { out.push(JSON.stringify({ type: "redacted", removed: dropped, note: "[redacted:setup]" })); dropped = 0; } };
+  const cutBlocks = (v: unknown): unknown => {
+    if (typeof v === "string") return v.replace(SETUP_BLOCK, () => { count++; return "[redacted:setup]"; });
+    if (Array.isArray(v)) return v.map(cutBlocks);
+    if (v && typeof v === "object") { const o = v as Record<string, unknown>; for (const k of Object.keys(o)) o[k] = cutBlocks(o[k]); return o; }
+    return v;
+  };
+  for (const line of lines) {
+    if (!line.trim().startsWith("{")) { flush(); out.push(line); continue; }
+    let o: Record<string, unknown>;
+    try { o = JSON.parse(line); } catch { flush(); out.push(line); continue; }
+    const p = (o.payload ?? o.message ?? {}) as Record<string, unknown>;
+    if (DROP_TYPES.has(String(o.type)) || DROP_TYPES.has(String(p.type)) || DROP_ROLES.has(String(p.role ?? ""))) { dropped++; count++; continue; }
+    flush();
+    for (const k of DROP_KEYS) { if (k in o) { delete o[k]; count++; } if (p && typeof p === "object" && k in p) { delete p[k]; count++; } }
+    out.push(JSON.stringify(cutBlocks(o)));
+  }
+  flush();
+  return { text: out.join("\n"), count };
+}
+
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // A file name with an extension is kept (it says which file was used); a folder name is not (it may name a person or a project).
 const base = (last: string | undefined) => (last && /^[^.]+(?:\.[A-Za-z0-9_-]{1,12})+$/.test(last) ? `…/${last}` : "[path]");
 
 export function redact(text: string): { text: string; count: number } {
-  let count = 0;
+  const h = stripHarness(text);
+  text = h.text;
+  let count = h.count;
   const names = namesIn(text);
+  for (const m of text.matchAll(LS_LINE)) for (const n of [m[2], m[4]]) if (n.length >= 3 && !COMMON_NAMES.has(n.toLowerCase()) && !/^\d+$/.test(n)) names.push(n);
   const sub = (re: RegExp, rep: string | ((...m: string[]) => string)) => {
     text = text.replace(re, (...m: string[]) => { count++; return typeof rep === "function" ? rep(...m) : rep.replace(/\$(\d)/g, (_, i) => m[Number(i)] ?? ""); });
   };
   for (const [re, rep] of SECRETS) sub(re, rep);
+  sub(LS_LINE, (_a, pre, _o, sp) => `${pre}[user]${sp}[user]`);
   sub(WIN_PATH, (_all, last) => base(last));
   sub(UNIX_PATH, (all) => base(all.split("/").filter(Boolean).pop()));
   for (const [re, rep] of PERSONAL) sub(re, rep);

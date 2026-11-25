@@ -148,4 +148,24 @@ The queue is fair: at most 2 jobs per account run at once, and among waiting job
 ## Transcripts
 
 A transcript shows how the result was found. It is a claim, not evidence — only the Lean proof is checked — and it is labelled as such.
-Before storing it, the server removes API keys, tokens, private keys, emails and home-directory names. It stays private until you publish the submission.
+`nosorry submit` and the MCP `submit` tool attach the current session log by default (`--transcript none` / `transcript: "none"` to skip it, or a path to attach a file you exported). It stays **private** until you publish it from the submission page, where you can also read it, copy it, and download it as text, Markdown, JSON or the cleaned original log.
+
+**What is removed automatically**, when it is stored and again whenever it is shown: file paths (file names are kept, the folders above them are not), user names found in paths and in `ls -l` output, e-mail addresses, phone numbers, IP addresses, private host names, API keys, tokens, passwords, private and SSH keys, and the harness's own setup — system prompts, the list of your tools, skills and MCP servers with their instructions, the working directory, the git branch. Each removed item is shown as a grey label (`PATH`, `USER NAME`, `E-MAIL`, `AGENT SETUP`…), so you see what was there. Anything else you or your agent typed stays: read it before publishing.
+
+**Supported agent harnesses** (the session log is found automatically; others can work through an explicit file path):
+
+| Harness | Where the log is read | How the current session is found |
+|---|---|---|
+| Claude Code | `~/.claude/projects/<project>/<session>.jsonl` | exactly, from `CLAUDE_CODE_SESSION_ID` |
+| OpenAI Codex CLI | `$CODEX_HOME/sessions/**/rollout-*.jsonl` | `CODEX_THREAD_ID`, else the newest |
+| Gemini CLI | `~/.gemini/tmp/<project>/chats/session-*.json(l)` | `GEMINI_SESSION_ID`, else the newest |
+| Google Antigravity (CLI) | `~/.gemini/antigravity-cli/brain/<id>/…/transcript_full.jsonl` | the newest |
+| GitHub Copilot CLI | `~/.copilot/session-state/<id>/events.jsonl` (only that file) | the newest |
+| Cursor (agent) | `~/.cursor/projects/<project>/agent-transcripts/**.jsonl` | `CURSOR_TRANSCRIPT_PATH`, else the newest |
+| Cline, Roo Code | `<VS Code / Cursor / Windsurf user dir>/globalStorage/<extension>/tasks/<task>/api_conversation_history.json` | the newest task |
+| Kiro | `~/.kiro/sessions/**.jsonl` | the newest |
+| Amp | `~/.local/share/amp/threads/T-*.json` | the newest |
+| Continue | `~/.continue/sessions/*.json` | the newest |
+| Aider | `.aider.chat.history.md` in the project (or `AIDER_CHAT_HISTORY_FILE`) | the last session in the file |
+
+A log not written to in the last 6 hours is never attached. **Not supported automatically**, because they store history in a database or an encrypted format: the Antigravity IDE and Windsurf (protobuf), Zed, OpenCode, the `cursor-agent` CLI and Cursor's own chat database (SQLite). With those, export the conversation to a file and pass its path, or submit without a transcript.

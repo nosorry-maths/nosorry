@@ -41,7 +41,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.8.1";
+const VERSION = "0.8.2";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -81,30 +81,15 @@ async function api(method, p, body) {
   return j;
 }
 
-/** Most recent agent session log for the current directory (Claude Code), or the latest Codex session. */
-function findTranscript() {
-  const home = os.homedir();
-  const enc = process.cwd().replace(/[^A-Za-z0-9]/g, "-");
-  const candidates = [];
-  const cc = path.join(home, ".claude", "projects", enc);
-  if (fs.existsSync(cc)) for (const f of fs.readdirSync(cc)) if (f.endsWith(".jsonl")) candidates.push({ p: path.join(cc, f), format: "claude-code-jsonl" });
-  const cx = path.join(home, ".codex", "sessions");
-  const walk = (d, depth) => { if (depth > 4 || !fs.existsSync(d)) return; for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-    const p = path.join(d, e.name); if (e.isDirectory()) walk(p, depth + 1); else if (e.name.endsWith(".jsonl")) candidates.push({ p, format: "codex-jsonl" }); } };
-  walk(cx, 0);
-  if (!candidates.length) return null;
-  candidates.sort((a, b) => fs.statSync(b.p).mtimeMs - fs.statSync(a.p).mtimeMs);
-  const c = candidates[0];
-  if (Date.now() - fs.statSync(c.p).mtimeMs > 6 * 3600_000) return null; // stale: not this session
-  return { format: c.format, content: fs.readFileSync(c.p, "utf8"), path: c.p };
-}
 
-function transcriptFor(opt) {
-  if (opt === "none") return undefined;
-  if (opt && opt !== "auto") return { format: opt.endsWith(".jsonl") ? "claude-code-jsonl" : "markdown", content: fs.readFileSync(opt, "utf8") };
-  const t = findTranscript();
-  if (t) console.error(`attaching transcript ${t.path} (${(t.content.length / 1024).toFixed(0)} KB, redacted server-side; private unless you publish it)`);
-  return t ? { format: t.format, content: t.content } : undefined;
+/** The agent session log to attach (see ../lib/transcripts.mjs for the supported harnesses), or undefined. */
+async function transcriptFor(opt) {
+  try {
+    const { transcriptFor: find } = await import(new URL("../lib/transcripts.mjs", import.meta.url));
+    const t = find(opt ?? "auto");
+    if (t) console.error(`attaching the ${t.harness} session log (${(t.content.length / 1024).toFixed(0)} KB; cleaned server-side, private unless you publish it)`);
+    return t ? { format: t.format, content: t.content } : undefined;
+  } catch { return undefined; }
 }
 
 // Which agent and model produced the work. Order: --agent/--model flags, NOSORRY_AGENT/NOSORRY_MODEL, the values saved
@@ -243,7 +228,7 @@ switch (cmd) {
     const src = repository ? null : fs.readFileSync(file, "utf8");
     const r = await api("POST", "/api/v1/submissions", {
       problem: slug, kind, lean_source: src ?? undefined, explanation_md: explain ? fs.readFileSync(explain, "utf8") : undefined,
-      derived_from: derived, repo_url: repo, agent, transcript: transcriptFor(tr), share_lemmas: shareLemmas,
+      derived_from: derived, repo_url: repo, agent, transcript: await transcriptFor(tr), share_lemmas: shareLemmas,
       ...(repository ? { repository: { url: repository, commit, module } } : {}),
       idempotency_key: crypto.createHash("sha256").update(slug + kind + (src ?? `${repository}@${commit}:${module}`)).digest("hex").slice(0, 40),
     });
@@ -259,7 +244,7 @@ switch (cmd) {
     const [slug, notes] = args;
     if (!slug || !notes) die("usage: nosorry finding <slug> <notes.md>");
     const repo = flag("repo");
-    const r = await api("POST", "/api/v1/submissions", { problem: slug, kind: "finding", body_md: fs.readFileSync(notes, "utf8"), repo_url: repo, agent: agentInfo(), transcript: transcriptFor(flag("transcript", "auto")) });
+    const r = await api("POST", "/api/v1/submissions", { problem: slug, kind: "finding", body_md: fs.readFileSync(notes, "utf8"), repo_url: repo, agent: agentInfo(), transcript: await transcriptFor(flag("transcript", "auto")) });
     console.log(r.ok ? `submitted ${r.id} ${BASE}${r.url}` : r.error);
     break;
   }
@@ -267,7 +252,7 @@ switch (cmd) {
     const decl = flag("decl") ?? die("--decl is required"), title = flag("title"), notes = flag("notes"), problem = flag("problem");
     const file = args[0] ?? die("usage: nosorry formalize <file.lean> --decl Name");
     const r = await api("POST", "/api/v1/submissions", { kind: "formalization", problem, target_decl: decl, title, lean_source: fs.readFileSync(file, "utf8"),
-      body_md: notes ? fs.readFileSync(notes, "utf8") : undefined, agent: agentInfo(), transcript: transcriptFor(flag("transcript", "auto")) });
+      body_md: notes ? fs.readFileSync(notes, "utf8") : undefined, agent: agentInfo(), transcript: await transcriptFor(flag("transcript", "auto")) });
     console.log(r.ok ? `submitted ${r.id} ${BASE}${r.url}` : r.error);
     break;
   }
