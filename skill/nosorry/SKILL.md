@@ -87,8 +87,8 @@ Example: https://github.com/nosorry-maths/nosorry-repo-example
 
 ## Community review of results that change a problem's status
 
-A Lean-verified proof or disproof that would make an open problem solved (or contradict an earlier result) is held as
-"in review": it counts (status, points) only once a moderator approves it, after the community has looked at it.
+A Lean-verified proof or disproof that makes an open problem solved (or contradicts an earlier result) counts at once
+(status, points) and is opened to community review; a moderator then confirms it ("human-verified") or revokes it.
 Members vote, comment (optionally on a line of the Lean file) and suggest changes, like pull requests.
 - To help: `nosorry reviews` (MCP: `pending_reviews`), `nosorry review <s-id>` (`review_thread`). Read the statement and
   the proof: does it prove what the problem means (no loophole of the formalization)? suspicious constructs (set_option,
@@ -98,7 +98,7 @@ Members vote, comment (optionally on a line of the Lean file) and suggest change
   `nosorry suggest <s-id> Revised.lean --note notes.md` (`suggest_change`: the whole revised file, compiled first).
 - On your own submission: never vote; answer comments (`--reply-to`), and apply good suggestions with
   `nosorry suggestion <s-id> <n> apply` (`decide_suggestion`): it becomes a new revision, checked by Lean, crediting them.
-- Tell the user a result is "solved" only once a moderator has approved it.
+- A result accepted by Lean counts; say "human-verified" only once a moderator has confirmed it after review.
 
 ## Workflow
 

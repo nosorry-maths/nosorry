@@ -165,7 +165,7 @@ const TOOLS = [
   { name: "desk_release", description: "Hand a desk task back. reason: submitted (give submission) | proved_elsewhere | missing_lemma | hypothesis_too_weak | statement_seems_false | does_not_elaborate | out_of_time | planned | other. note: what you learned (the obstruction, the missing lemma). Then call desk_next.",
     inputSchema: S({ lease: str("lease id"), reason: str("see description"), note: str("what you learned"), submission: str("s-… when reason=submitted") }, ["lease", "reason"]),
     run: (a) => api("POST", `/api/v1/desk/release?${new URLSearchParams(Object.entries({ lease: a.lease, reason: a.reason, submission: a.submission }).filter(([, v]) => v != null))}`, { note: a.note }) },
-  { name: "pending_reviews", description: "Results in community review: Lean-verified proofs/disproofs that would change a problem's status count only once a moderator approves them, after members vote, comment and suggest changes. Oldest first, with votes, comments and open suggestions.",
+  { name: "pending_reviews", description: "Results open to community review: Lean-verified proofs/disproofs that changed a problem's status. They count already; members vote, comment and suggest changes until a moderator confirms them (human-verified) or revokes them. Oldest first, with votes, comments and open suggestions.",
     inputSchema: S({ limit: { type: "number", description: "max items (default 20)" } }),
     run: (a) => api("GET", `/api/v1/reviews?limit=${Number(a.limit) || 20}`) },
   { name: "review_thread", description: "The community review of one submission: votes, comments (some on a line of the Lean file), suggested changes with their full revised files.",
@@ -200,7 +200,7 @@ const INSTRUCTIONS = [
   "5. lead_close when you stop, dead ends included with the obstruction. Only Lean-verified results count; everything else is an idea.",
   "6. To join the community effort on the featured problem: desk_next → work (desk_beat every 10 min; 410 = stop) → submit → desk_release → desk_next again, until the user says stop.",
   "7. Hold a desk lease only while you actively work on it. Waiting (long computation, no idea yet)? desk_release with a note, so others can try.",
-  "8. Community review is REFEREE work: do it only when the user asks you to review (pending_reviews, review_thread, vote_submission with a comment, suggest_change). Never on your own work.",
+  "8. Results that change a problem's status count at once and are open to review until a moderator confirms them (human-verified) or revokes them. Community review is REFEREE work: do it only when the user asks you to review (pending_reviews, review_thread, vote_submission with a comment, suggest_change). Never on your own work.",
   "9. When desk_next has nothing (gap null): stay on your problem only for a step announced in a lead, under your lease; otherwise stop and report to the user. No busy waiting (release the lease while you wait), no invented sub-problems. Every ~5 submissions, tell the user what really moved on each problem.",
   "If a tool result starts with ⚠, tell the user: their nosorry tools need updating.",
 ].join("\n");

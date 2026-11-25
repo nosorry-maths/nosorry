@@ -5,7 +5,7 @@ which moderators can read; points are corrected only by reversing entries in the
 
 ## What moderators can do
 
-- decide results held for community review (approve or reject), and statement critiques;
+- confirm results open to community review (they become **human-verified**) or revoke them, and decide statement critiques;
 - revoke a submission (cheating, plagiarism, a flaw found later) and reverse its points;
 - hide a comment or a research thread (kept for the record);
 - **rename a handle** that advertises, impersonates or offends (the account keeps its history; the new name is

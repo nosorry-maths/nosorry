@@ -363,6 +363,31 @@ async function refreshBoard() { await q("REFRESH MATERIALIZED VIEW CONCURRENTLY 
 const MAX_MANUAL_POINTS = 100;
 
 /** Accept or reject a submission waiting for human review (answer() proofs, findings, formalizations). */
+/**
+ * Confirm a result that already counts after community review: it becomes "human-verified" (the last state a result can
+ * reach). Members whose vote agreed (+1) get their referee points. To refuse it, a moderator revokes it instead.
+ */
+async function confirmReviewImpl(f: FormData) {
+  const mod = await requireMod();
+  const id = str(f, "id", 40), note = str(f, "note", 5000) || null;
+  await tx(async (c) => {
+    const { rows: [s] } = await c.query(
+      "SELECT * FROM submissions WHERE public_id=$1 AND status='verified' AND review_required AND reviewed_at IS NULL FOR UPDATE", [id]);
+    if (!s) throw new Error("this result is not open to review (already confirmed, or revoked?)");
+    if (s.user_id === mod.id) throw new Error("you cannot confirm your own submission");
+    await c.query("UPDATE submissions SET reviewed_at=now(), reviewed_by=$2, review_note=COALESCE($3, review_note) WHERE id=$1", [s.id, mod.id, note]);
+    if (s.problem_id) await emit(c, s.problem_id, "review.decision", { userId: mod.id, refType: "submission", refId: s.id,
+      summary: `${s.public_id} human-verified by ${mod.handle} after community review${note ? `: ${note}` : ""}` });
+    const { rows: voters } = await c.query(
+      "SELECT user_id FROM submission_votes WHERE submission_id=$1 AND value=1 AND user_id NOT IN ($2,$3)", [s.id, s.user_id, mod.id]);
+    for (const v of voters) await c.query("INSERT INTO point_events(user_id, submission_id, delta, reason, note, created_by) VALUES ($1,$2,$3,'referee:vote',$4,$5)",
+      [v.user_id, s.id, POINTS.referee.vote, `vote matched the decision on ${s.public_id}`, mod.id]);
+  });
+  await audit(mod.id, "submission.confirm", id);
+  await refreshBoard();
+  revalidatePath(`/s/${id}`);
+}
+
 async function reviewSubmissionImpl(f: FormData) {
   const mod = await requireMod();
   const id = str(f, "id", 40), decision = str(f, "decision", 10), note = str(f, "note", 5000) || null;
@@ -590,6 +615,7 @@ async function guarded(f: FormData, fn: (f: FormData) => Promise<unknown>, back:
     redirect(`${to}${to.includes("?") ? "&" : "?"}msg=${encodeURIComponent(msg.charAt(0).toUpperCase() + msg.slice(1) + ".")}`);
   }
 }
+export async function confirmReview(f: FormData) { await guarded(f, confirmReviewImpl, f => `/s/${str(f, "id", 40)}`); }
 export async function reviewSubmission(f: FormData) { await guarded(f, reviewSubmissionImpl, f => `/s/${str(f, "id", 40)}`); }
 export async function revokeSubmission(f: FormData) { await guarded(f, revokeSubmissionImpl, f => `/s/${str(f, "id", 40)}`); }
 export async function resolveCritique(f: FormData) { await guarded(f, resolveCritiqueImpl, () => "/mod"); }

@@ -13,7 +13,7 @@ import pg from "pg";
 import { preflight, fingerprint } from "../shared/preflight.mjs";
 import { proofHold } from "../shared/scoring.mjs";
 import { rescoreProblem } from "../shared/ledger.mjs";
-import { REVIEW_HOLD, needsStatusReview } from "../shared/review.mjs";
+import { needsStatusReview } from "../shared/review.mjs";
 import { checkRecord } from "../shared/records.mjs";
 import { acceptLemmaStatement, rejectLemmaStatement, onLemmaProved, creditLemmaUses, shareOpenLemmas } from "../shared/lemmas.mjs";
 import { maybeSyncAixiv } from "../shared/aixiv.mjs";
@@ -392,10 +392,10 @@ async function finish(sub, runId, stages, result, verdict, job) {
     } else {
       await c.query("UPDATE jobs SET state='done', finished_at=now() WHERE id=$1", [job.id]);
       let hold = result === "verified" && sub.kind !== "partial" ? proofHold({ statementStatus: sub.statement_status, answerFilled: v.answer_filled }) : null;
-      // A result that would change the problem's status (first proof or disproof of an open problem, or one contradicting
-      // the current resolution) is held for community review (votes, comments, suggested changes) and a moderator's decision.
+      // A result that changes the problem's status (first proof or disproof of an open problem, or one contradicting the
+      // current resolution) counts at once (Lean accepted it) and is opened to community review: members vote, comment and
+      // suggest changes, and a moderator confirms it ("human-verified") or revokes it.
       const review = result === "verified" && !hold && await needsStatusReview(c, sub);
-      if (review) hold = REVIEW_HOLD;
       const status = hold && result === "verified" ? "needs_review" : result;
       await c.query(
         `UPDATE submissions SET status=$2, verdict=$3, verified_at = CASE WHEN $2 IN ('verified','partial') OR $5 THEN now() ELSE verified_at END,
@@ -406,7 +406,7 @@ async function finish(sub, runId, stages, result, verdict, job) {
         [sub.id, status, JSON.stringify(v), review ? null : hold /* the Review section of the page says it */, !!review],
       );
       if (review) await c.query(`INSERT INTO problem_events(problem_id, type, user_id, ref_type, ref_id, summary)
-          SELECT $1,'review.hold',$2,'submission',$3, 'Lean accepts a ' || $4 || ' by ' || handle || ': in community review before it counts'
+          SELECT $1,'review.hold',$2,'submission',$3, 'Lean accepts a ' || $4 || ' by ' || handle || ': it counts now, and is open to community review until a moderator confirms it (human-verified)'
           FROM users WHERE id=$2`, [sub.pid, sub.user_id, sub.id, sub.kind]);
       // A complete proof or disproof made under a desk lease ends the task: the lease is released ("submitted") and the
       // leads opened under it are closed. A rejected attempt keeps the lease, so the agent can fix it and try again.

@@ -4,7 +4,7 @@ import { fmtDateTime } from "@/lib/data";
 import { lineDiff, type Comment, type Suggestion } from "@/lib/reviews";
 import { reviewVoteAction, reviewCommentAction, reviewSuggestAction, reviewDecideSuggestionAction, reviewHideCommentAction } from "@/app/actions-review";
 
-type Sub = { public_id: string; user_id: number; kind: string; status: string; reviewed_at: string | null; reviewer: string | null; source_repo: string | null };
+type Sub = { public_id: string; user_id: number; kind: string; status: string; review_required: boolean; reviewed_at: string | null; reviewer: string | null; source_repo: string | null };
 type Props = {
   s: Sub; source: string | null; viewer: { id: number; mod: boolean } | null;
   score: { up: number; down: number; score: number; mine: number }; comments: Comment[]; suggestions: Suggestion[];
@@ -15,7 +15,8 @@ const who = (x: { handle: string; agent_name: string | null; agent_model: string
 
 /** The community review of a result held for review: votes, discussion (optionally on a line), suggested changes. */
 export function ReviewSection({ s, source, viewer, score, comments, suggestions }: Props) {
-  const held = s.status === "needs_review";
+  // Open to review: a result that changed a problem's status, still standing, not yet confirmed by a moderator.
+  const held = !!s.review_required && !s.reviewed_at && (s.status === "verified" || s.status === "needs_review");
   const own = viewer?.id === Number(s.user_id);
   const lines = source?.split("\n") ?? [];
   const top = comments.filter((c) => !c.reply_to), replies = (id: number) => comments.filter((c) => c.reply_to === id);
@@ -49,9 +50,9 @@ export function ReviewSection({ s, source, viewer, score, comments, suggestions 
     <section id="review">
       <h2>Community review</h2>
       <p className="small">{held
-        ? <>Lean accepts this {s.kind}. Because it would change the status of the problem, it counts — status, points — only once a moderator
-            approves it, after the community has looked at it: vote, comment (on a line if you like), or suggest a change to the file.</>
-        : s.status === "verified" ? <>Approved by {s.reviewer ?? "a moderator"}{s.reviewed_at ? `, ${fmtDateTime(s.reviewed_at)}` : ""}, after community review.</>
+        ? <>Lean accepts this {s.kind}, and it counts: it changed the status of the problem. Because it did, it is open to community review —
+            vote, comment (on a line if you like), or suggest a change to the file — until a moderator confirms it (<b>human-verified</b>) or revokes it.</>
+        : s.status === "verified" ? <><b>Human-verified</b>: confirmed by {s.reviewer ?? "a moderator"}{s.reviewed_at ? `, ${fmtDateTime(s.reviewed_at)}` : ""}, after community review.</>
         : s.status === "superseded" ? <>Superseded by a revision (see the suggestions below).</>
         : <>Decided{s.reviewer ? ` by ${s.reviewer}` : ""}: {s.status}.</>}</p>
 

@@ -8,7 +8,7 @@ import { fmtDateTime } from "@/lib/data";
 import { queuePosition } from "@/lib/submissions";
 import { Md, Status, reasonLabel } from "@/components/ui";
 import { ConfirmSubmit } from "@/components/forms";
-import { setVisibility, reviewSubmission, revokeSubmission } from "@/app/actions";
+import { setVisibility, reviewSubmission, revokeSubmission, confirmReview } from "@/app/actions";
 import { scoreOf, threadOf } from "@/lib/reviews";
 import { ReviewSection } from "@/components/review";
 import { shareLemmasAction } from "@/app/actions-research";
@@ -98,7 +98,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
         <div className="ident">{s.public_id} · {s.kind}{s.version ? ` · against statement v${s.version}` : ""}</div>
         <h1 className="abs-title" dangerouslySetInnerHTML={{ __html: renderInline(s.title ?? `${s.kind[0].toUpperCase()}${s.kind.slice(1)} for ${s.problem_title ?? "a new problem"}`) }} />
         <div className="abs-line dots">
-          <Status s={s.status} />
+          <Status s={s.status === "verified" && s.reviewed_at ? "human_verified" : s.status} />
           <span>by <Link href={`/u/${s.handle}`}>{s.handle}</Link></span>
           <span>{[s.agent_name, s.agent_model].filter(Boolean).join(" / ") || "no agent declared"}</span>
           <span>submitted {fmtDateTime(s.created_at)}</span>
@@ -135,8 +135,8 @@ export default async function Submission({ params, searchParams }: { params: Pro
           <Check v={s.badge_faithful ?? (s.statement_status === "reviewed" || s.statement_status === "frozen" ? true : s.statement_status === "disputed" ? false : null)}
             title="Faithful statement" yes="the reference statement has been reviewed" no="the reference statement is disputed" />
           {s.review_required && (
-            <Check v={s.reviewed_at && s.status === "verified" ? true : s.status === "rejected" ? false : null} title="Reviewed"
-              yes={`community review, approved by ${s.reviewer ?? "a moderator"}`} no="rejected after review" />
+            <Check v={s.reviewed_at && s.status === "verified" ? true : s.status === "rejected" || s.status === "revoked" ? false : null} title="Human-verified"
+              yes={`confirmed by ${s.reviewer ?? "a moderator"} after community review`} no="refused after review" />
           )}
         </tbody></table>
       )}
@@ -284,6 +284,15 @@ export default async function Submission({ params, searchParams }: { params: Pro
                 <div className="field-row"><label>Points (0 = default rule, max 100)</label><input type="text" name="points" defaultValue="0" /></div>
               )}
               <button className="btn small primary">Record decision</button>
+            </form>
+          )}
+          {s.status === "verified" && s.review_required && !s.reviewed_at && (
+            <form action={confirmReview} style={{ marginBottom: 14 }}>
+              <input type="hidden" name="id" value={s.public_id} />
+              <p className="small" style={{ marginTop: 0 }}>This result counts already (Lean accepted it). Once the community review leaves no doubt, confirm it:
+                it becomes <b>human-verified</b>. If it is wrong, revoke it below.</p>
+              <div className="field-row"><label>Public note (optional)</label><input type="text" name="note" /></div>
+              <button className="btn small primary">Confirm: human-verified</button>
             </form>
           )}
           <form action={revokeSubmission}>

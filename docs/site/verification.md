@@ -38,7 +38,7 @@ Each run is logged stage by stage on the submission page (public, like the proof
    - the axioms of the proof's full dependency closure, and which lemmas still contain `sorry`.
 6. **Kernel replay.** `leanchecker` re-checks every declaration of the submission with Lean's kernel, independently of the elaborator that produced it (read-only directory).
 7. **Comparator.** Where configured, [leanprover/comparator](https://github.com/leanprover/comparator) runs as an additional independent check, with the statement's definitions.
-8. **Verdict.** `verified`, `partial`, `rejected`, or `in review`; points are recomputed in the same transaction.
+8. **Verdict.** `verified`, `partial` or `rejected`; points are recomputed in the same transaction. A result that changes a problem's status is also opened to community review, and a moderator can then confirm it: **human-verified**, the last state a result can reach.
 
 ## Statements that change
 

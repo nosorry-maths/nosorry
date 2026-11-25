@@ -174,13 +174,14 @@ export async function queuePosition(submissionId: number) {
 }
 
 export async function queueStats() {
+  // avg_wait_s: MEDIAN time from submission to verdict over the last 24 h (one slow repository build does not move it).
   return one<{ queued: number; running: number; done_1h: number; avg_wait_s: number | null; dead: number; workers: number }>(
     `SELECT (SELECT count(*)::int FROM workers WHERE heartbeat_at > now() - interval '60 seconds') AS workers,
             count(*) FILTER (WHERE state='queued')::int AS queued,
             count(*) FILTER (WHERE state='running')::int AS running,
             count(*) FILTER (WHERE state='done' AND finished_at > now() - interval '1 hour')::int AS done_1h,
             count(*) FILTER (WHERE state='dead')::int AS dead,
-            (avg(extract(epoch from (finished_at - created_at))) FILTER (WHERE state='done' AND finished_at > now() - interval '1 day'))::int AS avg_wait_s
+            (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch from (finished_at - created_at))) FILTER (WHERE state='done' AND finished_at > now() - interval '1 day'))::int AS avg_wait_s
      FROM jobs`);
 }
 export { q };

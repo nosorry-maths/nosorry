@@ -7,7 +7,7 @@ import { CATEGORIES } from "../../shared/taxonomy.mjs";
 const LABEL: Record<string, string> = {
   open: "open", solved: "known result", textbook: "textbook", test: "sanity test", api: "API lemma",
   proved: "proved here", disproved: "disproved here",
-  verified: "verified", partial: "partial", rejected: "rejected", error: "server error", needs_review: "in review",
+  verified: "verified", human_verified: "human-verified", partial: "partial", rejected: "rejected", error: "server error", needs_review: "in review",
   queued: "queued", running: "checking", accepted: "accepted", revoked: "revoked", superseded: "superseded",
   duplicate: "duplicate", draft: "draft statement", reviewed: "reviewed statement", disputed: "disputed statement", frozen: "frozen statement",
 };

@@ -1,9 +1,10 @@
-// Community review of the results that would change a problem's status (db/migrations/015 and 016), worker side: which
-// Lean-verified results are held. Votes, comments and suggested changes: src/lib/reviews.ts; the decision: moderators.
+// Community review of the results that change a problem's status (db/migrations/015 and 016), worker side: which
+// Lean-verified results are opened to review. They count at once; votes, comments and suggested changes:
+// src/lib/reviews.ts; a moderator then confirms them ("human-verified") or revokes them.
 
 export const REVIEW_HOLD = "status review"; // marker only: the submission page explains the review
 
-/** Would this verified proof/disproof change what the site says about the problem? Then it is reviewed first. */
+/** Would this verified proof/disproof change what the site says about the problem? Then it is opened to review. */
 export async function needsStatusReview(c, sub) {
   if (!sub.pid || (sub.kind !== "proof" && sub.kind !== "disproof") || sub.metric_decl) return false;
   // Already held once and not yet decided (e.g. re-checked after a statement correction): still held.

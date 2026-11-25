@@ -19,12 +19,17 @@ type Result<T> = ({ ok: true } & T) | { ok: false; status: number; error: string
 const clip = (x: unknown, n: number) => (x == null ? null : String(x).slice(0, n) || null);
 const fail = (status: number, error: string) => ({ ok: false as const, status, error });
 
+/** Open to community review: a result that changed a problem's status, still standing, not yet confirmed by a moderator. */
+export function reviewOpen(s: { review_required: boolean; reviewed_at?: string | null; status: string }) {
+  return s.review_required && !s.reviewed_at && (s.status === "verified" || s.status === "needs_review");
+}
+
 /** The submission under review, if it can still be discussed (held, not yet decided). */
 async function heldFor(c: { query: (s: string, p?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }, publicId: string) {
   const { rows: [s] } = await c.query(
-    `SELECT id, user_id, problem_id, public_id, kind, status, review_required, source_repo, lean_source, explanation_md, derived_from
+    `SELECT id, user_id, problem_id, public_id, kind, status, review_required, reviewed_at, source_repo, lean_source, explanation_md, derived_from
      FROM submissions WHERE public_id=$1 FOR UPDATE`, [publicId]);
-  return s as { id: number; user_id: number; problem_id: number; public_id: string; kind: string; status: string; review_required: boolean;
+  return s as { id: number; user_id: number; problem_id: number; public_id: string; kind: string; status: string; review_required: boolean; reviewed_at: string | null;
     source_repo: string | null; lean_source: string; explanation_md: string | null; derived_from: string | null } | undefined;
 }
 
@@ -58,7 +63,7 @@ export async function pendingReviews(limit = 50) {
             (SELECT count(*)::int FROM submission_suggestions x WHERE x.submission_id=s.id AND x.status='open') AS open_suggestions
      FROM submissions s JOIN problems p ON p.id=s.problem_id JOIN users u ON u.id=s.user_id
      LEFT JOIN problem_versions v ON v.id=s.problem_version_id
-     WHERE s.review_required AND s.status='needs_review'
+     WHERE s.review_required AND s.reviewed_at IS NULL AND s.status IN ('verified','needs_review')
      ORDER BY s.created_at, s.id LIMIT $1`, [Math.max(1, Math.min(200, limit))]);
 }
 
@@ -68,7 +73,7 @@ export async function vote(u: User, publicId: string, value: number): Promise<Re
   const r = await tx(async (c) => {
     const s = await heldFor(c, publicId);
     if (!s) return fail(404, "unknown submission");
-    if (!s.review_required || s.status !== "needs_review") return fail(409, "this submission is not in review");
+    if (!reviewOpen(s)) return fail(409, "this submission is not open to review");
     if (Number(s.user_id) === Number(u.id)) return fail(403, "you cannot vote on your own submission");
     if (value === 0) await c.query("DELETE FROM submission_votes WHERE submission_id=$1 AND user_id=$2", [s.id, u.id]);
     else await c.query(`INSERT INTO submission_votes(submission_id, user_id, value) VALUES ($1,$2,$3)
@@ -112,7 +117,7 @@ export async function suggest(u: User, publicId: string, input: { body_md?: stri
   return tx(async (c) => {
     const s = await heldFor(c, publicId);
     if (!s) return fail(404, "unknown submission");
-    if (!s.review_required || s.status !== "needs_review") return fail(409, "this submission is not in review");
+    if (!reviewOpen(s)) return fail(409, "this submission is not open to review");
     if (s.source_repo) return fail(400, "a repository submission is changed in its repository: comment instead, with the commit");
     if (src === s.lean_source) return fail(400, "the suggested file is identical to the submission");
     const { rows: [r] } = await c.query(
@@ -126,8 +131,8 @@ export async function suggest(u: User, publicId: string, input: { body_md?: stri
 
 /**
  * Apply a suggestion (the submission's author or a moderator): the revised file is submitted as a new revision of the
- * submission, under its author, crediting the suggestion; Lean checks it and it is held for review again. The old
- * submission is superseded. Close: refuse it without applying.
+ * submission, under its author, crediting the suggestion; Lean checks it. A result that already counts stays as it is
+ * (the revision is another version of it); a legacy held one is superseded. Close: refuse it without applying.
  */
 export async function decideSuggestion(u: User, publicId: string, suggestionId: number, action: "apply" | "close", ip: string | null):
   Promise<Result<{ revision?: string; url: string }>> {
@@ -142,7 +147,7 @@ export async function decideSuggestion(u: User, publicId: string, suggestionId: 
       await c.query("UPDATE submission_suggestions SET status='closed', decided_by=$2, decided_at=now() WHERE id=$1", [g.id, u.id]);
       return { ok: true as const, closed: true, s, g };
     }
-    if (s.status !== "needs_review") return fail(409, "this submission is not in review any more");
+    if (!reviewOpen(s)) return fail(409, "this submission is not open to review any more");
     return { ok: true as const, closed: false, s, g };
   });
   if (!pre.ok) return pre;
@@ -160,7 +165,10 @@ export async function decideSuggestion(u: User, publicId: string, suggestionId: 
   if (!r.ok) return fail(400, `the revision could not be submitted: ${r.error}`);
   await tx(async (c) => {
     await c.query("UPDATE submissions SET revision_of=$2 WHERE public_id=$1", [r.id, s.id]);
+    // A result that already counts keeps counting while its revision is checked (it is not superseded: if the revision
+    // failed, the problem would lose its proof); a legacy held one is superseded.
     await c.query("UPDATE submissions SET status='superseded', review_note=$2 WHERE id=$1 AND status='needs_review'", [s.id, `Superseded by its revision ${r.id} (suggestion #${g.id} by ${g.handle}).`]);
+    await c.query("UPDATE submissions SET review_note=$2 WHERE id=$1 AND status='verified'", [s.id, `A revised version (${r.id}, suggestion #${g.id} by ${g.handle}) was submitted.`]);
     await c.query(`UPDATE submission_suggestions SET status='applied', decided_by=$2, decided_at=now(), revision_id=(SELECT id FROM submissions WHERE public_id=$3) WHERE id=$1`, [g.id, u.id, r.id]);
     await emit(c, s.problem_id, "review.suggestion", { userId: u.id, refType: "submission", refId: s.id,
       summary: `${u.handle} applied suggestion #${g.id} by ${g.handle} to ${s.public_id}: the revision ${r.id} is being checked by Lean` });
