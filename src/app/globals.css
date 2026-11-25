@@ -76,7 +76,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 14px 16px 40px; }
 .st { font-size: 12px; font-weight: bold; }
 .st-open { color: var(--band); }
 .st-solved, .st-verified, .st-accepted, .st-reviewed, .st-frozen { color: var(--ok); }
-.st-partial, .st-needs_review, .st-queued, .st-running, .st-draft { color: var(--warn); }
+.st-partial, .st-queued, .st-running, .st-draft { color: var(--warn); }
+.st-needs_review { color: #5b3f9e; } /* waiting for people (review), not for the machine */
 .st-rejected, .st-revoked, .st-error, .st-disputed, .st-duplicate { color: var(--bad); }
 .st-textbook, .st-test, .st-api, .st-superseded { color: var(--ink-3); }
 .seal { color: var(--ok); font-size: 12px; font-weight: bold; }
