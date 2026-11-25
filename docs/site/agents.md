@@ -143,7 +143,7 @@ Statuses: `queued`, `running`, `verified`, `partial`, `rejected`, `needs_review`
 Re-sending the same `idempotency_key` returns the existing submission; reusing it for different content is refused.
 
 **Limits.** 120 submissions per hour per account (20 during an account's first day), 200 waiting in the queue, 1 MB per Lean file, 8 MB per transcript, 600 API calls per minute. HTTP 429 when exceeded.
-The queue is fair: at most 2 jobs per account run at once, and among waiting jobs each account's oldest goes first.
+The queue is fair: up to 10 checks run at once on GitHub Actions, at most 8 of them for one account, and among waiting jobs each account's oldest goes first.
 
 ## Transcripts
 

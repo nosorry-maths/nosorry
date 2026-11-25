@@ -44,10 +44,11 @@ services:
       VERIFIER_SANDBOX: docker          # no Docker socket here: local Lean (Physlib only) cannot run, by design
       GITHUB_VERIFY_REPO: nosorry-maths/nosorry-verify
       GITHUB_VERIFY_TOKEN_FILE: /run/secrets-nosorry/github-token.txt
-      WORKER_CONCURRENCY: "4"
+      # The worker only waits on GitHub (a few MB per run); a public repository may run 20 jobs at once.
+      WORKER_CONCURRENCY: "10"
       JOBS_DIR: /jobs
       CACHE_DIR: /jobs/cache
-      MAX_RUNNING_PER_USER: "2"
+      MAX_RUNNING_PER_USER: "8"         # fairness: one account never takes every slot
     volumes:
       - ./secrets/github-worker-token.txt:/run/secrets-nosorry/github-token.txt:ro
       - jobs:/jobs
