@@ -13,7 +13,8 @@ import { scoreOf, threadOf } from "@/lib/reviews";
 import { ReviewSection } from "@/components/review";
 import { shareLemmasAction } from "@/app/actions-research";
 import AutoRefresh from "./refresh";
-import { CopyText, Elapsed } from "@/components/clip";
+import { CopyText, Elapsed, TranscriptTools } from "@/components/clip";
+import { Redacted, redactionCounts } from "@/components/transcript";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +78,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
   // Cleaned again on display: transcripts stored before a cleaning rule existed benefit from it too.
   const cleaned = transcript ? redact(transcript.content) : null;
   const turns = transcript && cleaned ? parseTranscript(transcript.format, cleaned.text).slice(0, 400) : [];
+  const legend = cleaned ? redactionCounts(cleaned.text) : [];
   const answers = (content?.verdict?.answers as string[] | undefined) ?? [];
   const isProofKind = s.kind === "proof" || s.kind === "disproof" || s.kind === "partial";
   const Check = ({ v, title, yes, no }: { v: boolean | null; title: string; yes: string; no: string }) => (
@@ -222,7 +224,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
       )}
 
       {transcript && (<>
-        <h2 className="tr-head">Agent transcript
+        <h2 className="tr-head" id="transcript">Agent transcript
           {s.transcript_public
             ? <span className="public-tag">public</span>
             : <span className="private-tag">not public — only {owner ? "you" : "its author"} and moderators can see it</span>}
@@ -242,9 +244,16 @@ export default async function Submission({ params, searchParams }: { params: Pro
           {transcript.captured_by === "platform" ? "Captured by the nosorry agent connector." : "Self-reported by the submitter — a claim, not evidence; only the Lean proof is checked."}
           {" "}{(transcript.byte_size / 1024).toFixed(0)} KB, {Math.max(transcript.redactions, cleaned?.count ?? 0)} automatic redaction{Math.max(transcript.redactions, cleaned?.count ?? 0) === 1 ? "" : "s"}.
         </p>
-        <details>
-          <summary>Show {turns.length} turns</summary>
-          {turns.map((t, i) => <div key={i} className={`turn ${t.role}`}><div className="who">{t.role}</div><div className="body">{t.text.slice(0, 8000)}</div></div>)}
+        <TranscriptTools base={`/s/${s.public_id}/transcript`} />
+        {legend.length > 0 && (
+          <p className="tr-legend"><span className="redact" title="Removed automatically before publication"><span aria-hidden="true">🔒</span> hidden</span>{" "}
+            marks what was removed automatically before anyone could read it: {legend.map(([k, n], i) => <span key={k}>{i > 0 && ", "}{n} {k}{n === 1 ? "" : "s"}</span>)}.
+            File names are kept; the folders above them are not.</p>
+        )}
+        <details className="tr-body">
+          <summary>Show the {turns.length} turns{turns.length >= 400 ? " (the first 400; the download has all of them)" : ""}</summary>
+          {turns.map((t, i) => <div key={i} className={`turn ${t.role}`}><div className="who">{t.role}</div>
+            <div className="body"><Redacted text={t.text.length > 8000 ? t.text.slice(0, 8000) + " … (cut here; the download has the whole turn)" : t.text} /></div></div>)}
         </details>
       </>)}
 
@@ -252,12 +261,13 @@ export default async function Submission({ params, searchParams }: { params: Pro
         <form action={setVisibility} className="box" style={{ marginTop: 24 }}>
           <h4>Visibility</h4><div className="in">
           <input type="hidden" name="id" value={s.public_id} />
-          <p className="small" style={{ marginTop: 0 }}>The proof and its verdict are public{s.visibility === "private" ? " — except this one, which you sealed" : ""}.
-            The agent transcript is {s.transcript_public ? "public" : "private: only you and moderators see it"}.</p>
+          <p className="small" style={{ marginTop: 0 }}>The proof and its verdict are public{s.visibility === "private" ? " — except this one, which you sealed" : ""}.{" "}
+            {transcript ? <>The agent transcript is {s.transcript_public ? "public" : "private: only you and moderators see it"} (see <a href="#transcript">above</a>).</>
+              : <>No agent transcript was attached to this submission (the CLI attaches the session log by default; the MCP <code>submit</code> tool does from tools 0.8.1).</>}</p>
           {s.visibility === "private"
             ? <><input type="hidden" name="visibility" value="public" /><button className="btn primary">Make the proof public</button></>
-            : <><input type="hidden" name="transcript" value={s.transcript_public ? "private" : "public"} />
-                <button className="btn">{s.transcript_public ? "Make the transcript private" : "Publish the transcript too"}</button></>}
+            : transcript ? <><input type="hidden" name="transcript" value={s.transcript_public ? "private" : "public"} />
+                <button className="btn">{s.transcript_public ? "Make the transcript private" : "Publish the transcript too"}</button></> : null}
         </div></form>
       )}
 

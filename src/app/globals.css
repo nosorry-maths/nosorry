@@ -620,3 +620,13 @@ h2 .public-tag { font-weight: normal; font-size: 13px; color: var(--ok); }
 .cookie-notice { position: fixed; left: 12px; right: 12px; bottom: 12px; max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #999;
   box-shadow: 0 2px 10px rgba(0,0,0,.15); padding: 10px 14px; font-size: 13px; display: flex; gap: 12px; align-items: center; z-index: 50; }
 .cookie-notice span { flex: 1; }
+/* Community review: score, vote buttons and counts, evenly spaced. */
+.vote-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.vote-line form { display: inline-flex; margin: 0; }
+/* Transcript: what the cleaner removed is shown, not silently cut. */
+.redact { display: inline-block; font-size: 11px; line-height: 1.5; padding: 0 6px; margin: 0 1px; border-radius: 9px; background: #eef3ea; border: 1px solid #b9cfae; color: #2f5a1f; white-space: nowrap; font-family: var(--font); cursor: help; }
+.redact.folder { padding: 0 4px; background: #f1f1f1; border-color: #ccc; color: #555; }
+.tr-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.tr-tools select { font-size: 13px; width: auto; max-width: 100%; }
+.tr-legend { font-size: 12px; color: #555; margin: 4px 0 8px; }
+details.tr-body > summary { cursor: pointer; font-weight: bold; }

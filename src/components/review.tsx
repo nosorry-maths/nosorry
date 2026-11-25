@@ -55,7 +55,7 @@ export function ReviewSection({ s, source, viewer, score, comments, suggestions 
         : s.status === "superseded" ? <>Superseded by a revision (see the suggestions below).</>
         : <>Decided{s.reviewer ? ` by ${s.reviewer}` : ""}: {s.status}.</>}</p>
 
-      <div className="abs-line" style={{ alignItems: "center", gap: 10 }}>
+      <div className="abs-line vote-line">
         <span><b>{score.score > 0 ? "+" : ""}{score.score}</b> <span className="muted small">({score.up} up, {score.down} down)</span></span>
         {held && viewer && !own && (<>
           {[1, -1].map((v) => (
@@ -68,7 +68,7 @@ export function ReviewSection({ s, source, viewer, score, comments, suggestions 
         </>)}
         {held && !viewer && <span className="small"><Link href={`/login?next=/s/${s.public_id}%23review`}>Sign in</Link> to vote, comment or suggest a change.</span>}
         {held && own && <span className="small muted">You cannot vote on your own submission; answer comments and apply suggestions you agree with.</span>}
-        <span className="small muted">· {comments.length} comment{comments.length === 1 ? "" : "s"} · {open} open suggestion{open === 1 ? "" : "s"}</span>
+        <span className="small muted">{comments.length} comment{comments.length === 1 ? "" : "s"} · {open} open suggestion{open === 1 ? "" : "s"}</span>
       </div>
 
       <h3>Discussion</h3>

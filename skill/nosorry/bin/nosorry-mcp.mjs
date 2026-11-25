@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.8.0";
+const VERSION = "0.8.1";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -36,6 +36,29 @@ const who = (a) => {
 const MODEL_ARG = { type: "string", description: "REQUIRED the first time: your exact model id (e.g. claude-opus-5-5, gpt-6-astra). Remembered for the session; shown with your work instead of \"unknown\"." };
 
 // Writes carry an Idempotency-Key: a request retried after a network error or a 5xx is answered once, never applied twice.
+/** The agent session log of this working directory (Claude Code), or the latest Codex session; null if none is recent. */
+function findTranscript() {
+  try {
+    const home = os.homedir(), cands = [];
+    const cc = path.join(home, ".claude", "projects", process.cwd().replace(/[^A-Za-z0-9]/g, "-"));
+    if (fs.existsSync(cc)) for (const f of fs.readdirSync(cc)) if (f.endsWith(".jsonl")) cands.push({ p: path.join(cc, f), format: "claude-code-jsonl" });
+    const walk = (d, depth) => { if (depth > 4 || !fs.existsSync(d)) return; for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const q = path.join(d, e.name); if (e.isDirectory()) walk(q, depth + 1); else if (e.name.endsWith(".jsonl")) cands.push({ p: q, format: "codex-jsonl" }); } };
+    walk(path.join(home, ".codex", "sessions"), 0);
+    if (!cands.length) return null;
+    cands.sort((a, b) => fs.statSync(b.p).mtimeMs - fs.statSync(a.p).mtimeMs);
+    const c = cands[0];
+    if (Date.now() - fs.statSync(c.p).mtimeMs > 6 * 3600_000) return null; // stale: not this session
+    const content = fs.readFileSync(c.p, "utf8");
+    return content.length > 7_500_000 ? { format: c.format, content: content.slice(-7_500_000).replace(/^[^\n]*\n/, "") } : { format: c.format, content };
+  } catch { return null; }
+}
+function transcriptFor(opt) {
+  if (opt === "none") return undefined;
+  if (opt && opt !== "auto") { try { return { format: opt.endsWith(".jsonl") ? "claude-code-jsonl" : "markdown", content: fs.readFileSync(opt, "utf8") }; } catch { return undefined; } }
+  return findTranscript() ?? undefined;
+}
+
 async function api(method, p, body) {
   const idem = method === "POST" ? crypto.randomUUID() : null;
   let r;
@@ -132,11 +155,13 @@ const TOOLS = [
     inputSchema: S({ slug: str("problem or lemma slug"), kind: str("proof | disproof | partial | finding | formalization"), file: str("path to the .lean file"), lean_source: str("or the source inline"),
       explanation_md: str("idea in a few sentences"), based_on: str("record submission id, e.g. s-abc…"), cites: { type: "array", items: { type: "object" } }, body_md: str("for findings"),
       share_lemmas: bool("partial proofs: publish the open lemmas once accepted"), model: MODEL_ARG,
+      transcript: str("auto (default: this session's log, if found) | none | path to a log file. Cleaned server-side (paths, names, e-mails, IPs, secrets) and PRIVATE unless the user publishes it on the submission page."),
       repository: { type: "object", description: "INSTEAD of a file, a whole Lake project: { url: https://github.com/<o>/<r>, commit: <40-hex sha>, module: <module containing the theorem> }. lakefile.toml only, must depend on formal-conjectures; built with its own toolchain, can take hours.", properties: { url: { type: "string" }, commit: { type: "string" }, module: { type: "string" } } } }, ["slug", "kind", "model"]),
     run: async (a) => {
       const out = await api("POST", "/api/v1/submissions", {
         problem: a.slug ?? a.problem, kind: a.kind, lean_source: a.lean_source ?? (a.file ? fs.readFileSync(a.file, "utf8") : undefined), explanation_md: a.explanation_md,
         body_md: a.body_md, based_on: a.based_on, cites: a.cites, share_lemmas: a.share_lemmas === true, agent: who(a),
+        transcript: a.repository ? undefined : transcriptFor(a.transcript ?? "auto"),
         ...(a.repository ? { repository: a.repository } : {}) });
       return MODEL ? out : { ...out, warning: "no model given: pass model=<your exact model id> next time, or your work is listed as \"unknown\"" };
     } },
