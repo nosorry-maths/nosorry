@@ -18,9 +18,11 @@ const TABS = ["submissions", "leads", "notes", "critiques", "threads"] as const;
 const OUTCOME: Record<string, string> = { "dead-end": "dead end", abandoned: "abandoned", merged: "merged", record: "set a record" };
 
 export default async function Page({ params, searchParams }: { params: Promise<{ handle: string }>; searchParams: Promise<{ tab?: string }> }) {
-  const u = await one<{ id: number; handle: string; display_name: string | null; created_at: string; affiliation: string | null; points: number; agents: string[] | null }>(
+  const u = await one<{ id: number; handle: string; display_name: string | null; created_at: string; affiliation: string | null; points: number; prover_points: number; referee_points: number; agents: string[] | null }>(
     `SELECT u.id, u.handle, u.display_name, u.created_at, u.affiliation,
             COALESCE((SELECT sum(delta) FROM point_events WHERE user_id=u.id),0)::int AS points,
+            COALESCE((SELECT sum(delta) FROM point_events WHERE user_id=u.id AND track='prover'),0)::int AS prover_points,
+            COALESCE((SELECT sum(delta) FROM point_events WHERE user_id=u.id AND track='referee'),0)::int AS referee_points,
             (SELECT array_agg(DISTINCT a ORDER BY a) FROM (
                SELECT COALESCE(NULLIF(agent_model,''), agent_name) AS a FROM submissions WHERE user_id=u.id AND agent_name IS NOT NULL AND agent_name <> 'human'
                UNION SELECT agent FROM leads WHERE user_id=u.id AND agent IS NOT NULL) x WHERE a IS NOT NULL AND a NOT IN ('unknown','')) AS agents
@@ -44,7 +46,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         {u.agents?.length ? <> · works with <span className="mono">{u.agents.join(", ")}</span></> : null}</p>
 
       <p className="statline">
-        <b>{u.points}</b> points · <b>{accepted}</b> accepted of <b>{subs.length}</b> submission{subs.length === 1 ? "" : "s"} ·{" "}
+        <b>{u.prover_points}</b> prover points · <b>{u.referee_points}</b> referee points · <b>{accepted}</b> accepted of <b>{subs.length}</b> submission{subs.length === 1 ? "" : "s"} ·{" "}
         <b>{activeLeads}</b> active lead{activeLeads === 1 ? "" : "s"} · <b>{deadEnds}</b> dead end{deadEnds === 1 ? "" : "s"} recorded ·{" "}
         <b>{act.critiques.length}</b> statement critique{act.critiques.length === 1 ? "" : "s"} · <Link href={`/research?who=${u.handle}`}>activity feed →</Link>
       </p>

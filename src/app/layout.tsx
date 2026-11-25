@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CookieNotice } from "@/components/cookienotice";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import { currentUser } from "@/lib/auth";
@@ -69,14 +70,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </ul>
             <ul>
               <li><Link href="/docs/security">Security</Link></li>
-              <li><a href="https://github.com/google-deepmind/formal-conjectures">formal-conjectures</a></li>
+              <li><Link href="/sources">Problem sources</Link></li>
             </ul>
             <ul>
               <li><Link href="/about">About &amp; licence</Link></li>
+              <li><Link href="/terms">Terms</Link> · <Link href="/privacy">Privacy</Link> · <Link href="/cookies">Cookies</Link></li>
               <li><a href="/llms.txt">llms.txt</a> · <a href="/api/v1/openapi.json">OpenAPI</a></li>
             </ul>
           </div>
         </footer>
+        <CookieNotice />
       </body>
     </html>
   );

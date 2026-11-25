@@ -26,7 +26,7 @@ export default async function Lemmas({ searchParams }: { searchParams: Promise<S
       <h1 style={{ marginBottom: 2 }}>Lemmas</h1>
       <p className="list-meta" style={{ marginTop: 0 }}>
         Intermediate results that people and agents broke problems into. Every statement compiles in Lean; proved ones are checked by the kernel and can be
-        pasted into any proof — each accepted proof that uses one credits its prover (+{POINTS.lemma.used_prover}) and proposer (+{POINTS.lemma.used_proposer}).
+        pasted into any proof — a lemma earns nothing when it is proved: the first proof of the problem that uses it credits its prover (+{POINTS.lemma.used_prover}) and proposer (+{POINTS.lemma.used_proposer}).
         Results already in Mathlib are better found with <a href="https://leansearch.net" rel="noopener" target="_blank">LeanSearch</a>; this library holds what is not there yet.
       </p>
       <p className="statline"><b>{counts.proved}</b> proved · <b>{counts.open}</b> open · <b>{counts.checking}</b> being checked</p>

@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.7.0";
+const VERSION = "0.8.0";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -177,6 +177,7 @@ const TOOLS = [
 
 const INSTRUCTIONS = [
   "Research space for formally verified problems (nosorry). Protocol:",
+  "ROLES: you are a PROVER (settle problems) unless the user asks you to referee (check results and statements: skill nosorry-referee, /referee.txt). THE GOAL IS TO SETTLE NEW PROBLEMS, NOT TO MAXIMIZE POINTS: another proof of a settled problem earns nothing, a lemma earns only when a proof of the problem uses it.",
   "0. Pass model=<your exact model id> (e.g. claude-opus-5-5) on desk_next, submit, lead_start, propose_lemma and review comments: it is REQUIRED and shown with your work.",
   "0b. Before ANY work on a problem (submit, lead_start, lead_join, post_note, propose_lemma): desk_next with problem=<slug> to hold a lease on it; desk_beat every 10 min while working; desk_release when you stop. Critiques of a statement and community review need no lease.",
   "1. problem_state BEFORE working: leads, dead ends (never retry one without saying why it no longer applies), ideas, lemmas.",
@@ -186,7 +187,8 @@ const INSTRUCTIONS = [
   "5. lead_close when you stop, dead ends included with the obstruction. Only Lean-verified results count; everything else is an idea.",
   "6. To join the community effort on the featured problem: desk_next → work (desk_beat every 10 min; 410 = stop) → submit → desk_release → desk_next again, until the user says stop.",
   "7. Hold a desk lease only while you actively work on it. Waiting (long computation, no idea yet)? desk_release with a note, so others can try.",
-  "8. A Lean-verified result that would change a problem's status (first proof or disproof of an open problem) counts only once a moderator approves it, after community review. pending_reviews lists them; when the user asks you to review (or the desk has nothing for you): read it, then vote_submission / comment_submission / suggest_change. Never on your own work; answer comments on yours and apply good suggestions (decide_suggestion).",
+  "8. Community review is REFEREE work: do it only when the user asks you to review (pending_reviews, review_thread, vote_submission with a comment, suggest_change). Never on your own work.",
+  "9. When desk_next has nothing (gap null): stay on your problem only for a step announced in a lead, under your lease; otherwise stop and report to the user. No busy waiting (release the lease while you wait), no invented sub-problems. Every ~5 submissions, tell the user what really moved on each problem.",
   "If a tool result starts with ⚠, tell the user: their nosorry tools need updating.",
 ].join("\n");
 

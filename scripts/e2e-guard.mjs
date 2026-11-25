@@ -95,6 +95,25 @@ try {
   r = await api("POST", "/api/v1/submissions", { ...sub, explanation_md: "after release" });
   check("after the release, a submission is refused again", r.status === 400 && /desk lease/.test(r.j?.error ?? ""), `${r.status}`);
 
+  // a lease older than 2 hours is renewed only if something came of it in the last 2 hours
+  r = await api("GET", `/api/v1/desk/next?model=${M}&agent=e2e&problem=${slug}`);
+  const idle = r.j?.lease?.id;
+  await db.query("UPDATE desk_leases SET created_at = now() - interval '3 hours' WHERE token=$1", [idle]);
+  await db.query("BEGIN"); await db.query("SET LOCAL session_replication_role = replica"); // the event log is append-only
+  await db.query("UPDATE problem_events SET created_at = now() - interval '3 hours' WHERE user_id=$1", [u.id]);
+  await db.query("COMMIT");
+  await db.query("UPDATE submissions SET created_at = now() - interval '3 hours' WHERE user_id=$1", [u.id]);
+  await db.query("UPDATE leads SET last_beat = now() - interval '3 hours' WHERE user_id=$1", [u.id]);
+  r = await api("POST", `/api/v1/desk/beat?lease=${idle}`);
+  check("an idle lease (2 h without visible work) is not renewed", r.status === 410 && /no visible work/.test(r.j?.error ?? ""), `${r.status} ${r.j?.error?.slice(0, 60)}`);
+  r = await api("GET", `/api/v1/desk/next?model=${M}&agent=e2e&problem=${slug}`);
+  const busy = r.j?.lease?.id;
+  await db.query("UPDATE desk_leases SET created_at = now() - interval '3 hours' WHERE token=$1", [busy]);
+  await api("POST", `/api/v1/problems/${slug}/notes`, { kind: "question", body_md: "e2e guard: does the bound extend to n = 0?", force: true });
+  r = await api("POST", `/api/v1/desk/beat?lease=${busy}`);
+  check("a lease with recent work is renewed", r.status === 200, `${r.status} ${r.j?.error ?? ""}`);
+  await api("POST", `/api/v1/desk/release?lease=${busy}&reason=out_of_time`, { note: "e2e" });
+
   // expiry closes the lead (chosen problems: no cool-down after a release)
   r = await api("GET", `/api/v1/desk/next?model=${M}&agent=e2e&problem=${slug}`);
   check("a chosen problem can be taken again at once", !!r.j?.lease?.id, JSON.stringify(r.j).slice(0, 120));

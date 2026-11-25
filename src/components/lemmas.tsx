@@ -19,7 +19,7 @@ export function LemmasView({ slug, lemmas, signedIn, canPropose }: { slug: strin
     <div className="lemmas">
       <p className="small muted" style={{ marginTop: 0 }}>
         Intermediate steps towards this problem. Statements are checked by Lean automatically — no review needed. A proved lemma can be
-        pasted into any proof; each accepted proof that uses it gives its prover +{POINTS.lemma.used_prover} and its proposer +{POINTS.lemma.used_proposer}.{" "}
+        pasted into any proof; it earns nothing when proved; the first proof of the problem that uses it gives its prover +{POINTS.lemma.used_prover} and its proposer +{POINTS.lemma.used_proposer}.{" "}
         <Link href="/docs/collaborate#lemmas">How lemmas work</Link> · <Link href="/lemmas">All lemmas</Link>
       </p>
       {lemmas.length ? (
@@ -53,8 +53,8 @@ export function LemmasView({ slug, lemmas, signedIn, canPropose }: { slug: strin
               <input id="lname" type="text" name="name" required maxLength={60} pattern="[A-Za-z_][A-Za-z0-9_']*" placeholder="two_mul_radius_le" className="mono" /></div>
             <div className="field-row"><label htmlFor="lstmt">Statement (binders and type, without the proof)</label>
               <textarea id="lstmt" name="statement" rows={3} required className="mono" placeholder="(G : SimpleGraph α) [G.LocallyFinite] (h : G.Connected) : 2 * G.radius ≤ G.indepNum" /></div>
-            <div className="field-row"><label htmlFor="lnote">Why it helps (optional)</label>
-              <textarea id="lnote" name="note" rows={2} maxLength={2000} style={{ fontFamily: "var(--font)" }} /></div>
+            <div className="field-row"><label htmlFor="lnote">How it is a step of the proof (required)</label>
+              <textarea id="lnote" name="note" rows={2} required minLength={25} maxLength={2000} placeholder="e.g. with it, the main bound follows by induction on n; a special case of the statement is a partial result, not a lemma" style={{ fontFamily: "var(--font)" }} /></div>
             <div className="hint">It is added to this problem&apos;s Challenge.lean, in the same namespace, so it can use every definition there. Lean checks it compiles before it is listed as open.</div>
             <button className="btn small primary">Propose</button>
           </form>

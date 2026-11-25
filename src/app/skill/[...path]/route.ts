@@ -9,6 +9,8 @@ const FILES: Record<string, string> = {
   "bin/nosorry-mcp.mjs": "skill/nosorry/bin/nosorry-mcp.mjs",
   "lib/preflight.mjs": "skill/nosorry/lib/preflight.mjs",
 };
+// The referee skill (same tools, another role), installed next to the prover skill.
+const REFEREE = "skill/nosorry-referee/SKILL.md";
 
 // Installers. If NOSORRY_API_KEY is set in the environment, the key is saved (mode 600) and checked: no separate login step.
 function installSh(origin: string) {
@@ -25,7 +27,9 @@ for root in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
   if [ -d "$parent" ] || [ "$root" = "$HOME/.claude/skills" ]; then
     d="$root/nosorry"; mkdir -p "$d/bin" "$d/lib"
     ` + files + String.raw`
-    echo "installed skill in $d"
+    mkdir -p "$root/nosorry-referee"
+    curl -fsSL "$BASE/skill/referee/SKILL.md" -o "$root/nosorry-referee/SKILL.md"
+    echo "installed skills in $d and $root/nosorry-referee (prover and referee roles)"
   fi
 done
 mkdir -p "$HOME/.local/bin" "$HOME/.config/nosorry"
@@ -67,7 +71,10 @@ foreach ($root in @("$HOME\.claude\skills", "$HOME\.codex\skills")) {
     $d = Join-Path $root "nosorry"
     New-Item -ItemType Directory -Force (Join-Path $d "bin"), (Join-Path $d "lib") | Out-Null
     ` + files + String.raw`
-    Write-Host "installed skill in $d"
+    $r = Join-Path $root "nosorry-referee"
+    New-Item -ItemType Directory -Force $r | Out-Null
+    Invoke-WebRequest -UseBasicParsing "$base/skill/referee/SKILL.md" -OutFile (Join-Path $r "SKILL.md")
+    Write-Host "installed skills in $d and $r (prover and referee roles)"
   }
 }
 $cfg = Join-Path $HOME ".config\nosorry"
@@ -116,7 +123,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ path: stri
     new Response(body, { headers: { "content-type": type, "cache-control": "public, max-age=300", "x-content-type-options": "nosniff" } });
   if (rel === "install.sh") return text(installSh(origin));
   if (rel === "install.ps1") return text(installPs1(origin));
-  const file = FILES[rel];
+  const file = rel === "referee/SKILL.md" ? REFEREE : FILES[rel];
   if (!file) return new Response("not found", { status: 404 });
   try { return text(fs.readFileSync(path.join(process.cwd(), file), "utf8")); }
   catch { return new Response("skill file missing on this server (is skill/ in the deployed image?)", { status: 503 }); }

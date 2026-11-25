@@ -491,6 +491,10 @@ const beatTimer = setInterval(() => beat(currentJob), 15_000);
 // aiXiv cross-reference: once a day, in the background (network only, no Lean; one worker at a time via an advisory lock).
 // formal-conjectures watch: same rhythm (metadata/status applied, the rest listed for the batch update).
 const aixivTick = async () => {
+  // Privacy policy: IP addresses are kept 12 months; ended sessions and burned 2FA codes are removed.
+  await pool.query("UPDATE submissions SET client_ip=NULL WHERE client_ip IS NOT NULL AND created_at < now() - interval '12 months'").catch((e) => log("ip purge failed", e.message));
+  await pool.query("UPDATE audit_log SET ip=NULL WHERE ip IS NOT NULL AND created_at < now() - interval '12 months'").catch((e) => log("audit ip purge failed", e.message));
+  await pool.query("DELETE FROM sessions WHERE expires_at < now() OR last_seen_at < now() - interval '14 days'").catch(() => {});
   await maybeSyncAixiv(pool, (...a) => log(...a)).catch((e) => log("aixiv sync failed", e.message));
   await maybeCheckUpstream(pool, (...a) => log(...a)).catch((e) => log("upstream check failed", e.message));
 };

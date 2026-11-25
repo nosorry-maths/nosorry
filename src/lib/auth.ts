@@ -9,7 +9,10 @@ export type User = {
   id: number; handle: string; display_name: string | null; role: "user" | "moderator" | "admin";
   email: string | null; email_verified_at: string | null; created_at: string; banned_at: string | null;
 };
-const COOKIE = "ns_session";
+// In production the cookie is __Host- prefixed: HTTPS only, this exact host, path / (no subdomain can set or read it).
+const COOKIE = process.env.NODE_ENV === "production" ? "__Host-ns_session" : "ns_session";
+/** A session not used for this many days ends, even before its absolute expiry. */
+const IDLE_DAYS = 14;
 const USER_COLS = "u.id, u.handle, u.display_name, u.role, u.email, u.email_verified_at, u.created_at, u.banned_at";
 
 export async function clientIp(): Promise<string | null> {
@@ -29,19 +32,32 @@ export async function createSession(userId: number) {
   });
 }
 
+/** The hashed id of the current session (to mark it in the session list), or null. */
+export async function currentSessionId(): Promise<string | null> {
+  const raw = (await cookies()).get(COOKIE)?.value;
+  return raw ? sha256(raw) : null;
+}
+
 export async function destroySession() {
   const c = await cookies();
   const raw = c.get(COOKIE)?.value;
   if (raw) await q("DELETE FROM sessions WHERE id = $1", [sha256(raw)]);
-  c.delete(COOKIE);
+  // Expire it with the same attributes it was set with (a __Host- cookie is only replaced by a Secure, path=/ one).
+  c.set(COOKIE, "", { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 0 });
 }
 
 export async function currentUser(): Promise<User | null> {
   const raw = (await cookies()).get(COOKIE)?.value;
   if (!raw) return null;
   return one<User>(
-    `SELECT ${USER_COLS} FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.id = $1 AND s.expires_at > now() AND u.banned_at IS NULL`,
+    `WITH s AS (
+       UPDATE sessions SET last_seen_at = now()
+       WHERE id = $1 AND expires_at > now() AND last_seen_at > now() - make_interval(days => ${IDLE_DAYS})
+         AND last_seen_at < now() - interval '5 minutes'
+       RETURNING user_id)
+     SELECT ${USER_COLS} FROM sessions ss JOIN users u ON u.id = ss.user_id
+     WHERE ss.id = $1 AND ss.expires_at > now() AND ss.last_seen_at > now() - make_interval(days => ${IDLE_DAYS})
+       AND u.banned_at IS NULL AND u.deleted_at IS NULL`,
     [sha256(raw)],
   );
 }

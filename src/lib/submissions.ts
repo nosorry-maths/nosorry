@@ -38,7 +38,7 @@ export type SubmissionResult =
 const KINDS = new Set(["proof", "disproof", "partial", "finding", "formalization"]);
 const clip = (s: unknown, n: number) => (typeof s === "string" ? s.slice(0, n) : undefined);
 
-/** `api`: made through the API / MCP: needs the model, and (except formalizations) a desk lease on the problem. */
+/** `api`: made through the API / MCP: needs the model, and (except formalizations and findings) a desk lease on the problem. */
 export async function createSubmission(user: User, input: SubmissionInput, ip: string | null, opts: { api?: boolean } = {}): Promise<SubmissionResult> {
   const blocked = canSubmit(user);
   if (blocked) return { ok: false, error: blocked };
@@ -99,7 +99,7 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
   if (opts.api) {
     const bad = modelError(input.agent?.model);
     if (bad) return { ok: false, error: bad };
-    if (problem && input.kind !== "formalization") {
+    if (problem && input.kind !== "formalization" && input.kind !== "finding") { // referees file findings without a lease
       const lease = await leaseFor(user.id, problem.id, input.lease);
       if (!lease) return { ok: false, error: leaseMissing(String(input.problem), input.lease) };
       leaseId = lease.id;

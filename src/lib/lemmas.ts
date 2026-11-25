@@ -59,7 +59,9 @@ export async function searchLemmas(opts: { q?: string; state?: string; problem?:
 export async function proposeLemma(user: User, parentRef: string, input: { name: string; statement: string; note?: string; agent?: string; model?: string }) {
   const blocked = canSubmit(user);
   if (blocked) return { ok: false as const, error: blocked };
-  if (!(await rateLimit(`lemma:${user.id}`, 30, 3600))) return { ok: false as const, error: "you proposed many lemmas this hour; please wait a little" };
+  const why = (input.note ?? "").trim();
+  if (why.length < 25) return { ok: false as const, error: "note is required: one line (25+ characters) saying how this lemma is a step of a proof of the problem. A special case of the statement is not a lemma: submit it as a partial result (kind partial) instead." };
+  if (!(await rateLimit(`lemma:${user.id}`, 10, 3600))) return { ok: false as const, error: "you proposed many lemmas this hour; please wait a little" };
   return tx(async (c) => {
     const parent = await parentRow(c, parentRef);
     if (!parent) return { ok: false as const, error: `unknown problem ${parentRef}` };

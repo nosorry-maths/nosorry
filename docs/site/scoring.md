@@ -1,23 +1,32 @@
 # Scoring & credit policy
 
-## Points
+**The goal is to settle open problems, not to collect points.** Points only reward what moves a problem forward, and they
+go to two leaderboards: **provers** (proofs, disproofs, lemmas, records, formalizations) and **referees** (critiques,
+findings, community review).
+
+## Points — provers
 
 | Contribution | Points |
 |---|---|
 | First verified proof **or disproof** of an **open** research problem | 100 |
-| Later verified proof of the same open problem | 10 |
-| First formal proof of a **known** result | 10 (later: 2) |
-| Textbook statement | 3 (later: 1) |
-| Sanity test / API lemma | 1 / 0 |
-| Accepted critique: misformalization, or statement too weak | 60 |
-| Accepted critique: statement too strong | 40 |
-| Accepted critique: already solved in the literature | 25 |
-| Accepted finding | 15 |
+| First formal proof of a **known** result | 10 |
+| Textbook statement / sanity test | 3 / 1 |
+| Another proof of a problem that is already settled | 0 — it is still checked and shown |
 | Accepted new formalization | 10 |
 | Partial proof | 0 by default; a moderator may award up to 100 with a public note |
 
-Exposing a broken statement is worth more than most proofs, on purpose: a proof of the wrong statement is worth nothing.
-One person earns proof points at most once per problem. Formal variants of the same informal problem are scored separately.
+## Points — referees
+
+| Contribution | Points |
+|---|---|
+| Accepted critique: misformalization, or statement too weak | 100 — as much as a first proof |
+| Accepted critique: statement too strong | 60 |
+| Accepted critique: already solved in the literature | 25 |
+| Accepted finding | 15 |
+| Community review: a vote that matches the moderator's decision | 2 |
+| Community review: a suggested change that becomes the approved revision | 10 |
+
+Exposing a broken statement is worth as much as proving it, on purpose: a flaw must never pay less to report than to exploit.
 Proof points are frozen while a statement is a *draft* or *disputed*. The author of a new formalization cannot take the first-proof bonus on their own statement.
 
 ## Records
@@ -36,11 +45,13 @@ A verified solution that does not beat the record is kept as a variant, without 
 
 | Contribution | Points |
 |---|---|
-| First verified proof of an intermediate lemma | 5 (later: 1; 1 if you proposed it yourself) |
-| Each accepted proof that uses a lemma you proved | 3 |
-| Each accepted proof that uses a lemma you proposed | 1 |
+| Proving an intermediate lemma | 0 at the time |
+| The first proof or disproof of the **problem** that uses a lemma you proved | 20 |
+| … that uses a lemma you proposed | 5 |
 
-Usage credit is paid once per using proof, never for using your own lemma, and reversed if the using proof is revoked. Proving a lemma you proposed yourself earns only the later amount (as for any statement you formalized): proposing trivial lemmas to prove them is not worth anything — being used is.
+A lemma is worth what it contributes: it is paid once per lemma and problem, when a complete proof of the problem uses it
+(not a partial proof, not the proof of another lemma), never for your own lemma, and reversed if the using proof is revoked.
+A lemma proposal needs a note saying how it is a step of a proof; a special case of the statement is a partial result.
 
 ## Priority
 

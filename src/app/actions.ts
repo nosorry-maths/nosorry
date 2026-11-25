@@ -14,6 +14,9 @@ import { rescoreProblem } from "../../shared/ledger.mjs";
 import { preflight } from "../../shared/preflight.mjs";
 import { saveThread } from "@/lib/research";
 import { newApiKey } from "@/lib/apikeys";
+import { verifyTotp, newTotpSecret, totpStep } from "@/lib/totp";
+import { handleProblem } from "@/lib/handles";
+import { currentSessionId } from "@/lib/auth";
 
 const str = (f: FormData, k: string, max = 100_000) => String(f.get(k) ?? "").slice(0, max).trim();
 const safeNext = (n: string) => (/^\/(?![/\\])/.test(n) ? n : "/");
@@ -25,13 +28,15 @@ export async function signup(_: unknown, f: FormData) {
   if (ip && !(await rateLimit(`signup:${ip}`, config.limits.signupsPerIpPerHour, 3600))) return { error: "Too many sign-ups from this address. Try again later." };
   if (!(await rateLimit("signup:global", Number(process.env.SIGNUPS_PER_HOUR ?? 200), 3600))) return { error: "Registrations are temporarily paused. Try again in an hour." };
   const handle = str(f, "handle", 40), password = String(f.get("password") ?? ""), email = str(f, "email", 200) || null;
-  if (!/^[A-Za-z0-9_-]{3,32}$/.test(handle)) return { error: "Handle: 3 to 32 characters — letters, digits, _ or -. No spaces." };
+  const bad = handleProblem(handle);
+  if (bad) return { error: bad };
+  if (f.get("terms") !== "on") return { error: "Please accept the Terms of use and the Privacy policy." };
   if (password.length < 10 || password.length > 200) return { error: "Password: at least 10 characters." };
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Invalid email address." };
   if (f.get("website")) return { error: "Rejected." }; // honeypot
   const exists = await one("SELECT 1 FROM users WHERE handle=$1 OR (email IS NOT NULL AND email=$2)", [handle, email]);
   if (exists) return { error: "That handle or email is already taken." };
-  const u = await one<{ id: number }>("INSERT INTO users(handle, password_hash, email) VALUES ($1,$2,$3) RETURNING id", [handle, hashPassword(password), email]);
+  const u = await one<{ id: number }>("INSERT INTO users(handle, password_hash, email, accepted_terms_at) VALUES ($1,$2,$3, now()) RETURNING id", [handle, hashPassword(password), email]);
   await audit(u!.id, "signup", `user:${u!.id}`);
   // Email verification hook: when REQUIRE_EMAIL_VERIFICATION is on, create an email_tokens row and send a link here.
   await createSession(u!.id);
@@ -48,9 +53,28 @@ export async function signup(_: unknown, f: FormData) {
 export async function login(_: unknown, f: FormData) {
   const ip = await clientIp();
   if (ip && !(await rateLimit(`login:${ip}`, config.limits.loginsPerIpPer15m, 900))) return { error: "Too many attempts from this address. Wait 15 minutes." };
+  // Step 2 of a two-step sign-in: the challenge from step 1 and the authenticator code.
+  const challenge = str(f, "challenge", 100);
+  if (challenge) {
+    const ch = await one<{ user_id: number; next: string | null; tries: number; totp_secret: string | null }>(
+      `UPDATE login_challenges c SET tries = tries + 1 FROM users u WHERE c.id=$1 AND c.expires_at > now() AND u.id=c.user_id AND u.banned_at IS NULL
+       RETURNING c.user_id, c.next, c.tries, u.totp_secret`, [sha256(challenge)]);
+    if (!ch || ch.tries > 5 || !ch.totp_secret) {
+      await q("DELETE FROM login_challenges WHERE id=$1", [sha256(challenge)]);
+      return { error: "This sign-in expired. Start again with your password." };
+    }
+    if (!(await verifyTotp(ch.user_id, ch.totp_secret, str(f, "code", 12)))) {
+      await audit(ch.user_id, "login.2fa_failed", `user:${ch.user_id}`);
+      return { need2fa: true, challenge, error: "Wrong or already used code." };
+    }
+    await q("DELETE FROM login_challenges WHERE id=$1 OR expires_at < now()", [sha256(challenge)]);
+    await createSession(ch.user_id);
+    await audit(ch.user_id, "login", `user:${ch.user_id}`, { two_step: true });
+    redirect(safeNext(ch.next ?? "/"));
+  }
   const handle = str(f, "handle", 200), password = String(f.get("password") ?? "");
-  const u = await one<{ id: number; password_hash: string; banned_at: string | null }>(
-    "SELECT id, password_hash, banned_at FROM users WHERE handle=$1 OR email=$1", [handle]);
+  const u = await one<{ id: number; password_hash: string; banned_at: string | null; totp_secret: string | null; totp_enabled_at: string | null }>(
+    "SELECT id, password_hash, banned_at, totp_secret, totp_enabled_at FROM users WHERE (handle=$1 OR email=$1) AND deleted_at IS NULL", [handle]);
   // Failures only are counted per account (a third party cannot lock out someone who types the right password).
   const failKey = `login-fail:${handle.toLowerCase()}`;
   const blocked = !(await rateLimit(failKey, 10, 900, 0));
@@ -61,6 +85,11 @@ export async function login(_: unknown, f: FormData) {
   }
   if (blocked) return { error: "Too many failed attempts on this account. Wait 15 minutes." };
   if (u.banned_at) return { error: "This account is suspended." };
+  if (u.totp_enabled_at && u.totp_secret) {
+    const t = token(32);
+    await q("INSERT INTO login_challenges(id, user_id, next, expires_at) VALUES ($1,$2,$3, now() + interval '5 minutes')", [sha256(t), u.id, safeNext(str(f, "next", 300))]);
+    return { need2fa: true, challenge: t };
+  }
   await createSession(u.id);
   await audit(u.id, "login", `user:${u.id}`);
   redirect(safeNext(str(f, "next", 300)));
@@ -81,6 +110,144 @@ async function requireMod(): Promise<User> {
   if (!isModerator(u)) throw new Error("forbidden");
   return u;
 }
+
+// ─────────── account security (account page) ───────────
+type Msg = { ok?: string; error?: string; secret?: string; uri?: string };
+
+/** Change the password: the current one is required; every other session of the account is signed out. */
+export async function changePassword(_: unknown, f: FormData): Promise<Msg> {
+  const u = await requireUser();
+  if (!(await rateLimit(`pwchange:${u.id}`, 5, 900))) return { error: "Too many attempts. Wait 15 minutes." };
+  const cur = String(f.get("current") ?? ""), next = String(f.get("password") ?? "");
+  const row = await one<{ password_hash: string }>("SELECT password_hash FROM users WHERE id=$1", [u.id]);
+  if (!row || !verifyPassword(cur, row.password_hash)) return { error: "The current password is wrong." };
+  if (next.length < 10 || next.length > 200) return { error: "New password: at least 10 characters." };
+  if (next === cur) return { error: "The new password is the same as the current one." };
+  await q("UPDATE users SET password_hash=$2, password_changed_at=now() WHERE id=$1", [u.id, hashPassword(next)]);
+  await q("DELETE FROM sessions WHERE user_id=$1 AND id <> $2", [u.id, (await currentSessionId()) ?? ""]);
+  await audit(u.id, "password.change", `user:${u.id}`);
+  return { ok: "Password changed. Your other sessions were signed out." };
+}
+
+/** Sign out one session (by its hashed id) or every other session of the account. */
+export async function revokeSession(f: FormData) {
+  const u = await requireUser();
+  const id = str(f, "session", 100), mine = (await currentSessionId()) ?? "";
+  if (id === "others") await q("DELETE FROM sessions WHERE user_id=$1 AND id <> $2", [u.id, mine]);
+  else if (id && id !== mine) await q("DELETE FROM sessions WHERE user_id=$1 AND id=$2", [u.id, id]);
+  await audit(u.id, "session.revoke", `user:${u.id}`, { which: id === "others" ? "others" : "one" });
+  revalidatePath("/account");
+}
+
+/** Step 1 of two-step verification: a new secret, stored but not active until a code from it is confirmed. */
+export async function startTotp(): Promise<Msg> {
+  const u = await requireUser();
+  const row = await one<{ totp_enabled_at: string | null }>("SELECT totp_enabled_at FROM users WHERE id=$1", [u.id]);
+  if (row?.totp_enabled_at) return { error: "Two-step verification is already on." };
+  const secret = newTotpSecret();
+  await q("UPDATE users SET totp_secret=$2 WHERE id=$1", [u.id, secret]);
+  const { otpauthUri } = await import("@/lib/totp");
+  return { secret, uri: otpauthUri(u.handle, secret) };
+}
+
+/** Step 2: the first code from the authenticator turns it on. */
+export async function confirmTotp(_: unknown, f: FormData): Promise<Msg> {
+  const u = await requireUser();
+  if (!(await rateLimit(`totp:${u.id}`, 10, 900))) return { error: "Too many attempts. Wait 15 minutes." };
+  const row = await one<{ totp_secret: string | null; totp_enabled_at: string | null }>("SELECT totp_secret, totp_enabled_at FROM users WHERE id=$1", [u.id]);
+  if (!row?.totp_secret || row.totp_enabled_at) return { error: "Start the setup again." };
+  if (!(await verifyTotp(u.id, row.totp_secret, str(f, "code", 12)))) return { error: "That code does not match. Check the time on your phone and try the next code." };
+  await q("UPDATE users SET totp_enabled_at=now() WHERE id=$1", [u.id]);
+  await q("DELETE FROM sessions WHERE user_id=$1 AND id <> $2", [u.id, (await currentSessionId()) ?? ""]);
+  await audit(u.id, "2fa.enable", `user:${u.id}`);
+  revalidatePath("/account");
+  return { ok: "Two-step verification is on. Other sessions were signed out." };
+}
+
+/** Turning it off needs the password and a current code. */
+export async function disableTotp(_: unknown, f: FormData): Promise<Msg> {
+  const u = await requireUser();
+  if (!(await rateLimit(`totp:${u.id}`, 10, 900))) return { error: "Too many attempts. Wait 15 minutes." };
+  const row = await one<{ password_hash: string; totp_secret: string | null }>("SELECT password_hash, totp_secret FROM users WHERE id=$1", [u.id]);
+  if (!row || !verifyPassword(String(f.get("current") ?? ""), row.password_hash)) return { error: "The password is wrong." };
+  if (!row.totp_secret || totpStep(row.totp_secret, str(f, "code", 12)) == null || !(await verifyTotp(u.id, row.totp_secret, str(f, "code", 12))))
+    return { error: "The code is wrong." };
+  await q("UPDATE users SET totp_secret=NULL, totp_enabled_at=NULL WHERE id=$1", [u.id]);
+  await audit(u.id, "2fa.disable", `user:${u.id}`);
+  revalidatePath("/account");
+  return { ok: "Two-step verification is off." };
+}
+
+/**
+ * Delete the account (Privacy §6): personal data goes (email, password, sessions, keys, profile, 2FA); public
+ * contributions stay, published under the licence, attributed to "deleted-<id>". Points leave the leaderboards.
+ */
+export async function deleteAccount(_: unknown, f: FormData): Promise<Msg> {
+  const u = await requireUser();
+  if (!(await rateLimit(`delete:${u.id}`, 5, 900))) return { error: "Too many attempts. Wait 15 minutes." };
+  const row = await one<{ password_hash: string; role: string }>("SELECT password_hash, role FROM users WHERE id=$1", [u.id]);
+  if (!row || !verifyPassword(String(f.get("current") ?? ""), row.password_hash)) return { error: "The password is wrong." };
+  if (str(f, "confirm", 40) !== u.handle) return { error: "Type your handle to confirm." };
+  if (row.role !== "user") return { error: "A moderator or admin account must first be demoted by an admin." };
+  await tx(async (c) => {
+    await c.query(`UPDATE users SET handle=$2, display_name=NULL, email=NULL, email_verified_at=NULL, password_hash='!', bio=NULL,
+      affiliation=NULL, totp_secret=NULL, totp_enabled_at=NULL, deleted_at=now(), banned_at=now(), suspended_reason='deleted by its owner'
+      WHERE id=$1`, [u.id, `deleted-${u.id}`]);
+    await c.query("DELETE FROM sessions WHERE user_id=$1", [u.id]);
+    await c.query("UPDATE api_keys SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", [u.id]);
+    await c.query("UPDATE desk_leases SET state='released', reason='other', note='account deleted', ended_at=now() WHERE user_id=$1 AND state='active'", [u.id]);
+  });
+  await audit(u.id, "account.delete", `user:${u.id}`);
+  await destroySession();
+  redirect("/?deleted=1");
+}
+
+// ─────────── moderation of accounts (moderators: rename, suspend; never other moderators or admins) ───────────
+async function modTarget(mod: User, handle: string) {
+  const t = await one<{ id: number; handle: string; role: string; banned_at: string | null; deleted_at: string | null }>(
+    "SELECT id, handle, role, banned_at, deleted_at FROM users WHERE handle=$1", [handle]);
+  if (!t) throw new Error("no such user");
+  if (t.id === mod.id) throw new Error("not on your own account");
+  if (t.role !== "user" && mod.role !== "admin") throw new Error("only an admin can act on a moderator or admin account");
+  if (t.deleted_at) throw new Error("this account was deleted");
+  return t;
+}
+
+async function renameUserImpl(f: FormData) {
+  const mod = await requireMod();
+  const t = await modTarget(mod, str(f, "handle", 40));
+  const reason = str(f, "reason", 500);
+  if (!reason) throw new Error("a reason is required (it is recorded in the audit log)");
+  let next = str(f, "new_handle", 40);
+  if (!next) next = `renamed-${t.id}`;
+  const bad = handleProblem(next);
+  if (bad && !/^renamed-\d+$/.test(next)) throw new Error(bad);
+  if (await one("SELECT 1 FROM users WHERE handle=$1", [next])) throw new Error("that handle is taken");
+  await q("UPDATE users SET handle=$2, display_name=NULL, handle_changed_at=now() WHERE id=$1", [t.id, next]);
+  await audit(mod.id, "user.rename", `user:${t.id}`, { from: t.handle, to: next, reason });
+  revalidatePath("/mod/users");
+}
+
+async function suspendUserImpl(f: FormData) {
+  const mod = await requireMod();
+  const t = await modTarget(mod, str(f, "handle", 40));
+  const reason = str(f, "reason", 500);
+  if (!reason) throw new Error("a reason is required (it is recorded in the audit log)");
+  if (str(f, "action", 10) === "lift") {
+    await q("UPDATE users SET banned_at=NULL, suspended_reason=NULL WHERE id=$1", [t.id]);
+    await audit(mod.id, "user.unsuspend", `user:${t.id}`, { handle: t.handle, reason });
+    revalidatePath("/mod/users");
+    return;
+  }
+  await tx(async (c) => {
+    await c.query("UPDATE users SET banned_at=now(), suspended_reason=$2 WHERE id=$1", [t.id, reason]);
+    await c.query("DELETE FROM sessions WHERE user_id=$1", [t.id]);
+    await c.query("UPDATE desk_leases SET state='released', reason='other', note='account suspended', ended_at=now() WHERE user_id=$1 AND state='active'", [t.id]);
+  });
+  await audit(mod.id, "user.suspend", `user:${t.id}`, { handle: t.handle, reason });
+  revalidatePath("/mod/users");
+}
+
 
 const SETUP_COOKIE = "ns_setup";
 
@@ -214,6 +381,18 @@ async function reviewSubmissionImpl(f: FormData) {
       await emit(c, s.problem_id, "review.decision", { userId: mod.id, refType: "submission", refId: s.id,
         summary: decision === "accept" ? `${s.public_id} approved after community review: it now counts (${s.kind})` : `${s.public_id} rejected after review${note ? `: ${note}` : ""}` });
       if (decision === "accept") await emit(c, s.problem_id, "verified", { userId: s.user_id, refType: "submission", refId: s.id, summary: `Verified ${s.kind}, reviewed and approved` });
+      // Referees: a vote that matched the decision, and (on approval) the suggested change this revision came from.
+      const want = decision === "accept" ? 1 : -1;
+      const { rows: voters } = await c.query(
+        "SELECT user_id FROM submission_votes WHERE submission_id=$1 AND value=$2 AND user_id NOT IN ($3,$4)", [s.id, want, s.user_id, mod.id]);
+      for (const v of voters) await c.query("INSERT INTO point_events(user_id, submission_id, delta, reason, note, created_by) VALUES ($1,$2,$3,'referee:vote',$4,$5)",
+        [v.user_id, s.id, POINTS.referee.vote, `vote matched the decision on ${s.public_id}`, mod.id]);
+      if (decision === "accept") {
+        const { rows: sugg } = await c.query(
+          "SELECT id, user_id FROM submission_suggestions WHERE revision_id=$1 AND status='applied' AND user_id NOT IN ($2,$3)", [s.id, s.user_id, mod.id]);
+        for (const g of sugg) await c.query("INSERT INTO point_events(user_id, submission_id, delta, reason, note, created_by) VALUES ($1,$2,$3,'referee:suggestion',$4,$5)",
+          [g.user_id, s.id, POINTS.referee.suggestion, `suggested change #${g.id} became the approved ${s.public_id}`, mod.id]);
+      }
     }
     if (decision === "accept") {
       if (s.kind === "finding" || s.kind === "formalization" || (s.kind === "partial" && points > 0)) {
@@ -415,4 +594,6 @@ export async function reviewSubmission(f: FormData) { await guarded(f, reviewSub
 export async function revokeSubmission(f: FormData) { await guarded(f, revokeSubmissionImpl, f => `/s/${str(f, "id", 40)}`); }
 export async function resolveCritique(f: FormData) { await guarded(f, resolveCritiqueImpl, () => "/mod"); }
 export async function setStatementStatus(f: FormData) { await guarded(f, setStatementStatusImpl, f => `/p/${str(f, "slug", 200)}?tab=statement`); }
+export async function renameUser(f: FormData) { await guarded(f, renameUserImpl, () => "/mod/users"); }
+export async function suspendUser(f: FormData) { await guarded(f, suspendUserImpl, () => "/mod/users"); }
 export async function hideResearchThread(f: FormData) { await guarded(f, hideResearchThreadImpl, f => `/p/${str(f, "problem", 200)}`); }

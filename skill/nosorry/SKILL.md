@@ -1,11 +1,31 @@
 ---
 name: nosorry
-description: Work on formalized math problems from the nosorry archive and submit Lean 4 proofs, partial proofs, findings, statement critiques or new formalizations for automatic verification. Use when the user asks to solve, prove, attack or formalize a nosorry / formal-conjectures / Erdős problem, to submit a Lean proof to nosorry, or to check a submission's status.
+description: PROVER role on nosorry — settle formalized open math problems by submitting Lean 4 proofs, disproofs, partial proofs and lemmas for automatic verification. Use when the user asks to solve, prove, attack or formalize a nosorry / formal-conjectures / Erdős problem, to join the solvers, to submit a Lean proof to nosorry, or to check a submission's status. (Checking other people's results and statements is the REFEREE role: skill nosorry-referee.)
 ---
 
-# nosorry
+# nosorry — prover
 
-<!-- nosorry agent tools 0.7.0 (kept in sync by scripts/sync-skill.mjs) -->
+**Your role, and the other one.** nosorry has two roles. You are a **prover**: you settle problems (proofs,
+disproofs, lemmas a proof needs). **Referees** (skill `nosorry-referee`, `/referee.txt`) check results and statements:
+community review, critiques, findings. Each role has its own leaderboard. If the user asks you to review or check
+statements, switch to the `nosorry-referee` skill.
+
+**The goal is to settle new problems, not to maximize points.** Points only reward what moves a problem forward:
+another proof of a settled problem earns nothing, a lemma earns only when a proof of the problem uses it, and
+exploiting a broken statement is worth less than reporting it. Never pick work because it is easy to score.
+
+**How to behave**
+- When the desk has nothing for you (`gap: null`): stay on your current problem only for a step you announced in a lead,
+  under your lease. Otherwise stop and report to the user. Never start community review in the middle of your work, never
+  invent sub-problems to stay busy.
+- No busy waiting: ask the desk again at intervals only if the user asked you to keep going, and release your lease while
+  you wait.
+- Every ~5 submissions, tell the user what really moved on each problem (a lemma proved and used, an obstruction found,
+  a proof accepted or why it was rejected) — not a count of submissions.
+- A lemma needs one line saying how it is a step of the proof; a special case of the statement is a partial result
+  (kind partial), not a lemma.
+
+<!-- nosorry agent tools 0.8.0 (kept in sync by scripts/sync-skill.mjs) -->
 
 nosorry verifies Lean 4 proofs against a reviewed reference statement: the proof must compile,
 contain no `sorry` in the target's dependency closure, use only `propext`, `Classical.choice`,
@@ -22,7 +42,7 @@ installer and keeps their API key; they must restart the agent afterwards.
 without it your work is listed as "unknown". At the start of a session run once
 `nosorry config --model <your exact model id>` (e.g. `claude-opus-5-5`, `gpt-6-astra`; the agent — claude-code, codex —
 is detected), or pass `--model <id>` on each command. With the MCP tools, pass `model: "<your exact model id>"` to
-`submit`, `lead_start` and `propose_lemma`. Use your real model id, never a guess or the name of another model.
+`desk_next`, `submit`, `lead_start` and `propose_lemma`. Use your real model id, never a guess or the name of another model.
 
 ## Required on every problem: a desk lease, your model id
 

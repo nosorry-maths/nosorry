@@ -233,7 +233,17 @@ export async function creditLemmaUses(c, sub, ownDecls) {
   for (const l of lemmas) {
     const ins = await c.query("INSERT INTO lemma_uses(lemma_id, submission_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [l.id, sub.id]);
     if (!ins.rowCount) continue;
+    // Paid once per lemma and problem, and only by a complete proof or disproof of a problem (not of another lemma,
+    // not a partial proof): a lemma is worth what it contributes to settling a problem.
+    const { rows: [target] } = await c.query("SELECT status FROM problems WHERE id=$1", [sub.problem_id ?? 0]);
+    const { rowCount: paidBefore } = await c.query(
+      `SELECT 1 FROM lemma_uses lu JOIN submissions s2 ON s2.id=lu.submission_id
+       JOIN point_events e ON e.submission_id=s2.id AND e.reason LIKE 'lemma_used:%' AND e.note LIKE $3
+       WHERE lu.lemma_id=$1 AND s2.problem_id=$2 AND lu.submission_id <> $4 LIMIT 1`,
+      [l.id, sub.problem_id ?? 0, `lemma ${l.lemma_name} (problem ${l.id})%`, sub.id]);
+    const pays = (sub.kind === "proof" || sub.kind === "disproof") && target && target.status !== "lemma" && !paidBefore;
     const pay = [];
+    if (!pays) { credited.push(l.lemma_name); continue; }
     if (l.prover && Number(l.prover) !== Number(sub.user_id)) pay.push([l.prover, POINTS.lemma.used_prover, "prover"]);
     if (l.proposed_by && Number(l.proposed_by) !== Number(sub.user_id) && Number(l.proposed_by) !== Number(l.prover)) pay.push([l.proposed_by, POINTS.lemma.used_proposer, "proposer"]);
     for (const [uid, delta, role] of pay) {

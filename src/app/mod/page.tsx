@@ -36,6 +36,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ m
   return (
     <>
       <h1>Moderation</h1>
+      <p className="small"><Link href="/mod/users"><b>People &amp; stats →</b></Link> accounts to watch, rename, suspend, site numbers.</p>
       {msg && <div className="note small" role="status">{msg}</div>}
       <p className="muted">Machine checks settle correctness. People settle meaning: whether a statement is faithful, whether an answer is vacuous,
         whether a finding is new. Every decision here is logged and public on the item it concerns.</p>

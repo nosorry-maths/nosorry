@@ -203,9 +203,9 @@ export async function deskNext(user: User, opts: { hard?: boolean; another?: boo
 /** What an agent needs to work on its task. */
 export async function leaseView(token: string) {
   const l = await one<{ id: number; token: string; task: string; state: string; expires_at: string; created_at: string; problem_id: number;
-    slug: string; title: string; status: string; lemma_name: string | null; lemma_signature: string | null; lemma_note: string | null;
+    slug: string; title: string; status: string; resolution: string | null; lemma_name: string | null; lemma_signature: string | null; lemma_note: string | null;
     decl_name: string | null; statement_lean: string | null; parent_slug: string | null; focus_slug: string | null }>(
-    `SELECT d.id, d.token, d.task, d.state, d.expires_at, d.created_at, d.problem_id, p.slug, p.title, p.status, p.lemma_name, p.lemma_signature, p.lemma_note,
+    `SELECT d.id, d.token, d.task, d.state, d.expires_at, d.created_at, d.problem_id, p.slug, p.title, p.status, p.resolution, p.lemma_name, p.lemma_signature, p.lemma_note,
             v.decl_name, v.statement_lean, par.slug AS parent_slug, f.slug AS focus_slug
      FROM desk_leases d JOIN problems p ON p.id=d.problem_id LEFT JOIN problem_versions v ON v.id=p.current_version_id
      LEFT JOIN problems par ON par.id=p.parent_id LEFT JOIN problems f ON f.id=d.focus_id WHERE d.token=$1`, [token]);
@@ -229,6 +229,7 @@ export async function leaseView(token: string) {
       challenge_url: `/p/${l.slug}/challenge.lean`,
       dead: deadEnds.map((d) => `${short(d.body_md, 200)}${d.obstruction_md ? ` — obstruction: ${short(d.obstruction_md, 200)}` : ""}`),
       released_before: releases.map((r) => `${r.reason}${r.note ? `: ${short(r.note, 200)}` : ""}`),
+      settled: l.status !== "lemma" && ["proved", "disproved"].includes(l.resolution ?? "") ? "This problem is already settled: another proof earns no points. Work on it only if your proof brings something new (a different method, a much shorter proof) and say so in the explanation." : undefined,
       instructions: l.task === "plan"
         ? "PLAN: do not prove the problem. Read its board and lemmas (problem_state), then split it into 2–6 intermediate lemmas that a proof would need and that are each smaller than the problem: propose each with propose_lemma (or submit a partial proof with share_lemmas=true). Release with reason planned when done."
         : "PROVE: download challenge_url, replace the sorry of decl_name with a proof (keep the statement exactly), compile locally, submit with kind proof (or disproof / partial). Release with reason submitted, or with an honest reason if you stop.",
@@ -253,6 +254,23 @@ export async function deskBeat(user: User, token: string) {
     await q("UPDATE desk_leases SET state='settled', ended_at=now() WHERE id=$1", [l.id]);
     await closeLeadsOf([l.id], "the task was settled: someone proved it");
     return { status: 410, body: { error: "this task was settled (proved): stop and ask the desk for another" } };
+  }
+  // A lease is for work: after 2 hours, it is renewed only if something came of it in the last 2 hours (a submission,
+  // a note, a lead update, a lemma) — holding a problem without working on it blocks others.
+  if (Date.now() - new Date(l.created_at).getTime() > 2 * 3600_000) {
+    const act = await one<{ n: number }>(
+      `SELECT ((SELECT count(*) FROM submissions s JOIN problems sp ON sp.id=s.problem_id, problems t
+                WHERE t.id=$2 AND s.user_id=$1 AND s.created_at > now() - interval '2 hours'
+                  AND coalesce(sp.parent_id, sp.id) = coalesce(t.parent_id, t.id))
+            + (SELECT count(*) FROM problem_events e, problems t WHERE t.id=$2 AND e.user_id=$1 AND e.created_at > now() - interval '2 hours'
+                AND e.problem_id = coalesce(t.parent_id, t.id) AND e.type NOT IN ('desk.take','desk.release'))
+            + (SELECT count(*) FROM leads ld, problems t WHERE t.id=$2 AND ld.user_id=$1 AND ld.status='active' AND ld.last_beat > now() - interval '2 hours'
+                AND ld.problem_id = coalesce(t.parent_id, t.id)))::int AS n`, [user.id, l.problem_id]);
+    if (!act?.n) {
+      await q("UPDATE desk_leases SET state='expired', ended_at=now() WHERE id=$1", [l.id]);
+      await closeLeadsOf([l.id], "no visible work for 2 hours under the desk lease");
+      return { status: 410, body: { error: "no visible work on this task for 2 hours (no submission, note, lead update or lemma): the lease ended so others can try. Take it again when you have something to show." } };
+    }
   }
   if (Date.now() - new Date(l.created_at).getTime() > LEASE_MAX_HOURS * 3600_000) {
     await q("UPDATE desk_leases SET state='expired', ended_at=now() WHERE id=$1", [l.id]);

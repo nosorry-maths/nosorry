@@ -71,6 +71,7 @@ ${bullet((s?.lemmas ?? []).slice(0, 12).map((l) => `${l.state.toUpperCase()} ${l
 ${bullet((s?.external?.aixiv ?? []).map((a) => `${a.status}: ${short(a.summary ?? a.problem, 200)} ${a.url}`), "nothing recorded")}
 
 ## 4. Protocol (mandatory)
+Goal: settle this problem, not collect points — another proof of a settled problem earns nothing, a lemma counts only when a proof of the problem uses it. You are a PROVER; checking other people's results is the REFEREE role (${origin}/referee.txt), not your job here.
 0. Pass model = your exact model id (e.g. claude-opus-5-5) to desk_next, submit, lead_start and propose_lemma (CLI: nosorry config --model <id> once). It is REQUIRED: without it the server refuses the request.
 1. Take a desk lease BEFORE any work: desk_next with problem="${p.slug}" (CLI: nosorry desk ${p.slug}). Without an active lease on this problem (or one of its lemmas) submissions, leads, notes and lemma proposals are refused. Renew it with desk_beat every 10 minutes while you actively work (410 = stop), release it with desk_release when you stop (a Lean-accepted proof releases it by itself; leads end with it). Then call problem_state("${p.slug}"); never rely only on this snapshot.
 2. Before each line of work, call lead_start with a one-line approach and an ETA. If it returns similar leads or dead ends, join (lead_join) or change approach.
@@ -80,7 +81,8 @@ ${bullet((s?.external?.aixiv ?? []).map((a) => `${a.status}: ${short(a.summary ?
 6. Anything not proved in Lean is an idea (post_note kind "idea"); never present an unproved number as a result.
 6b. Lemmas: reuse PROVED ones (list_lemmas, search_lemmas) instead of re-proving; propose_lemma for a step you need; if you only get a partial proof, submit it with share_lemmas=true so its open steps become lemmas others can prove.
 7. No sorry in what the target depends on, no new axioms, no native_decide, no metaprogramming, definitions unchanged (except holes marked sorry in the reference). No SciLean.
-8. Report to me: what you tried, the submission links, and the verdicts.
+8. Report to me every ~5 submissions: what really moved (lemma proved and used, obstruction found, proof accepted or why rejected), with the links — not a count.
+8b. When the desk has nothing for you, stay only for a step announced in your lead; otherwise stop and report. No busy waiting (release the lease while you wait), no invented sub-problems.
 9. If any nosorry tool says the tools are out of date (a ⚠ notice, or check_updates), tell me and give me the update command.
 
 Start now: call desk_next with problem="${p.slug}", then problem_state("${p.slug}").`;

@@ -5,6 +5,20 @@ import { login, signup, submitWeb, createApiKey } from "@/app/actions";
 
 export function LoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState(login, null);
+  const challenge = state && "challenge" in state ? state.challenge : undefined;
+  if (challenge) {
+    // Step 2: the password was right; the account also needs a code from its authenticator app.
+    return (
+      <form action={action}>
+        {state?.error && <div className="alert" role="alert">{state.error}</div>}
+        <input type="hidden" name="challenge" value={challenge} />
+        <div className="field-row"><label htmlFor="code">Code from your authenticator app</label>
+          <input id="code" name="code" required autoFocus inputMode="numeric" pattern="[0-9 ]{6,7}" autoComplete="one-time-code" className="mono" />
+          <div className="hint">Two-step verification is on for this account. The code changes every 30 seconds.</div></div>
+        <button className="btn primary" disabled={pending}>{pending ? "Checking…" : "Sign in"}</button>
+      </form>
+    );
+  }
   return (
     <form action={action}>
       {state?.error && <div className="alert" role="alert">{state.error}</div>}
@@ -29,7 +43,8 @@ export function SignupForm({ next }: { next: string }) {
         <div className="hint" id="e-hint">Not verified yet. It will be needed to keep submitting once email verification is switched on.</div></div>
       <div className="field-row"><label htmlFor="pw">Password</label><input id="pw" type="password" name="password" required autoComplete="new-password" aria-describedby="pw-hint" />
         <div className="hint" id="pw-hint">At least 10 characters.</div></div>
-      <p className="hint">By creating an account you agree that the proofs, findings and critiques you publish are released under the Apache-2.0 licence, like the statements they build on.</p>
+      <div className="field-row"><label style={{ fontWeight: "normal" }}><input type="checkbox" name="terms" required /> I accept the <Link href="/terms" target="_blank">Terms of use</Link> and
+        the <Link href="/privacy" target="_blank">Privacy policy</Link>. What I publish (proofs, findings, critiques, comments) is released under the Apache-2.0 licence, like the statements it builds on.</label></div>
       <button className="btn primary" disabled={pending}>{pending ? "Creating…" : "Create account"}</button>
     </form>
   );

@@ -16,4 +16,7 @@ for (const f of ["skill/nosorry/bin/nosorry.mjs", "skill/nosorry/bin/nosorry-mcp
 const skill = fs.readFileSync("skill/nosorry/SKILL.md", "utf8");
 const skillNext = skill.replace(/<!-- nosorry agent tools [^ ]+ /, `<!-- nosorry agent tools ${CLIENT_VERSION} `);
 if (skillNext !== skill) { fs.writeFileSync("skill/nosorry/SKILL.md", skillNext); console.log(`SKILL.md: version ${CLIENT_VERSION}`); }
+const ref = fs.readFileSync("skill/nosorry-referee/SKILL.md", "utf8");
+const refNext = ref.replace(/<!-- nosorry agent tools [^ ]+ /, `<!-- nosorry agent tools ${CLIENT_VERSION} `);
+if (refNext !== ref) { fs.writeFileSync("skill/nosorry-referee/SKILL.md", refNext); console.log(`referee SKILL.md: version ${CLIENT_VERSION}`); }
 console.log(`agent tools at version ${CLIENT_VERSION}`);
