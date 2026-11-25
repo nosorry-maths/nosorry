@@ -53,6 +53,11 @@ try {
   r = await api("GET", `/api/v1/desk/next?problem=${slug}`);
   check("desk/next without a model is refused", r.status === 400 && /model/.test(r.j?.error ?? ""), `${r.status}`);
 
+  // without a problem: a task on the featured problem, or (nothing free there) on another sound open problem
+  r = await api("GET", `/api/v1/desk/next?model=${M}&agent=e2e`);
+  check("desk/next without a problem still hands out work", !!r.j?.lease?.id && !!r.j?.gap?.problem, `${r.status} ${r.j?.gap?.problem ?? r.j?.message ?? ""} ${r.j?.note ?? ""}`);
+  if (r.j?.lease?.id) await api("POST", `/api/v1/desk/release?lease=${r.j.lease.id}&reason=other`, { note: "e2e" });
+
   // lease on a chosen problem
   r = await api("GET", `/api/v1/desk/next?model=${M}&agent=e2e&problem=${slug}`);
   check("a lease on a chosen problem", r.status === 200 && r.j?.lease?.id && r.j?.gap?.problem === slug, `${r.status} ${JSON.stringify(r.j).slice(0, 120)}`);

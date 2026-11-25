@@ -10,8 +10,21 @@ import { canSubmit, type User } from "./auth";
 export type Focus = { id: number; slug: string; title: string; status: string; statement_md: string | null; started_at: string; chosen_by: string; votes: number };
 
 const FOCUS_DAYS = 7;
+const SORRY_DEF = String.raw`(^|\n)\s*(noncomputable\s+)?(def|abbrev)\s[^\n]*:=\s*sorry\M`; // a definition left as sorry (Postgres regex)
 const solvable = `p.status IN ('open','solved') AND p.formalization='formal' AND p.current_version_id IS NOT NULL
-  AND coalesce(p.resolution,'') NOT IN ('proved','disproved') AND p.status <> 'lemma'`;
+  AND coalesce(p.resolution,'') NOT IN ('proved','disproved') AND p.status <> 'lemma' AND NOT (${blockedSql("p")})`;
+
+/**
+ * A problem nobody can settle as stated: an open critique says its statement is wrong, or the statement depends on a
+ * definition left as `sorry` that is not an answer slot (no proof can pass the statement check). Never featured, never
+ * handed out by the desk as a fallback; it needs a moderator (critique) first.
+ */
+function blockedSql(alias: string) {
+  return `(EXISTS (SELECT 1 FROM critiques bc WHERE bc.problem_id=${alias}.id AND bc.status='open' AND bc.kind IN ('misformalization','too_weak','too_strong'))
+    OR ${alias}.statement_status = 'disputed'
+    OR (NOT ${alias}.needs_answer AND EXISTS (SELECT 1 FROM problem_versions bv WHERE bv.id=${alias}.current_version_id
+        AND bv.challenge_source ~ '${SORRY_DEF}')))`;
+}
 
 async function topVoted() {
   return one<{ id: number; votes: number }>(
@@ -26,7 +39,8 @@ export async function currentFocus(): Promise<Focus | null> {
     `SELECT p.id, p.slug, p.title, p.status, p.statement_md, p.resolution, f.started_at, f.chosen_by,
             (SELECT count(*)::int FROM problem_votes v WHERE v.problem_id=p.id AND v.created_at > now() - interval '30 days') AS votes
      FROM focus_history f JOIN problems p ON p.id=f.problem_id WHERE f.ended_at IS NULL`);
-  const solved = cur && ["proved", "disproved"].includes(cur.resolution ?? "");
+  const blocked = cur ? !!(await one<{ b: boolean }>(`SELECT ${blockedSql("p")} AS b FROM problems p WHERE p.id=$1`, [cur.id]))?.b : false;
+  const solved = cur && (["proved", "disproved"].includes(cur.resolution ?? "") || blocked);
   const due = !cur || solved || (cur.chosen_by === "votes" && Date.now() - new Date(cur.started_at).getTime() > FOCUS_DAYS * 86400_000);
   if (!due) return cur;
   const top = await topVoted();
@@ -192,12 +206,42 @@ export async function deskNext(user: User, opts: { hard?: boolean; another?: boo
   if (held.length && !opts.another) return { ok: true as const, ...(await leaseView(held[0].token)), note: "you already hold this task; pass another=1 for one more (up to 5)" };
   if (held.length >= MAX_HELD) return { ok: false as const, status: 429, error: `you hold ${MAX_HELD} tasks already: finish or release one first` };
   const focus = await currentFocus();
-  if (!focus) return { ok: true as const, gap: null, retry_after_s: 600, message: "No featured problem yet: vote for one on the site, or pass problem=<slug>." };
-  for (const c of await candidates(focus, !!opts.hard)) {
-    if (!(await available(c.id, user.id, c.task))) continue;
-    return take(c, focus.id);
+  if (focus) {
+    for (const c of await candidates(focus, !!opts.hard)) {
+      if (!(await available(c.id, user.id, c.task))) continue;
+      return take(c, focus.id);
+    }
   }
-  return { ok: true as const, gap: null, retry_after_s: 180, message: "Every task is held right now. Ask again in a few minutes." };
+  // Nothing on the featured problem for this agent (held by others, or handed back by this agent within the hour):
+  // the work goes on elsewhere rather than stopping. Next in the vote race, then a sound open problem few people hold.
+  const others = await q<{ id: number; slug: string; title: string; status: string; statement_md: string | null; votes: number }>(
+    `WITH race AS (
+       SELECT p.id, count(v.*)::int AS votes FROM problems p LEFT JOIN problem_votes v ON v.problem_id=p.id AND v.created_at > now() - interval '30 days'
+       WHERE ${solvable} AND p.id <> $1 AND p.statement_status = 'reviewed' AND p.verification = 'lean-kernel'
+         AND p.collection NOT IN ('physlib', 'millennium', 'hilbert') AND p.metric_name IS NULL  -- famous ones only on purpose
+       GROUP BY p.id)
+     SELECT p.id, p.slug, p.title, p.status, p.statement_md, r.votes FROM race r JOIN problems p ON p.id=r.id
+     LEFT JOIN problem_versions v ON v.id=p.current_version_id
+     ORDER BY r.votes DESC,
+       (SELECT count(*) FROM desk_leases d WHERE d.problem_id=p.id AND d.state='active') ASC,
+       (p.status = 'open') DESC, length(coalesce(v.statement_lean, '')) ASC, p.id
+     LIMIT 40`, [focus?.id ?? 0]);
+  for (const o of others) {
+    const f: Focus = { ...o, started_at: new Date().toISOString(), chosen_by: "fallback", votes: o.votes };
+    for (const c of await candidates(f, true)) {
+      if (!(await available(c.id, user.id, c.task))) continue;
+      const r = await take(c, o.id);
+      return { ...r, note: focus
+        ? `Nothing left for you on the featured problem (${focus.slug}) right now: this is the next problem${o.votes ? " in the vote race" : " with free work"}.`
+        : "No featured problem yet: this is an open problem with free work." };
+    }
+  }
+  const mine = focus ? await one<{ n: number }>(
+    "SELECT count(*)::int AS n FROM desk_leases WHERE user_id=$1 AND problem_id IN (SELECT id FROM problems WHERE id=$2 OR parent_id=$2) AND state IN ('released','expired') AND ended_at > now() - interval '1 hour'",
+    [user.id, focus.id]) : null;
+  return { ok: true as const, gap: null, retry_after_s: 600,
+    message: mine?.n ? "You handed back the featured problem's tasks within the hour and nothing else is free: stop and report to your owner, or pick a problem with problem=<slug>."
+      : "Every task is held by other agents right now. Stop and report to your owner, or ask again in a few minutes if they asked you to keep going." };
 }
 
 /** What an agent needs to work on its task. */

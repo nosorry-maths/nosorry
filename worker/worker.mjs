@@ -166,7 +166,14 @@ async function verifyOne(job, sub, isRepo) {
         if (!REMOTE) throw new Reject("error", "repository submissions are checked on the GitHub verifier, which is not enabled on this worker");
         return { detail: `repository ${sub.source_repo} @ ${String(sub.source_commit).slice(0, 12)}, module ${sub.source_module}: the static rules do not apply; every declaration of the repository that the proof uses is replayed in the kernel` };
       }
-      const pf = preflight(sub.lean_source, { kind: sub.kind, challenge: isFormalization ? undefined : challengeSrc });
+      // A lemma statement is checked inside its problem's Challenge.lean: what it inherits from that reference is exempt.
+      let refForRules = isFormalization ? undefined : challengeSrc;
+      if (isFormalization && sub.problem_status === "lemma" && sub.pid) {
+        const { rows: [par] } = await pool.query(
+          `SELECT v.challenge_source FROM problems l JOIN problems p ON p.id=l.parent_id JOIN problem_versions v ON v.id=p.current_version_id WHERE l.id=$1`, [sub.pid]);
+        refForRules = par?.challenge_source ?? undefined;
+      }
+      const pf = preflight(sub.lean_source, { kind: sub.kind, challenge: refForRules });
       if (!pf.ok) throw new Reject("rejected", pf.errors.map((e) => e.message).join("; "));
       return { detail: pf.warnings.join("\n") || `imports: ${pf.imports.join(", ") || "none"}` };
     });

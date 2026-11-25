@@ -71,8 +71,11 @@ const BIDI = /[‪-‮⁦-⁩]/;
 /**
  * @param {string} src Lean source
  * @param {{kind?: 'proof'|'disproof'|'partial'|'formalization', challenge?: string}} opts
- *   challenge: reference source. A solution line identical to a reference line is exempt only from the notation/syntax
- *   rule (so a solution can restate the reference's own notation); every other rule still applies to it.
+ *   challenge: reference source. A solution must contain the reference as it is, and some references themselves use a
+ *   construct the rules refuse (for instance a `native_decide` sanity check upstream). A line identical to a reference
+ *   line is therefore exempt from a rule, as long as the solution does not use that construct more often than the
+ *   reference does. This is safe: the kernel checks (#print axioms on the target, the statement comparison, the replay)
+ *   still refuse any target that depends on it — native_decide shows up there as the axiom Lean.ofReduceBool.
  */
 export function preflight(src, opts = {}) {
   const errors = [], warnings = [];
@@ -91,10 +94,18 @@ export function preflight(src, opts = {}) {
     if (refused) errors.push({ code: "import", message: `import ${imp} refused: ${refused[1]}` });
     else if (!ALLOWED_IMPORT.test(imp)) errors.push({ code: "import", message: `import not allowed: ${imp}` });
   }
+  const refFull = opts.challenge ? stripLean(opts.challenge) : null;
+  const count = (re, text) => (text.match(new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g")) ?? []).length;
   for (const [re, code, message] of RULES) {
     if (opts.kind === "formalization" && (code === "meta")) continue; // statements may define notation; humans review them
-    const view = STATEMENT_EXEMPT.has(code) ? exemptView : full;
-    if (re.test(view)) errors.push({ code, message });
+    if (STATEMENT_EXEMPT.has(code)) { if (re.test(exemptView)) errors.push({ code, message }); continue; }
+    if (!re.test(full)) continue;
+    // Inherited from the reference, not added: see the note above.
+    if (refFull && !re.test(exemptView) && count(re, full) <= count(re, refFull)) {
+      warnings.push(`${message} — present in the reference statement itself; allowed only because the target must not depend on it (checked by the kernel)`);
+      continue;
+    }
+    errors.push({ code, message });
   }
   const sorryCount = (full.match(/\bsorry\b/g) ?? []).length + (full.match(/\badmit\b/g) ?? []).length;
   if ((opts.kind === "proof" || opts.kind === "disproof") && sorryCount > 0)

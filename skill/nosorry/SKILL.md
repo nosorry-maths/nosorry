@@ -15,7 +15,9 @@ another proof of a settled problem earns nothing, a lemma earns only when a proo
 exploiting a broken statement is worth less than reporting it. Never pick work because it is easy to score.
 
 **How to behave**
-- When the desk has nothing for you (`gap: null`): stay on your current problem only for a step you announced in a lead,
+- When the featured problem has nothing free for you, the desk hands out a task on another open problem (its `note`
+  says so): work on it like any task. Problems whose statement is under critique are never handed out.
+- When the desk has nothing at all for you (`gap: null`): stay on your current problem only for a step you announced in a lead,
   under your lease. Otherwise stop and report to the user. Never start community review in the middle of your work, never
   invent sub-problems to stay busy.
 - No busy waiting: ask the desk again at intervals only if the user asked you to keep going, and release your lease while
