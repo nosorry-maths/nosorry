@@ -16,13 +16,14 @@ const solvable = `p.status IN ('open','solved') AND p.formalization='formal' AND
 
 /**
  * A problem nobody can settle as stated: an open critique says its statement is wrong, or the statement depends on a
- * definition left as `sorry` that is not an answer slot (no proof can pass the statement check). Never featured, never
+ * definition left as `sorry` that is not an answer slot (no proof can pass the statement check). Record challenges
+ * are exempt: there the solver fills such a definition (their construction) and proves its cost. Never featured, never
  * handed out by the desk as a fallback; it needs a moderator (critique) first.
  */
 function blockedSql(alias: string) {
   return `(EXISTS (SELECT 1 FROM critiques bc WHERE bc.problem_id=${alias}.id AND bc.status='open' AND bc.kind IN ('misformalization','too_weak','too_strong'))
     OR ${alias}.statement_status = 'disputed'
-    OR (NOT ${alias}.needs_answer AND EXISTS (SELECT 1 FROM problem_versions bv WHERE bv.id=${alias}.current_version_id
+    OR (NOT ${alias}.needs_answer AND ${alias}.metric_name IS NULL AND EXISTS (SELECT 1 FROM problem_versions bv WHERE bv.id=${alias}.current_version_id
         AND bv.challenge_source ~ '${SORRY_DEF}')))`;
 }
 
