@@ -18,16 +18,20 @@ export async function checkRecord(c, sub, value) {
   const better = best == null ? true
     : p.metric_direction === "min" ? value <= best * (1 - th) : value >= best * (1 + th);
   const gain = best == null || best === 0 ? null : (p.metric_direction === "min" ? (best - value) / best : (value - best) / best);
-  // Lineage: the record this attempt declared building on.
-  const { rows: [basedRec] } = sub.based_on
+  // Lineage: the record this attempt declared building on. An author improving their own current record builds on it
+  // even without saying so (no extra points: the author is never credited twice).
+  const { rows: [basedRec0] } = sub.based_on
     ? await c.query("SELECT id FROM records WHERE submission_id=$1", [sub.based_on]) : { rows: [] };
+  const { rows: [ownCur] } = !basedRec0 && cur
+    ? await c.query("SELECT id FROM records WHERE id=$1 AND user_id=$2", [cur.id, sub.user_id]) : { rows: [] };
+  const basedRec = basedRec0 ?? ownCur;
   const rebase = !!(cur && sub.based_on && cur.submission_id !== sub.based_on);
   const { rows: [{ handle }] } = await c.query("SELECT handle FROM users WHERE id=$1", [sub.user_id]);
   const pct = gain == null ? "" : ` (${(gain * 100).toFixed(1)} % better)`;
 
   if (!better) {
     await c.query(`INSERT INTO problem_events(problem_id, type, user_id, ref_type, ref_id, summary) VALUES ($1,'verified',$2,'submission',$3,$4)`,
-      [sub.pid, sub.user_id, sub.id, `Verified variant by ${handle}: ${p.metric_name} = ${value} (record ${best}; threshold ${(th * 100).toFixed(0)} %)`]);
+      [sub.pid, sub.user_id, sub.id, `Verified variant by ${handle}: ${p.metric_name} = ${value} (record ${best}${th < 0.001 ? "; strict improvement needed" : `; threshold ${Number((th * 100).toPrecision(2))} %`})`]);
     return { record: false, value, best, rebase };
   }
   const { rows: [rec] } = await c.query(

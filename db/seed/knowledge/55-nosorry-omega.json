@@ -1,0 +1,62 @@
+[
+ {
+  "kind": "result",
+  "slug": "nosorry-result-schonhage-asymptotic-sum-inequality",
+  "title": "Schönhage's asymptotic sum inequality (two summands) and ω ≤ 79/31, over ℂ",
+  "problem": "Bound the matrix multiplication exponent ω from a border-rank decomposition of a DIRECT SUM of two matrix products, the step that gives every bound below Strassen's log₂ 7 since 1981. In the `matmul-omega` model: if ⟨l₁,m₁,n₁⟩ ⊕ ⟨l₂,m₂,n₂⟩ has border rank ≤ r over ℂ, then (l₁m₁n₁)^(ω/3) + (l₂m₂n₂)^(ω/3) ≤ r.",
+  "method_md": "Proved on nosorry (record s-tzd5dep7te, then reused in s-v2q2372e4j), in the `MatMulOmega` model of the `matmul-omega-upper` challenge (ω defined from the rank of ⟨n,n,n⟩, `omegaC = omega ℂ`). Chain: (1) border rank is multiplicative under Kronecker powers (`HasTensorBorderRankLE.pow`: rank r^s, error degree s·h, factor degree s·D); (2) the s-th power of a direct sum restricts to many disjoint copies of the products ⟨l₁^k l₂^(s-k), …⟩ (binomial expansion, `pow_directSum_restrict_copies`); (3) border rank → rank with a polynomial loss (see `nosorry-result-border-rank-to-rank`); (4) M disjoint copies of ⟨N,N,N⟩ of rank ≤ R give M·N^ω ≤ R (`mul_rpow_omega_le_of_copies`, via `hasRankLE_mul_of_copies` and the recursion lemma); (5) symmetrize a rectangular ⟨a,b,c⟩ into ⟨abc,abc,abc⟩ by cyclic rotation (`copies_symmetrize`); (6) take s-th roots and let s → ∞ (the polynomial loss vanishes). Schönhage's 17-product decomposition of ⟨4,1,4⟩ ⊕ ⟨1,9,1⟩ (`schonhage_17`, border rank 17, h = 2, D = 2) then gives 16^(ω/3) + 9^(ω/3) ≤ 17, hence ω ≤ 79/31 ≈ 2.5484. Same toolchain as nosorry (Lean v4.33.1, Mathlib of formal-conjectures f9b3868): paste the declarations directly, no port needed. The file starts with the challenge's PART A verbatim, then the border-rank library (lines ~460–1450 of s-v2q2372e4j).",
+  "lean": "theorem schonhage_asi_two {l₁ m₁ n₁ l₂ m₂ n₂ r h D : ℕ}\n    (h1 : 2 ≤ l₁ * m₁ * n₁) (h2 : 2 ≤ l₂ * m₂ * n₂) (hr : 1 ≤ r)\n    (H : HasTensorBorderRankLE (directSumT (matMulT ℂ l₁ m₁ n₁) (matMulT ℂ l₂ m₂ n₂)) r h D) :\n    ((l₁ * m₁ * n₁ : ℕ) : ℝ) ^ (omegaC / 3) + ((l₂ * m₂ * n₂ : ℕ) : ℝ) ^ (omegaC / 3) ≤ (r : ℝ)\n\ntheorem schonhage_17 :\n    HasTensorBorderRankLE (directSumT (matMulT ℂ 4 1 4) (matMulT ℂ 1 9 1)) 17 2 2\n\ntheorem mul_rpow_omega_le_of_copies {M N R : ℕ} (hM : 1 ≤ M) (hN : 2 ≤ N)\n    (h : HasTensorRankLE ℂ (copiesT M (matMulT ℂ N N N)) R) :\n    (M : ℝ) * (N : ℝ) ^ omegaC ≤ (R : ℝ)",
+  "examples": [
+   {"label": "ω ≤ 79/31 (record)", "ref": "s-tzd5dep7te"},
+   {"label": "same library, extended to Coppersmith–Winograd", "ref": "s-v2q2372e4j"},
+   {"label": "challenge", "ref": "/p/matmul-omega-upper"}
+  ],
+  "tags": ["architecture", "mathlib"],
+  "keywords": ["matrix multiplication", "omega", "schonhage", "asymptotic sum inequality", "border rank", "direct sum", "tensor rank", "79/31", "tau theorem"],
+  "source": {"name": "nosorry accepted proofs", "licence": "Apache-2.0 (as published on nosorry)"},
+  "meta": {"decl": "MatMulOmega.Upper.schonhage_asi_two", "repo": "nosorry", "submission": "s-tzd5dep7te", "lean": "v4.33.1", "axioms": "propext, Quot.sound, Classical.choice", "port": "none (same toolchain)", "port_notes": "Paste the challenge's PART A, then the declarations from `IsTensorDecomp3` to `schonhage_asi_two`. Over ℂ only (roots of unity are used to extract coefficients)."}
+ },
+ {
+  "kind": "result",
+  "slug": "nosorry-result-border-rank-to-rank",
+  "title": "Border rank to rank with polynomial loss: R(T) ≤ (max(h, 3D) + 1) · r, over ℂ",
+  "problem": "Turn an approximate (border-rank) decomposition, with factors polynomial in a parameter ε and the tensor appearing as the coefficient of ε^h, into an exact decomposition, as needed by Bini's and Schönhage's arguments.",
+  "method_md": "Proved on nosorry in record s-tzd5dep7te. Definition `HasTensorBorderRankLE T r h D`: there are r triples of factors U, V, W with entries in ℂ[X] of degree ≤ D, such that Σₜ Uₜ Vₜ Wₜ has zero coefficients below X^h and coefficient T at X^h. Then `HasTensorBorderRankLE.to_exact` gives `HasTensorRankLE ℂ T ((max h (3D) + 1) · r)`. Trick, cleaner than Bini's interpolation: the product polynomial has degree ≤ 3D, so its h-th coefficient is an average of its values at M = max h (3D) + 1 roots of unity (`coeff_eq_avg_roots_of_unity`: P.coeff h = M⁻¹ Σⱼ ζ^(-jh) P(ζ^j) when deg P < M); each evaluation is an exact decomposition of rank r. The loss factor is polynomial in s under Kronecker powers (`HasTensorBorderRankLE.pow`, `.kron`, `.restrict`), so it disappears after s-th roots: this is what makes border rank usable for ω. Works over ℂ; over another field use Lagrange interpolation at max h (3D) + 1 distinct points instead.",
+  "lean": "def HasTensorBorderRankLE {I J L : Type*} (T : I → J → L → ℂ) (r h D : ℕ) : Prop :=\n  ∃ (U : Fin r → I → ℂ[X]) (V : Fin r → J → ℂ[X]) (W : Fin r → L → ℂ[X]),\n    (∀ t i, (U t i).natDegree ≤ D) ∧ (∀ t j, (V t j).natDegree ≤ D) ∧ (∀ t k, (W t k).natDegree ≤ D) ∧\n    (∀ i j k, ∀ d < h, (∑ t, U t i * V t j * W t k).coeff d = 0) ∧\n    (∀ i j k, (∑ t, U t i * V t j * W t k).coeff h = T i j k)\n\ntheorem HasTensorBorderRankLE.to_exact {I J L : Type*} {T : I → J → L → ℂ} {r h D : ℕ}\n    (H : HasTensorBorderRankLE T r h D) :\n    HasTensorRankLE ℂ T ((max h (3 * D) + 1) * r)\n\ntheorem coeff_eq_avg_roots_of_unity {M h : ℕ} (hM : 0 < M) (hh : h < M)\n    (P : ℂ[X]) (hdeg : P.natDegree < M) :\n    P.coeff h = ((M : ℂ)⁻¹) *\n      ∑ j : Fin M, (Complex.exp (2 * Real.pi * Complex.I / M) ^ (j : ℕ))⁻¹ ^ h *\n        P.eval (Complex.exp (2 * Real.pi * Complex.I / M) ^ (j : ℕ))",
+  "examples": [
+   {"label": "definition and to_exact", "ref": "s-tzd5dep7te"},
+   {"label": "used for Coppersmith–Winograd", "ref": "s-v2q2372e4j"}
+  ],
+  "tags": ["architecture", "mathlib"],
+  "keywords": ["border rank", "bini", "approximate algorithm", "roots of unity", "coefficient extraction", "interpolation", "tensor rank", "polynomial", "degeneration"],
+  "source": {"name": "nosorry accepted proofs", "licence": "Apache-2.0 (as published on nosorry)"},
+  "meta": {"decl": "MatMulOmega.Upper.HasTensorBorderRankLE.to_exact", "repo": "nosorry", "submission": "s-tzd5dep7te", "lean": "v4.33.1", "axioms": "propext, Quot.sound, Classical.choice", "port": "none (same toolchain)"}
+ },
+ {
+  "kind": "result",
+  "slug": "nosorry-result-coppersmith-winograd-easy",
+  "title": "Coppersmith–Winograd construction (q = 6, laser-free 'easy' version): ω ≤ 191/80 = 2.3875, over ℂ",
+  "problem": "Go below Schönhage's 2.548 with the Coppersmith–Winograd tensor CW_q, whose border rank q + 2 is almost optimal: the source of every bound below 2.4.",
+  "method_md": "Proved on nosorry in record s-v2q2372e4j (4 100 lines, built on the Schönhage library of s-tzd5dep7te). Steps, all private declarations in namespace `MatMulOmega.Upper.CoppersmithWinograd`: (1) `cwT q`, the CW tensor on Fin (q+2), and `cw_border_rank q : HasTensorBorderRankLE (cwT q) (q + 2) 5 5`; (2) Behrend / Salem–Spencer: a 3-AP-free B ⊆ ZMod M with M = 2(2d)^r + 1 and d^r ≤ (r d² + 1)|B| (`behrend_exists`); (3) the hashing of CW_q^⊗3m through B: from the type class (2m−k, 2k, m−k) extract K disjoint copies of ⟨q^k, q^k, q^k⟩ with 4M²K ≥ |T|·D·|B| (`salem_spencer_packing`, `cw_restrict_of_packing`, `cw_hashing_copies`); (4) multinomial lower bounds on the type class (`trinomial_type_card_lower`, `factorial_mul_pow_le`); (5) combine with border → exact rank and `mul_rpow_omega_le_of_copies` to get, for every r ≥ 1, 63^63 · (6^20)^ω ≤ 8^63 · 22^22 · 40^40 · 3^(252/r); let r → ∞ (`cw6_omega_ineq`), then raise to the 4th power and close with `norm_num` to compare with 191/80. Not yet the laser method nor the CW 2.376 bound: the next steps (higher powers of CW, Le Gall/Vassilevska-Williams weights) start from here. Reuse: paste the whole namespace; it is sorry-free and uses no `maxHeartbeats` setting.",
+  "lean": "private def cwT (q : ℕ) : Fin (q + 2) → Fin (q + 2) → Fin (q + 2) → ℂ := ...\nprivate theorem cw_border_rank (q : ℕ) : HasTensorBorderRankLE (cwT q) (q + 2) 5 5\nprivate theorem behrend_exists (d r : ℕ) (hd : 1 ≤ d) :\n    ∃ B : Finset (ZMod (2 * (2 * d) ^ r + 1)),\n      (∀ x ∈ B, ∀ y ∈ B, ∀ z ∈ B, x + y = 2 * z → x = y ∧ y = z) ∧\n      d ^ r ≤ (r * d ^ 2 + 1) * B.card\nprivate theorem cw6_omega_ineq :\n    ((63 : ℝ) ^ 63) * ((6 ^ 20 : ℕ) : ℝ) ^ omegaC ≤\n    ((8 : ℝ) ^ 63) * ((22 : ℝ) ^ 22 * (40 : ℝ) ^ 40)\n\ntheorem correct : omegaC ≤ ((191 / 80 : ℚ) : ℝ)",
+  "examples": [
+   {"label": "ω ≤ 2.3875 (record)", "ref": "s-v2q2372e4j"},
+   {"label": "challenge", "ref": "/p/matmul-omega-upper"}
+  ],
+  "tags": ["architecture", "mathlib"],
+  "keywords": ["coppersmith winograd", "omega", "matrix multiplication", "behrend", "salem spencer", "3-ap free", "hashing", "border rank", "type class", "multinomial", "2.3875"],
+  "source": {"name": "nosorry accepted proofs", "licence": "Apache-2.0 (as published on nosorry)"},
+  "meta": {"decl": "MatMulOmega.Upper.correct", "repo": "nosorry", "submission": "s-v2q2372e4j", "lean": "v4.33.1", "axioms": "propext, Quot.sound, Classical.choice", "port": "none (same toolchain)", "port_notes": "The CW declarations are private: to reuse them in another file, copy the namespace and drop `private` where needed."}
+ },
+ {
+  "slug": "omega-bound-by-limit-of-rpow-inequalities",
+  "title": "Prove ω ≤ τ from a family of inequalities with a vanishing loss",
+  "problem": "Asymptotic arguments (Schönhage, Coppersmith–Winograd) give, for every r ≥ 1, an inequality A · N^ω ≤ B · C^(1/r) with a loss that only disappears in the limit; Lean needs a clean way to conclude A · N^ω ≤ B, then ω ≤ τ for an explicit rational τ.",
+  "method_md": "Pattern used in s-v2q2372e4j. (1) By contradiction, assume B < A · N^ω, so 1 < (A·N^ω)/B. (2) `Filter.Tendsto (fun r : ℕ => C ^ (k / r)) atTop (𝓝 1)` from `tendsto_const_nhds.div_atTop tendsto_natCast_atTop_atTop` and `Real.continuousAt_const_rpow`. (3) `((htend.eventually (gt_mem_nhds hratio)).and (Filter.eventually_ge_atTop 1)).exists` picks one r that contradicts the bound. (4) To compare with τ = p/q, use `Real.rpow_le_rpow_of_exponent_le`, raise both sides to a natural power that clears the denominator (`pow_le_pow_left₀`, `Real.rpow_mul_natCast`, `Real.rpow_natCast`), and finish on a closed integer inequality with `norm_num`. Keep the integers symbolic (`(6 ^ 20 : ℕ)`) until the last step, so that `norm_num` evaluates one big comparison instead of real powers.",
+  "lean": "have htend : Filter.Tendsto (fun r : ℕ => (3 : ℝ) ^ ((252 : ℝ) / r)) Filter.atTop (nhds 1) := by\n  have h0 : Filter.Tendsto (fun r : ℕ => (252 : ℝ) / (r : ℝ)) Filter.atTop (nhds 0) :=\n    tendsto_const_nhds.div_atTop tendsto_natCast_atTop_atTop\n  simpa [Function.comp_def, Real.rpow_zero] using\n    (Real.continuousAt_const_rpow (by norm_num : (3 : ℝ) ≠ 0)).tendsto.comp h0\nobtain ⟨r, hr_lt, hr1⟩ :=\n  ((htend.eventually (gt_mem_nhds hratio)).and (Filter.eventually_ge_atTop 1)).exists",
+  "examples": [{"label": "end of the Coppersmith–Winograd proof", "ref": "s-v2q2372e4j"}],
+  "tags": ["tactics", "mathlib"],
+  "keywords": ["limit", "tendsto", "rpow", "eventually", "asymptotic", "omega", "exponent", "norm_num", "contradiction"],
+  "source": {"name": "nosorry accepted proofs", "licence": "Apache-2.0 (as published on nosorry)"}
+ }
+]

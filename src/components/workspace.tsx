@@ -5,6 +5,9 @@ import { Md } from "./ui";
 import { boardStartLead, boardPostNote, boardLeadAction } from "@/app/actions-research";
 
 const fmtVal = (v: number) => (Number.isInteger(v) ? v.toLocaleString("en") : String(Number(v.toPrecision(5))));
+/** Thresholds below 0.1 % mean "any strict improvement" (they exist only to stop a tie from counting). */
+const strict = (th: number) => th < 0.001;
+const pct = (th: number) => `${Number((th * 100).toPrecision(2))} %`;
 
 export function RecordCard({ board }: { board: NonNullable<Board> }) {
   const m = board.problem.metric;
@@ -18,7 +21,9 @@ export function RecordCard({ board }: { board: NonNullable<Board> }) {
         {r ? <>record by <Link href={`/u/${r.handle}`}>{r.handle}</Link> · <Link href={`/s/${r.submission}`} className="mono">{r.submission}</Link> · {fmtAgo(r.created_at)}</>
           : m.baseline != null ? "best known value — no verified record yet" : "no record yet — the first verified solution sets it"}
       </div>
-      <div className="small muted">next record: {m.direction === "min" ? "≤" : "≥"} {fmtVal(((r?.value ?? m.baseline ?? 0) as number) * (m.direction === "min" ? 1 - m.threshold : 1 + m.threshold))} ({Math.round(m.threshold * 100)} % gain)</div>
+      <div className="small muted">next record: {strict(m.threshold)
+        ? <>{m.direction === "min" ? "<" : ">"} {fmtVal(Number(r?.value ?? m.baseline ?? 0))} (any strict improvement)</>
+        : <>{m.direction === "min" ? "≤" : "≥"} {fmtVal(((r?.value ?? m.baseline ?? 0) as number) * (m.direction === "min" ? 1 - m.threshold : 1 + m.threshold))} ({pct(m.threshold)} gain)</>}</div>
     </div>
   );
 }
@@ -135,8 +140,11 @@ export function BoardView({ board, slug, userHandle }: { board: NonNullable<Boar
 
 export function RecordsView({ board }: { board: NonNullable<Board> }) {
   if (!board.problem.metric) return <p className="small muted">This is a yes/no problem: see the proofs in the Statement tab.</p>;
+  // Shown by rank on this problem (1 = first record), newest first; ids are internal.
+  const rank = new Map(board.records.map((r, i) => [r.id, i + 1]));
   const recs = board.records.slice().reverse();
   const byId = new Map(board.records.map((r) => [r.id, r]));
+  const th = board.problem.metric.threshold;
   return (
     <div>
       <table className="t" style={{ maxWidth: 900 }}>
@@ -144,10 +152,10 @@ export function RecordsView({ board }: { board: NonNullable<Board> }) {
         <tbody>
           {recs.map((r) => (
             <tr key={r.id}>
-              <td>{r.id}</td><td className="num"><b>{fmtVal(r.value)}</b></td>
+              <td>{rank.get(r.id)}</td><td className="num"><b>{fmtVal(r.value)}</b></td>
               <td className="num">{r.gain != null ? `${(Number(r.gain) * 100).toFixed(1)} %` : "—"}</td>
               <td><Link href={`/u/${r.handle}`}>{r.handle}</Link></td>
-              <td className="small">{r.based_on_id ? <>record #{r.based_on_id} ({byId.get(r.based_on_id)?.handle})</> : <span className="muted">—</span>}</td>
+              <td className="small">{r.based_on_id ? <>record #{rank.get(r.based_on_id) ?? "?"} ({byId.get(r.based_on_id)?.handle})</> : <span className="muted">—</span>}</td>
               <td><Link href={`/s/${r.submission}`} className="mono">{r.submission}</Link></td>
               <td className="muted">{fmtDate(r.created_at)}</td>
             </tr>
@@ -155,7 +163,8 @@ export function RecordsView({ board }: { board: NonNullable<Board> }) {
           {!recs.length && <tr><td colSpan={7} className="muted">No record yet.</td></tr>}
         </tbody>
       </table>
-      <p className="small muted">A record must beat the previous one by {Math.round(board.problem.metric.threshold * 100)} % at the moment it is verified. Points flow along the lineage: the author (50), the records it declared building on (10, 5, 2) and the authors of cited ideas (3 each).</p>
+      <p className="small muted">{strict(th) ? "Any strict improvement on the record, at the moment it is verified, is a new record; a tie earns nothing."
+        : `A record must beat the previous one by ${pct(th)} at the moment it is verified.`} Points flow along the lineage: the author (50), the records it declared building on (10, 5, 2) and the authors of cited ideas (3 each).</p>
     </div>
   );
 }

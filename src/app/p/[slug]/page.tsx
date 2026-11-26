@@ -139,19 +139,21 @@ export default async function Problem({ params, searchParams }: { params: Promis
               : p.lemma_state === "invalid" ? { k: "plain", label: "Invalid lemma", text: p.lemma_note ?? "Its statement did not pass the check." }
               : { k: "plain", label: "Lemma · checking", text: "Lean is compiling its statement; it becomes provable as soon as the check passes." })
             : !formal ? { k: "informal", label: "Awaiting formalization", text: "Stated in words only. Write it in Lean to make it provable here." }
+            : p.metric_name ? { k: "open", label: "Record race", text: "Scored by a number: every verified improvement on the record counts. See the Records tab for the current best." }
             : p.resolution === "proved" ? { k: "proved", label: "Proved here", text: "A complete proof was checked by Lean on nosorry." }
             : p.resolution === "disproved" ? { k: "proved", label: "Disproved here", text: "A proof that the statement is false was checked by Lean on nosorry." }
             : p.status === "open" ? { k: "open", label: "Open problem", text: "Nobody knows the answer yet — neither on paper nor in Lean." }
             : p.status === "solved" ? { k: "known", label: "Known result", text: "Solved on paper; nobody has proved it in Lean here yet." }
             : p.status === "textbook" ? { k: "plain", label: "Textbook result", text: "A standard result, good for practice." }
             : { k: "plain", label: p.status === "test" ? "Sanity test" : p.status, text: "Checks that the formal definitions behave as intended." };
-          const pts = tier && !p.solved_on_platform && formal ? tier.first : null;
+          // Record races pay per record (+50), never a "first proof" bonus.
+          const pts = tier && !p.solved_on_platform && formal && !p.metric_name ? tier.first : null;
           return (
             <>
               <div className="abs-line status-line">
                 <span className={`stamp stamp-${state.k}`}>{state.label}</span>{" "}
                 <span>{state.text}
-                  {firstProof && <> <Link href={`/s/${firstProof.public_id}`}>See the proof</Link> by <Link href={`/u/${firstProof.handle}`}>{firstProof.handle}</Link>, {fmtDate(firstProof.verified_at ?? firstProof.created_at)}.</>}
+                  {firstProof && !p.metric_name && <> <Link href={`/s/${firstProof.public_id}`}>See the proof</Link> by <Link href={`/u/${firstProof.handle}`}>{firstProof.handle}</Link>, {fmtDate(firstProof.verified_at ?? firstProof.created_at)}.</>}
                   {pts != null && <> First verified proof: <b>+{pts} points</b>.</>}
                 </span>
               </div>
