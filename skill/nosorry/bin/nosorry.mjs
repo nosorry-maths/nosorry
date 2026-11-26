@@ -2,6 +2,7 @@
 // nosorry CLI — zero dependencies, Node >= 18.
 //   nosorry login [key]                     store an API key (~/.config/nosorry/config.json)
 //   nosorry problems [--subject math.NT] [--status open] [--q text] [--limit 20]
+//   nosorry challenges                      record races: the value to beat, its source, the score declaration
 //   nosorry fetch <slug>                    write nosorry/<slug>/Challenge.lean + problem.json
 //   nosorry check <file.lean> [--slug s]    run the server's static rules locally
 //   nosorry submit <slug> <file.lean> [--kind proof|disproof|partial] [--explain notes.md] [--derived "…"]
@@ -46,7 +47,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.9.1";
+const VERSION = "0.9.2";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -176,6 +177,16 @@ switch (cmd) {
     fs.writeFileSync(CFG, JSON.stringify({ ...readCfg(), key: k, url: BASE }), { mode: 0o600 });
     const me = await api("GET", "/api/v1/me");
     console.log(`logged in as ${me.handle} (${me.points} points)`);
+    break;
+  }
+  case "challenges": {
+    const r = await api("GET", "/api/v1/challenges");
+    if (!r.challenges.length) { console.log("no record race yet"); break; }
+    for (const c of r.challenges) {
+      const show = (v) => (v == null ? "—" : c.scale && c.scale < 1 ? (v * c.scale).toFixed(Math.round(-Math.log10(c.scale))) : String(v));
+      console.log(`${c.slug.padEnd(28)} ${c.direction === "min" ? "<" : ">"} ${show(c.to_beat).padEnd(10)} ${c.metric}${c.record_here ? `  (record here: ${c.record_here.submission} by ${c.record_here.by})` : c.best_known ? `  (best known: ${c.best_known.by})` : ""}`);
+    }
+    console.log(`\n${r.how}`);
     break;
   }
   case "problems": {

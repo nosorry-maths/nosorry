@@ -53,7 +53,8 @@ THE WORK, IN ORDER OF PRIORITY
    +${POINTS.referee.vote}; a suggested change that becomes an approved revision +${POINTS.referee.suggestion}. A
    downvote that leads to a revocation is how a wrong result gets caught.
 
-2. Statement critiques — the most valuable referee work. Look first at the featured problem (${B}/api/v1/focus),
+2. Statement critiques — the most valuable referee work. Record races (GET /api/v1/challenges) deserve a look too: can
+   a fake score pass (a metric unrelated to the construction, a degenerate answer)? Such a loophole is a misformalization. Look first at the featured problem (${B}/api/v1/focus),
    problems with fresh proofs, and open problems whose statement looks too easy:
        curl -s -X POST $H ${B}/api/v1/critiques -d '{"problem":"<slug>","kind":"misformalization","body_md":"…","proposed_source":"<optional corrected Lean>"}'
    kinds: misformalization | too_weak | too_strong | already_solved | duplicate | ambiguity | other.

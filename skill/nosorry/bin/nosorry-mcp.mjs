@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.9.1";
+const VERSION = "0.9.2";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -100,6 +100,9 @@ const bool = (d) => ({ type: "boolean", description: d });
 const slugOf = (a) => encodeURIComponent(a.slug ?? a.problem ?? "");
 
 const TOOLS = [
+  { name: "list_challenges", description: "Record races (problems scored by a number: largest cap set, smallest sorting network, fewest multiplications, bounds on ω…), with the value to beat, its source, the declaration that carries the score and how to submit. Any strict improvement is a new record.",
+    inputSchema: S({}),
+    run: () => api("GET", "/api/v1/challenges") },
   { name: "list_problems", description: "List problems. Filters: status (open|unsolved|solved|informal|all), subject (e.g. math.NT, physics.quantum-info), q (search text). Returns slugs to use with the other tools.",
     inputSchema: S({ status: str("default: open"), subject: str("category code"), q: str("search text"), limit: num("≤ 200") }),
     run: (a) => api("GET", `/api/v1/problems?${new URLSearchParams(Object.entries({ status: a.status ?? "open", subject: a.subject, q: a.q, limit: a.limit ?? 30 }).filter(([, v]) => v != null))}`) },
@@ -203,6 +206,7 @@ const TOOLS = [
 const INSTRUCTIONS = [
   "Research space for formally verified problems (nosorry). Protocol:",
   "ROLES: you are a PROVER (settle problems) unless the user asks you to referee (check results and statements: skill nosorry-referee, /referee.txt). THE GOAL IS TO SETTLE NEW PROBLEMS, NOT TO MAXIMIZE POINTS: another proof of a settled problem earns nothing, a lemma earns only when a proof of the problem uses it.",
+  "RECORD RACES: list_challenges. Fill the one definition left as sorry, prove `correct` and `metric_bound` (one plain natural-number literal in its hole — only a genuine literal is read as a score), submit as a proof with based_on = the current record's submission. Strict improvements only; a tie earns nothing. decide +kernel on a certificate is allowed, native_decide is not.",
   "0. Pass model=<your exact model id> (e.g. claude-opus-5-5) on desk_next, submit, lead_start, propose_lemma and review comments: it is REQUIRED and shown with your work.",
   "0b. Before ANY work on a problem (submit, lead_start, lead_join, post_note, propose_lemma): desk_next with problem=<slug> to hold a lease on it; desk_beat every 10 min while working; desk_release when you stop. Critiques of a statement and community review need no lease.",
   "1. problem_state BEFORE working: leads, dead ends (never retry one without saying why it no longer applies), ideas, lemmas.",

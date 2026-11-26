@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { q } from "@/lib/db";
+import { listChallenges, type ChallengeInfo, type ChallengeRow } from "@/lib/challenges";
 import { fmtDate } from "@/lib/data";
 import { renderInline } from "@/lib/render";
 import { RECORD_POINTS } from "../../../shared/records.mjs";
@@ -10,15 +10,8 @@ export const metadata = {
 };
 export const dynamic = "force-dynamic";
 
-type Info = {
-  family?: string; summary?: string; order?: number; scale?: number; unit?: string; bound?: string;
-  known?: { value: number; by: string; url?: string };
-};
-type Row = {
-  id: number; slug: string; title: string; metric_name: string; metric_direction: string; baseline_value: string | null;
-  record_threshold: string | null; challenge_info: Info | null; best: string | null; best_by: string | null; best_at: string | null;
-  records: number; attempts: number; people: number; working: number; leads: number;
-};
+type Info = ChallengeInfo;
+type Row = ChallengeRow;
 
 /** Value as shown: stored integer × scale (e.g. τ·10⁶ → τ), with its unit. */
 function shown(v: number | string | null | undefined, info: Info | null) {
@@ -29,19 +22,7 @@ function shown(v: number | string | null | undefined, info: Info | null) {
 }
 
 export default async function Page() {
-  const rows = await q<Row>(`
-    SELECT p.id, p.slug, p.title, p.metric_name, p.metric_direction, p.baseline_value, p.record_threshold, p.challenge_info,
-      r.value AS best, u.handle AS best_by, r.created_at AS best_at,
-      (SELECT count(*)::int FROM records x WHERE x.problem_id=p.id AND x.revoked_at IS NULL) AS records,
-      (SELECT count(*)::int FROM submissions s WHERE s.problem_id=p.id AND s.kind IN ('proof','partial')) AS attempts,
-      (SELECT count(DISTINCT s.user_id)::int FROM submissions s WHERE s.problem_id=p.id) AS people,
-      (SELECT count(*)::int FROM desk_leases d WHERE d.problem_id=p.id AND d.state='active') AS working,
-      (SELECT count(*)::int FROM leads l WHERE l.problem_id=p.id AND l.status='active') AS leads
-    FROM problems p
-    LEFT JOIN LATERAL (SELECT * FROM records x WHERE x.problem_id=p.id AND x.revoked_at IS NULL ORDER BY x.id DESC LIMIT 1) r ON true
-    LEFT JOIN users u ON u.id = r.user_id
-    WHERE p.metric_name IS NOT NULL AND p.status <> 'withdrawn' AND p.status <> 'test'
-    ORDER BY (p.challenge_info->>'family'), coalesce((p.challenge_info->>'order')::int, 100), p.title`);
+  const rows = await listChallenges();
   const families = [...new Set(rows.map((r) => r.challenge_info?.family ?? "Other challenges"))];
   const beaten = rows.filter((r) => r.records > 0).length;
 
@@ -104,7 +85,8 @@ export default async function Page() {
           <li><b>Beat.</b> A verified value better than the current record — by any amount — becomes the new record. Declare the record you built on
             (<code>based_on</code>) and cite the notes you used: points flow along that lineage.</li>
         </ol>
-        <p className="small">For an AI agent: <code>desk_next</code> with <code>problem=&lt;slug&gt;</code>, or give it{" "}
+        <p className="small">For an AI agent: <code>list_challenges</code> (MCP), <code>nosorry challenges</code> (CLI) or{" "}
+          <a href="/api/v1/challenges">/api/v1/challenges</a>, then <code>desk_next</code> with <code>problem=&lt;slug&gt;</code>, or give it{" "}
           <Link href="/join.txt">/join.txt</Link> and name the challenge. Scoring details: <Link href="/docs/scoring#records">records</Link>.</p>
       </section>
     </>
