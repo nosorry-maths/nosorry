@@ -11,15 +11,19 @@ export type BookEntry = {
   examples: { label: string; ref: string }[]; tags: string[]; keywords: string[];
   source_name: string | null; source_url: string | null; source_path: string | null; licence: string | null;
   status: "seed" | "community" | "verified"; author: string | null; agent_model: string | null;
+  kind: "method" | "result"; meta: ResultMeta;
   hidden_at: string | null; hidden_reason: string | null; created_at: string; updated_at: string; cited: number;
 };
+
+/** For results (theorems of external Lean repositories): where they live and what porting them would take. */
+export type ResultMeta = { decl?: string; repo?: string; commit?: string; lean?: string; mathlib?: string; axioms?: string; files?: number; port?: string; port_notes?: string };
 
 export type Hint = {
   id: number; slug: string; pattern: string; title: string; explanation: string; fixes: string[]; example: string | null;
   tags: string[]; source_name: string | null; licence: string | null; status: string; hits: number; author: string | null;
 };
 
-const SELECT = `SELECT b.id, b.slug, b.title, b.problem_md, b.method_md, b.lean, b.examples, b.tags, b.keywords, b.source_name, b.source_url,
+const SELECT = `SELECT b.id, b.slug, b.kind, b.meta, b.title, b.problem_md, b.method_md, b.lean, b.examples, b.tags, b.keywords, b.source_name, b.source_url,
   b.source_path, b.licence, b.status, u.handle AS author, b.agent_model, b.hidden_at, b.hidden_reason, b.created_at, b.updated_at,
   (SELECT count(*)::int FROM book_cites bc JOIN submissions s ON s.id=bc.submission_id
      WHERE bc.entry_id=b.id AND s.status IN ('verified','partial','needs_review')) AS cited
@@ -28,9 +32,10 @@ const SELECT = `SELECT b.id, b.slug, b.title, b.problem_md, b.method_md, b.lean,
 const RANK = `CASE b.status WHEN 'verified' THEN 0 WHEN 'seed' THEN 1 ELSE 2 END`;
 
 /** Search the book: words (all must appear, accents and case folded), a tag, a status. Hidden entries only for moderators. */
-export async function searchBook(opts: { q?: string; tag?: string; status?: string; limit?: number; page?: number; hidden?: boolean }) {
+export async function searchBook(opts: { q?: string; tag?: string; kind?: string; status?: string; limit?: number; page?: number; hidden?: boolean }) {
   const where = [opts.hidden ? "b.hidden_at IS NOT NULL" : "b.hidden_at IS NULL"], args: unknown[] = [];
   if (opts.tag && BOOK_TAGS.includes(opts.tag)) { args.push(opts.tag); where.push(`$${args.length} = ANY(b.tags)`); }
+  if (opts.kind === "method" || opts.kind === "result") { args.push(opts.kind); where.push(`b.kind=$${args.length}`); }
   if (opts.status && ["seed", "community", "verified"].includes(opts.status)) { args.push(opts.status); where.push(`b.status=$${args.length}`); }
   const words = (opts.q ?? "").toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
   for (const t of words) { args.push(t); where.push(`b.search_text LIKE '%' || ns_fold($${args.length}) || '%'`); }
@@ -47,10 +52,10 @@ export async function searchBook(opts: { q?: string; tag?: string; status?: stri
     rows = await q<BookEntry>(`${SELECT} WHERE b.hidden_at IS NULL AND word_similarity(ns_fold($1), b.search_text) > 0.35
       ORDER BY word_similarity(ns_fold($1), b.search_text) DESC LIMIT ${limit}`, [words.join(" ")]);
   }
-  const counts = await one<{ total: number; verified: number; seed: number; community: number }>(
-    `SELECT count(*)::int AS total, count(*) FILTER (WHERE status='verified')::int AS verified, count(*) FILTER (WHERE status='seed')::int AS seed,
+  const counts = await one<{ total: number; verified: number; seed: number; community: number; results: number }>(
+    `SELECT count(*)::int AS total, count(*) FILTER (WHERE kind='result')::int AS results, count(*) FILTER (WHERE status='verified')::int AS verified, count(*) FILTER (WHERE status='seed')::int AS seed,
             count(*) FILTER (WHERE status='community')::int AS community FROM book_entries WHERE hidden_at IS NULL`);
-  return { rows: rows.slice(0, limit), more: rows.length > limit, page, fuzzy, counts: counts ?? { total: 0, verified: 0, seed: 0, community: 0 } };
+  return { rows: rows.slice(0, limit), more: rows.length > limit, page, fuzzy, counts: counts ?? { total: 0, verified: 0, seed: 0, community: 0, results: 0 } };
 }
 
 export async function getEntry(slug: string, viewer: User | null) {
@@ -65,9 +70,9 @@ export async function getEntry(slug: string, viewer: User | null) {
 
 /** API view of an entry. */
 export const entryJson = (e: BookEntry, full = true) => ({
-  slug: e.slug, id: Number(e.id), title: e.title, problem: e.problem_md, tags: e.tags, status: e.status, cited: e.cited,
+  slug: e.slug, id: Number(e.id), kind: e.kind, title: e.title, problem: e.problem_md, tags: e.tags, status: e.status, cited: e.cited,
   ...(full ? { method: e.method_md, lean: e.lean, examples: e.examples, keywords: e.keywords,
-    source: { name: e.source_name, url: e.source_url, path: e.source_path, licence: e.licence }, author: e.author, model: e.agent_model,
+    source: { name: e.source_name, url: e.source_url, path: e.source_path, licence: e.licence }, ...(e.kind === "result" ? { library: e.meta } : {}), author: e.author, model: e.agent_model,
     created_at: e.created_at, updated_at: e.updated_at } : {}),
   url: `/book/${e.slug}`,
   cite: { type: "book", id: e.slug },
@@ -198,7 +203,7 @@ let entryCache: { at: number; rows: { slug: string; title: string; problem_md: s
 /** 3–5 book entries relevant to a problem (keyword match on its title, statement and lemma names). */
 export async function bookFor(...texts: (string | null | undefined)[]) {
   if (!entryCache || Date.now() - entryCache.at > 120_000) {
-    entryCache = { at: Date.now(), rows: await q(`SELECT slug, title, problem_md, keywords, tags, status FROM book_entries WHERE hidden_at IS NULL`) };
+    entryCache = { at: Date.now(), rows: await q(`SELECT slug, title, problem_md, keywords, tags, status FROM book_entries WHERE hidden_at IS NULL AND kind='method'`) };
   }
   const words = problemWords(...texts);
   type Row = { slug: string; title: string; problem_md: string; tags: string[] };

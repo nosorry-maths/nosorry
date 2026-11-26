@@ -57,6 +57,15 @@ try {
   check("the /book page renders", page.includes("Book of methods"));
   const errs = await fetch(`${BASE}/book/errors`).then((x) => x.status);
   check("the /book/errors page renders", errs === 200, `${errs}`);
+  r = await api(null, "GET", "/api/v1/book?kind=result&full=1");
+  check("the library lists results only, with their declaration", r.j?.entries?.length > 0 && r.j.entries.every((e) => e.kind === "result" && e.library?.decl),
+    `${r.j?.entries?.length} ${r.j?.entries?.[0]?.library?.decl ?? ""}`);
+  if (r.j?.entries?.[0]) {
+    const pg2 = await fetch(`${BASE}/book/${r.j.entries[0].slug}`).then((x) => x.text());
+    check("a result page shows its library card", pg2.includes("Port to nosorry") || pg2.includes("Declaration"));
+  }
+  r = await api(null, "GET", "/api/v1/book?kind=method&limit=100");
+  check("kind=method excludes results", r.j?.entries?.every((e) => e.kind === "method"));
 
   // ── contributions
   r = await api(A, "POST", "/api/v1/book", entry, { "x-nosorry-client": "" });

@@ -1,0 +1,117 @@
+[
+  {
+    "slug": "oai-unknown-backward-defeq-option",
+    "pattern": "unknown option '?backward\\.(isDefEq|defeqAttrib)",
+    "title": "Unknown backward.* defeq option from newer-toolchain code",
+    "explanation": "Code written for Lean v4.34 (e.g. openai/math) sets `backward.isDefEq.respectTransparency(.types)` or `backward.defeqAttrib.useBackward` at the top of a file. These options switch defeq behaviour between Lean versions, and the current toolchain does not know the name.",
+    "fixes": [
+      "Delete the `set_option backward.… ` line and recompile.",
+      "If a proof then fails on a definitional step, make it explicit with `show`/`change`, `unfold`, `erw` or a `rfl`-lemma at that spot instead of relying on transparency."
+    ],
+    "example": "unknown option 'backward.isDefEq.respectTransparency.types'",
+    "tags": [
+      "elaboration",
+      "nosorry"
+    ],
+    "source": {
+      "name": "openai/math (repository-wide set_option usage)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-unknown-set-mem-ofpred-eq",
+    "pattern": "unknown (identifier|constant) '?Set\\.mem_(ofPred|setOf)_eq",
+    "title": "Set.mem_setOf_eq / Set.mem_ofPred_eq differs between Mathlib versions",
+    "explanation": "Around Lean v4.34 Mathlib (rev d13f23b), code uses `Set.mem_ofPred_eq` where older code has `Set.mem_setOf_eq`; openai/math patched 211 such occurrences in its dependencies. Code copied across versions fails on whichever name is missing.",
+    "fixes": [
+      "Swap to the other name: `Set.mem_setOf_eq` ↔ `Set.mem_ofPred_eq`.",
+      "Version-independent: use `Set.mem_def`, or just `simp`/`exact h`, since `x ∈ {y | p y}` is definitionally `p x`."
+    ],
+    "example": "unknown identifier 'Set.mem_ofPred_eq'",
+    "tags": [
+      "import",
+      "nosorry"
+    ],
+    "source": {
+      "name": "openai/math (patches/*-lean4341.patch)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-ite-eq-left-vs-if-pos",
+    "pattern": "unknown (identifier|constant) '?(ite_eq_left|ite_eq_right|dite_eq_left|dite_eq_right)'?(\\s|$)|(if_pos|if_neg|dif_pos|dif_neg).*(deprecated)",
+    "title": "if_pos/if_neg vs ite_eq_left/ite_eq_right in rewrites",
+    "explanation": "Lean v4.34-era code (openai/math and its patched dependencies) rewrites conditionals with `ite_eq_left h`/`ite_eq_right h`/`dite_eq_right h` instead of `if_pos`/`if_neg`/`dif_neg` (470 replacements in the patches). Across toolchains one family may be missing or deprecated.",
+    "fixes": [
+      "Translate: `ite_eq_left h` ↔ `if_pos h`, `ite_eq_right h` ↔ `if_neg h`, `dite_eq_left`/`dite_eq_right` ↔ `dif_pos`/`dif_neg`.",
+      "Version-independent: `simp only [h, if_true]` or `simp [h]`, or `split_ifs` and close both branches."
+    ],
+    "example": "unknown identifier 'ite_eq_left'",
+    "tags": [
+      "tactic",
+      "nosorry"
+    ],
+    "source": {
+      "name": "openai/math (patches/*-lean4341.patch)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-native-decide-axiom-rejected",
+    "pattern": "Lean\\.ofReduceBool|Lean\\.trustCompiler|uses? (the )?axiom.*ofReduceBool",
+    "title": "native_decide introduces an axiom that strict checkers reject",
+    "explanation": "`native_decide` proves goals through the compiler and adds the axiom `Lean.ofReduceBool` (and `Lean.trustCompiler`). Checkers that allow only `propext`, `Quot.sound` and `Classical.choice` (like openai/math's Comparator configs) reject it, and openai/math has zero `native_decide`.",
+    "fixes": [
+      "Replace `native_decide` by `decide +kernel` (kernel evaluation, no extra axiom); make the data concrete (`![…]`, literals) so it reduces.",
+      "Split a large check into one small closed lemma per case and assemble with `fin_cases`/`Fin.forall_fin_succ`.",
+      "For polynomial or linear identities with large coefficients, check integer coefficient lists by `decide +kernel` and transfer to ℝ with one generic soundness lemma."
+    ],
+    "example": "'main' depends on axioms: [propext, Classical.choice, Lean.ofReduceBool, Quot.sound]",
+    "tags": [
+      "kernel",
+      "nosorry"
+    ],
+    "source": {
+      "name": "openai/math (ComparatorChallenges/*.json, certificate files)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-decide-max-recursion-use-kernel",
+    "pattern": "maximum recursion depth has been reached|failed to reduce to true/false|decide.*failed.*whnf",
+    "title": "decide stalls or recurses too deeply on a finite check",
+    "explanation": "Plain `decide` evaluates the `Decidable` instance in the elaborator (`whnf` with default transparency), which is slow and hits `maxRecDepth` on large finite structures.",
+    "fixes": [
+      "Use `decide +kernel`, which hands the evaluation to the kernel (openai/math uses it about 1.3 million times).",
+      "Split the statement per index so each check is small, or raise `set_option maxRecDepth N in` for that declaration (2,273 such settings in openai/math).",
+      "Make sure the instance is computable: avoid `Classical.propDecidable` in the data path, use `Finset`/`Fin`/`List` and `DecidableEq` instances that reduce."
+    ],
+    "example": "maximum recursion depth has been reached\nuse `set_option maxRecDepth <num>` to increase limit",
+    "tags": [
+      "performance",
+      "kernel"
+    ],
+    "source": {
+      "name": "openai/math (decide +kernel usage)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-unknown-module-mathlib-rename",
+    "pattern": "unknown module prefix|object file .* of module Mathlib\\.(Order\\.SuccPred\\.Nat|Data\\.Nat\\.SuccPred|LinearAlgebra\\.Matrix\\.(Array|Defs))",
+    "title": "Mathlib module moved between versions",
+    "explanation": "Mathlib reorganises files. Between the versions behind openai/math's patches, `Mathlib.Order.SuccPred.Nat` became `Mathlib.Data.Nat.SuccPred` and `Mathlib.LinearAlgebra.Matrix.Array` became `…Matrix.Defs`. Fine-grained imports copied from another version fail.",
+    "fixes": [
+      "On nosorry, replace fine-grained Mathlib imports by `import Mathlib`.",
+      "Otherwise search the target Mathlib for the declaration you need and import its current module."
+    ],
+    "example": "unknown module prefix 'Mathlib.Order.SuccPred.Nat'",
+    "tags": [
+      "import"
+    ],
+    "source": {
+      "name": "openai/math (patches/complexitylib-lean4341.patch)",
+      "licence": "Apache-2.0"
+    }
+  }
+]

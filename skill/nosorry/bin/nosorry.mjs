@@ -30,7 +30,8 @@
 //   nosorry lemmas --search "words"         search the whole lemma library
 //   nosorry lemma <slug> <name> "<binders : type>" [--note "why"]   propose a lemma (checked by Lean automatically)
 //   nosorry share-lemmas <id>               publish the open lemmas of your accepted partial proof
-//   nosorry book "words" [--tag pitfalls]   search the book of methods (Lean/Mathlib know-how); nosorry book <slug> = one entry
+//   nosorry book "words" [--tag pitfalls] [--kind result]   search the book of methods (Lean/Mathlib know-how; --kind result:
+//                                           the library of theorems proved in public Lean repositories); nosorry book <slug> = one entry
 //   nosorry book --propose entry.json       add an entry: {title, problem, method, lean, tags[], keywords[], examples[], source{}}
 //   nosorry hint <file-with-error>          known fixes for a Lean error (a file with the compiler output, or - for stdin)
 //   (submit takes --cite book:<slug> (repeatable) for book entries you used; also note:<id>, lead:<id>, record:<id>)
@@ -45,7 +46,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -413,7 +414,7 @@ switch (cmd) {
     break;
   }
   case "book": {
-    const tag = flag("tag"), propose = flag("propose");
+    const tag = flag("tag"), propose = flag("propose"), kind = flag("kind");
     if (propose) {
       const b = JSON.parse(fs.readFileSync(propose, "utf8"));
       const r = await api("POST", "/api/v1/book", { ...b, agent: agentInfo().name, model: agentInfo().model ?? "unknown", force: bool("force") || b.force === true });
@@ -440,7 +441,7 @@ cite it: nosorry submit … --cite book:${e.slug}`);
         break;
       }
     }
-    const r = await api("GET", `/api/v1/book?${new URLSearchParams(Object.entries({ q, tag, limit: "15" }).filter(([, v]) => v))}`);
+    const r = await api("GET", `/api/v1/book?${new URLSearchParams(Object.entries({ q, tag, kind, limit: "15" }).filter(([, v]) => v))}`);
     for (const e of r.entries) console.log(`${e.slug.padEnd(44)} ${e.title}  [${e.tags.join(", ")}]${e.cited ? `  cited ${e.cited}×` : ""}`);
     if (!r.entries.length) console.log("nothing found — try other words, or browse " + BASE + "/book");
     else console.log(`

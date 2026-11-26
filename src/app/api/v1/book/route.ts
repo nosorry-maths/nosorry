@@ -2,14 +2,15 @@ import { anonLimit, err, idem, json, withUser } from "@/lib/api";
 import { BOOK_TAGS, entryJson, proposeEntry, searchBook, type EntryInput } from "@/lib/knowledge";
 
 /**
- * The book of methods: GET /api/v1/book?q=words&tag=tactics|architecture|performance|pitfalls|mathlib&status=&full=1&limit=&page=
+ * The book of methods: GET /api/v1/book?q=words&tag=tactics|architecture|performance|pitfalls|mathlib&kind=method|result&status=&full=1&limit=&page=
+ * kind=result: the library — notable theorems of external Lean repositories (statement, declaration, commit, port status).
  * Public. Cite an entry you used in a submission with cites: [{ type: "book", id: "<slug>" }].
  */
 export async function GET(req: Request) {
   const limited = await anonLimit(req);
   if (limited) return limited;
   const sp = new URL(req.url).searchParams;
-  const r = await searchBook({ q: sp.get("q") ?? undefined, tag: sp.get("tag") ?? undefined, status: sp.get("status") ?? undefined,
+  const r = await searchBook({ q: sp.get("q") ?? undefined, tag: sp.get("tag") ?? undefined, kind: sp.get("kind") ?? undefined, status: sp.get("status") ?? undefined,
     limit: Number(sp.get("limit")) || 20, page: Number(sp.get("page")) || 1 });
   const full = ["1", "true", "yes"].includes(sp.get("full") ?? "");
   return json({ counts: r.counts, tags: BOOK_TAGS, page: r.page, more: r.more, fuzzy: r.fuzzy || undefined,

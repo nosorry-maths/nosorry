@@ -1,0 +1,98 @@
+[
+  {
+    "slug": "continuoussmul-real-complex-lie-instance-path",
+    "pattern": "failed to synthesize[\\s\\S]{0,200}(ContinuousSMul ℝ ℂ|IsBoundedSMul ℝ ℂ|NormSMulClass ℝ ℂ)",
+    "title": "ContinuousSMul ℝ ℂ cannot be synthesized (competing Module ℝ ℂ path)",
+    "explanation": "With `Mathlib.Algebra.Lie.OfAssociative` in the imports, `LieAlgebra.ofAssociativeAlgebra` supplies a second `Module ℝ ℂ` that is not defeq at instance transparency to the `NormedSpace` one. Then `ContinuousSMul ℝ ℂ`, and with it every `HasDerivAt (f : ℝ → ℂ)`, fails to elaborate, deterministically rather than by timeout.",
+    "fixes": [
+      "Remove the instance locally: `attribute [-instance] LieAlgebra.ofAssociativeAlgebra` (the file does not use Lie algebras).",
+      "Or demote the projection: `attribute [local instance 10] LieAlgebra.toModule`.",
+      "Diagnose with `set_option trace.Meta.synthInstance true in` on the failing line, and look for `LieAlgebra.toModule` in the trace."
+    ],
+    "example": "failed to synthesize\n  ContinuousSMul ℝ ℂ",
+    "tags": [
+      "typeclass"
+    ],
+    "source": {
+      "name": "anthropics/formal-math",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "exponentiation-threshold-exceeded",
+    "pattern": "exponent \\d+ exceeds the threshold \\d+",
+    "title": "Exponent exceeds the exponentiation threshold",
+    "explanation": "Lean refuses to evaluate `a ^ n` for literal `n` above `exponentiation.threshold` (default 256) during whnf or `decide`, so a numeric goal with large powers is left unevaluated.",
+    "fixes": [
+      "Raise it for one declaration: `set_option exponentiation.threshold 1000 in` (vp-vnp does this in one file, and eth sets 2048 in its lakefile).",
+      "Avoid evaluation: rewrite with `pow_succ`, `pow_mul` or `Nat.pow_le_pow_right`, or use `norm_num`, which handles powers symbolically."
+    ],
+    "example": "exponent 1600 exceeds the threshold 256, exponentiation operation was not evaluated, use `set_option exponentiation.threshold <num>` to set a new threshold",
+    "tags": [
+      "elaboration",
+      "performance"
+    ],
+    "source": {
+      "name": "anthropics/formal-math",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "rewrite-pattern-not-found-instance-paths",
+    "pattern": "did not find (an )?instance of the pattern",
+    "title": "rw does not find a pattern that looks identical (instance arguments differ)",
+    "explanation": "The term in the goal and the left side of the lemma print the same, but their hidden instance arguments (for example `IsScalarTower ℝ ℂ ℂ`, or the `NormedSpace` inside `deriv` or `∫`) were synthesized along different paths, so syntactic matching fails.",
+    "fixes": [
+      "Inspect with `set_option pp.explicit true in` to see the differing instances.",
+      "Use `erw`, `simp only [lemma]` or `convert lemma using 2`, which can unify up to instances.",
+      "If `set_option` is allowed: `set_option backward.isDefEq.respectTransparency false in` on the declaration, as zeta23 does in about 35 files (Mathlib's own workaround)."
+    ],
+    "example": "tactic 'rewrite' failed, did not find instance of the pattern in the target expression\n  deriv f x",
+    "tags": [
+      "tactic",
+      "typeclass"
+    ],
+    "source": {
+      "name": "anthropics/formal-math",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "comparator-auxiliary-proof-names-differ",
+    "pattern": "\\._proof_\\d+[\\s\\S]{0,300}(comparator|mismatch|differ)|(comparator|mismatch|differ)[\\s\\S]{0,300}\\._proof_\\d+",
+    "title": "Comparator mismatch on an auxiliary _proof_ constant",
+    "explanation": "Elaboration creates auxiliary constants such as `Foo._proof_1` whose names and bodies depend on what was elaborated before. If the challenge copies only part of a definition layer, or uses other `open`s, these differ between challenge and solution, and the statement comparison fails although the definitions look identical.",
+    "fixes": [
+      "Copy the definition layer completely, character for character and in the same order, with the same `open`s (zeta23 wraps it in an anonymous `section`).",
+      "In a nosorry submission, keep the given statement and its preceding definitions byte-identical, and put helpers after them, not between them."
+    ],
+    "example": "constant Foo._proof_1 differs between challenge and solution",
+    "tags": [
+      "nosorry",
+      "kernel"
+    ],
+    "source": {
+      "name": "anthropics/formal-math",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "unused-section-variables-included",
+    "pattern": "automatically included section variable",
+    "title": "Section variables automatically included but unused",
+    "explanation": "A theorem in a `variable` section does not use some instance or hypothesis variable that was still included. This is only a linter warning, but under `--wfail` or a no-warnings policy it fails the build.",
+    "fixes": [
+      "Exclude it for that theorem: `omit [Fintype ι] [DecidableEq ι] in theorem …` (vp-vnp does this).",
+      "Narrow the `section` or `variable` scope, or pass the argument explicitly.",
+      "As a last resort, `set_option linter.unusedSectionVars false` (vp-vnp sets it in about 196 files)."
+    ],
+    "example": "automatically included section variable(s) unused in theorem `foo`:\n  [Fintype ι]",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "anthropics/formal-math",
+      "licence": "Apache-2.0"
+    }
+  }
+]

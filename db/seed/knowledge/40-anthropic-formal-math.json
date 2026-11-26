@@ -1,0 +1,1671 @@
+[
+  {
+    "slug": "comparator-challenge-solution-split",
+    "title": "Split statement, sorry-challenge and delegating solution for Comparator",
+    "problem": "A large proof has to be checked against a short trusted statement, with an independent check that each proved theorem has exactly the trusted type and uses only the standard axioms.",
+    "method_md": "All four projects use the same layout. (1) A statement file holds only definitions and `def Claim : Prop := …`, and imports Mathlib alone (or nothing). (2) `Challenge.lean` imports that file alone and states `theorem claim : Claim := by sorry`. (3) `Solution.lean` states the same theorems under the same names and proves each by one term that names a library theorem, so the Solution file \"imports the proofs and adds nothing\". (4) `comparator.json` lists `theorem_names`, `permitted_axioms` (`propext`, `Quot.sound`, `Classical.choice`) and `enable_nanoda: true`. `definition_names` stays empty because the challenge has no definition holes. Comparator builds both modules in a sandbox, checks that the types agree as terms (with every definition they mention), checks the axioms, and replays the proofs in Lean's kernel and in the independent nanoda kernel. A correct build then prints `declaration uses 'sorry'` only for the challenge files. For nosorry the lesson is the same: keep the target statement byte-identical and prove it by delegating to named lemmas.",
+    "lean": "-- Statement.lean: import Mathlib; definitions and `def MainTheorem : Prop` only\n-- Challenge.lean\nimport Statement\nnamespace Solution\ntheorem mainTheorem : Statement.MainTheorem.{u} := by\n  sorry\nend Solution\n\n-- Solution.lean (same name, same type, one delegating proof)\nimport Statement\nimport Paper.Approximate\nnamespace Solution\ntheorem mainTheorem : Statement.MainTheorem.{u} := by\n  obtain ⟨c, hc, h⟩ := Paper.thm_allfields.{u}\n  exact ⟨c, hc, fun p => ...⟩\nend Solution\n\n-- comparator.json\n-- { \"challenge_module\": \"Challenge\", \"solution_module\": \"Solution\",\n--   \"theorem_names\": [\"Solution.mainTheorem\", ...], \"definition_names\": [],\n--   \"permitted_axioms\": [\"propext\", \"Quot.sound\", \"Classical.choice\"],\n--   \"enable_nanoda\": true }",
+    "examples": [
+      {
+        "label": "challenge with sorry, imports Statement alone",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Challenge.lean"
+      },
+      {
+        "label": "solution delegating to the Paper library",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Solution.lean"
+      },
+      {
+        "label": "comparator configuration",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/comparator.json"
+      },
+      {
+        "label": "two configurations, one per challenge file",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/comparator-endstatement.json"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "comparator",
+      "challenge",
+      "solution",
+      "nanoda",
+      "permitted axioms",
+      "trusted statement",
+      "sorry",
+      "palomar"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/comparator.json",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "inline-whole-definition-layer-in-challenge",
+    "title": "Inline the whole definition layer when the challenge may import only Mathlib",
+    "problem": "The challenge file must import only Mathlib, so the definitions used by the statements are copied into it. Comparator then reports that a constant differs between the challenge and the solution, although the definitions look the same.",
+    "method_md": "Copy the complete definition layer character for character, not only the definitions that the statements mention, and wrap the copy in an anonymous `section` that has the same `open` commands as the original file. Elaboration creates auxiliary declarations such as `N0star._proof_1`, and later definitions may reuse them. Their names and bodies depend on what was elaborated before, in which order and with which `open`s. Comparator identifies constants by name and requires each definition to elaborate to the same term as its namesake on the solution side. If you copy only a subset, or change the scoping, the auxiliary names or terms can drift. The zeta23 project keeps the original module (`ChallengeDeps.lean`) for the Solution build, and inlines its 15 definitions verbatim into `Challenge.lean`.",
+    "lean": "-- Challenge.lean: the ONLY import is Mathlib\nimport Mathlib\n\nsection\nopen scoped BigOperators ComplexConjugate\nopen Complex Set\n\nnoncomputable section\n\ndef IsNontrivialZero (ρ : ℂ) : Prop := riemannZeta ρ = 0 ∧ 0 < ρ.re ∧ ρ.re < 1\ndef zeroMult (ρ : ℂ) : ℕ := (analyticOrderAt riemannZeta ρ).toNat\ndef zerosIn (T₁ T₂ : ℝ) : Set ℂ := {ρ | IsNontrivialZero ρ ∧ T₁ < ρ.im ∧ ρ.im ≤ T₂}\n-- ... every remaining definition of ChallengeDeps.lean, in the same order ...\nend\nend\n\ntheorem two_thirds_simple_on_critical_line :\n    ∀ ε > 0, ∃ T₀ : ℝ, ∀ T ≥ T₀, (2 / 3 - ε) * (Ncount T (2 * T) : ℝ) ≤ N0simple T (2 * T) := by\n  sorry",
+    "examples": [
+      {
+        "label": "comment explaining the auxiliary-name issue, inlined layer",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Challenge.lean"
+      },
+      {
+        "label": "the reference copy used by the Solution build",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/ChallengeDeps.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "comparator",
+      "auxiliary lemma",
+      "_proof_1",
+      "inline definitions",
+      "challenge",
+      "open",
+      "section",
+      "statement drift"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Challenge.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "rational-exponent-bigo-without-real-powers",
+    "title": "State O(n^r) for a rational r without real powers",
+    "problem": "A complexity claim such as \"time O(n^1.9992)\" must be stated in a file that imports nothing (or very little), where `Real.rpow` is not available, and the statement should stay easy to audit.",
+    "method_md": "Take the exponent as a `Rat` and raise both sides to its denominator: `T n ^ r.den ≤ K * n ^ r.num.toNat` for all `n ≥ 2`. For `r = 1.9992 = 2499/1250` this reads `T(n)^1250 ≤ K·n^2499`. The decimal literal `1.9992 : Rat` elaborates in core Lean, so the whole claim needs only `Nat`, `Int`, `Rat`, `List` and `BitVec`. Start the bound at `n = 2`, so that `n = 0, 1` do not force `T 0 = 0`. The 3sum-apsp project then proves, in its Mathlib-based file, an `Agreement_bigO` lemma: for `r ≥ 0` this matches the usual real-exponent `O(n^r)`. A reader can check the core-only claim without trusting Mathlib's definitions.",
+    "lean": "/-- `T(n) = O(n^r)`, both sides raised to the power `r.den`. -/\ndef BigO (T : Nat → Nat) (r : Rat) : Prop :=\n  ∃ K : Nat, ∀ n ≥ 2, T n ^ r.den ≤ K * n ^ r.num.toNat\n\ndef ThreeSum : Problem where\n  Instance n := Fin n → Int\n  input x := List.ofFn x\n  yes x := ∃ i j k, i ≠ j ∧ j ≠ k ∧ i ≠ k ∧ x i + x j + x k = 0\n\ndef Theorem_22_3SUM : Prop :=\n  ThreeSum.SolvedInTime 1.9992",
+    "examples": [
+      {
+        "label": "BigO in a file that imports nothing",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/EndStatement.lean"
+      },
+      {
+        "label": "Agreement_bigO and the other agreement statements",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/PaperStatements.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "big o",
+      "rational exponent",
+      "rat.den",
+      "rat.num",
+      "core lean",
+      "running time",
+      "complexity statement",
+      "no mathlib"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/EndStatement.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "quantifier-order-in-complexity-claims",
+    "title": "Choose one program before the instance in complexity claims",
+    "problem": "A formal \"solved in time T\" can be met trivially by a lookup table, or by a program that depends on n, if the quantifiers are in the wrong order or degenerate sizes are left open.",
+    "method_md": "Fix the order: first the constants of the problem (the exponent κ of the input bound, k of k-Clique), then ONE program, its constant and its time bound, then the instance, then the word size, which may be any admissible one. A program then cannot depend on the instance or its size, can hard-code answers for only finitely many instances, and cannot rely on long words. The eth statements say the same for Turing machines: `∃ (M : TM2ComputableAux Bool Bool) (C : ℕ), (∀ i, Finite (M.tm.Γ i)) ∧ ∀ k n φ, …`. One machine with finite stack alphabets is chosen before k and the formula. Exclude degenerate parameters explicitly and explain why: eth requires m ≥ 2 and n ≥ 4, because at m = 1 the divisor √(log m) is 0 and Lean's `x / 0 = 0` would make the bound one step. It requires \"no clause written twice\", because otherwise no bound in n alone can hold. A statement that is too strong this way is false, not merely hard to prove.",
+    "lean": "def Problem.SolvedInTime (Q : Problem) (r : Rat) : Prop :=\n  ∀ κ : Nat, ∃ (P : List Instr) (b : Nat) (T : Nat → Nat), BigO T r ∧\n    ∀ (n : Nat) (x : Q.Instance n), (∀ a ∈ Q.input x, a.natAbs ≤ n ^ κ) →\n      ∀ W ≥ b * (Nat.log2 n + 1), Q.SolvedBy x P W (T n)\n\n-- eth: one machine, one constant, finite alphabets, chosen before k and φ\ndef MainTheorem : Prop :=\n  ∃ (M : TM2ComputableAux Bool Bool) (C : ℕ), (∀ i, Finite (M.tm.Γ i)) ∧\n    ∀ (k n : ℕ) (φ : CNF n), 1 ≤ k → IsKCNF k φ → 2 ≤ φ.length → 4 ≤ n → AllOccur φ →\n      CountsWithin M k φ (timeMin C k φ.length n)",
+    "examples": [
+      {
+        "label": "the order of the quantifiers, section of the model description",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/MACHINE.md"
+      },
+      {
+        "label": "MainTheorem with the reasons for m ≥ 2, n ≥ 4, no repeated clause",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/MainResults.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls"
+    ],
+    "keywords": [
+      "uniformity",
+      "quantifier order",
+      "turing machine",
+      "word ram",
+      "complexity class",
+      "degenerate cases",
+      "division by zero",
+      "finite alphabet"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/docs/MACHINE.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "prove-the-cost-model-cannot-be-met-for-free",
+    "title": "Prove that the cost model cannot be met for free",
+    "problem": "A hand-made machine model or time measure may be too generous by accident (for example, it may read the whole input in one step), and then every upper bound proved in it is worthless.",
+    "method_md": "Add model checks: theorems that the definitions rule out impossible speeds. 3sum-apsp proves that 3SUM cannot be solved in sublinear time on its word RAM. A program that takes fewer than `(n - 2) / 2` steps leaves some input cell unread (a footprint lemma plus `exists_offset_notMem`). The instance `1, -1, 1, 1, …` has no solution, while the same instance with a 0 in the unread cell has one, and the program gives both the same verdict. The same holds for the core-only `SolvedInTime` through the agreement lemma. Such checks sit outside the trusted statements and nothing depends on them. They are cheap evidence that the definitions mean what they say. Use the same idea for any new notion in a nosorry statement, a definition of complexity or a new predicate: prove a small negative example before relying on it.",
+    "lean": "/-- The numbers `1, -1, 1, 1, …`: the second is -1, all others are 1. -/\ndef oddVec (n : ℕ) (i : Fin n) : ℤ := if (i : ℕ) = 1 then -1 else 1\n\ntheorem oddVec_eq_or (n : ℕ) (i : Fin n) : oddVec n i = 1 ∨ oddVec n i = -1 := by\n  unfold oddVec\n  split_ifs <;> simp\n\n/-- They are odd, so no three of them sum to 0. -/\ntheorem not_threeSum_oddVec (n : ℕ) : ¬ ThreeSum (oddVec n) := by\n  rintro ⟨i, j, k, -, -, -, h⟩\n  rcases oddVec_eq_or n i with hi | hi <;> rcases oddVec_eq_or n j with hj | hj <;>\n    rcases oddVec_eq_or n k with hk | hk <;> rw [hi, hj, hk] at h <;> omega",
+    "examples": [
+      {
+        "label": "3SUM needs linear time on the word RAM",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/ModelChecks/ThreeSumLowerBound.lean"
+      },
+      {
+        "label": "counting facts used by the model checks",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/ModelChecks/Counting.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "sanity check",
+      "non-vacuity",
+      "lower bound",
+      "model check",
+      "adversary argument",
+      "definition audit",
+      "rcases",
+      "omega"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/ThreeSumApsp/ModelChecks/ThreeSumLowerBound.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "ends-judgement-hands-time-on",
+    "title": "Verify programs with a judgement that hands the remaining time on",
+    "problem": "Correctness and step counts of programs (algorithms in a complexity proof) have to be proved together. Adding up step counts by hand is error-prone and repeats numerals everywhere.",
+    "method_md": "Define a judgement `Ends lim P d s σ T Q`: statement `s`, started in `σ`, ends within `T` steps in a state satisfying `Q`. Each rule handles the head statement and leaves a goal about the rest, with the remaining time `T - cost`. The cost is computed from the program text (`e.cost + 1`, `Stmt.blockCost`), so no step count is ever written in a proof. Each time bound is defined once, beside the routine, as a function of the sizes (`powTableTime L = 17 * L + 8`). Put the side conditions in autoParam arguments (`(hT : … := by light_time)`), closed by `simp only [costs]; omega`. Make the limits (word size, memory, call depth) part of `Exec`: a run that would overflow does not exist, so a proof that a run ends also proves that it stays within the limits. The compiler needs exactly that.",
+    "lean": "def Ends (lim : Limits) (P : Program) (d : ℕ) (s : Stmt) (σ : State) (T : ℕ)\n    (Q : State → Prop) : Prop :=\n  ∃ σ' c, Exec lim P d s σ σ' c ∧ c ≤ T ∧ Q σ'\n\ntheorem Ends.setToThen {x : ℕ} {e : Expr} {s : Stmt} (z : ℤ)\n    (h : Ends lim P d s ⟨frame (setLocal l x z), μ⟩ (T - (e.cost + 1)) Q)\n    (he : e.Gives lim ⟨frame l, μ⟩ z := by light_side)\n    (hT : e.cost + 1 ≤ T := by light_time) :\n    Ends lim P d (.set x e ;; s) ⟨frame l, μ⟩ T Q",
+    "examples": [
+      {
+        "label": "the notions and one routine line by line",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/VERIFYING.md"
+      },
+      {
+        "label": "Ends and its basic rules",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Logic.lean"
+      },
+      {
+        "label": "rules used in proofs, default proofs light_time / light_side",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Rules.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "hoare logic",
+      "program verification",
+      "running time",
+      "step count",
+      "autoparam",
+      "limits",
+      "word size",
+      "cost"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/docs/VERIFYING.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "step-tactics-as-thin-macros-over-rules",
+    "title": "Wrap each proof rule in a thin macro with fixed side-goal closers",
+    "problem": "Proofs that follow a program (or any long syntactic object) statement by statement repeat the same pattern: apply a rule, discharge two arithmetic side goals, continue with the rest.",
+    "method_md": "Write one `macro` per construct. It normalises the goal (`light_head`), applies the rule with `refine Rule z ?_ ?_ ?_`, closes the side goals with `on_goal -1 => light_time [hs]` and `on_goal -1 => light_side [hs]`, and ends with `try light_skip`. The user supplies only what a human would: the value of the expression, or the address and value of a store. A `using h₁, h₂` clause passes extra simp facts (the content of a cell read, a definition to unfold) to the closers. Wrapping in `with_unfolding_none` keeps named sub-programs closed, so they stay pieces for their own lemmas. A tiny helper, `light_facts H := obtain ⟨⟩ := id H`, puts all fields of a record of hypotheses into the context without names, so `omega` can see them. The closers are just `simp only [Expr.cost, …]` followed by `omega` or `ring_nf; omega`, so they fail fast.",
+    "lean": "macro \"light_facts\" hs:(ppSpace colGt term:max)+ : tactic =>\n  `(tactic| ($[obtain ⟨⟩ := id $hs];*))\n\nmacro \"light_time\" \" [\" ts:Lean.Parser.Tactic.simpLemma,* \"]\" : tactic =>\n  `(tactic| first\n    | (simp only [Stmt.blockCost, Cond.cost, Expr.cost, List.map_cons, List.map_nil,\n        List.sum_cons, List.sum_nil, $ts,*]\n       first | omega | (ring_nf; omega))\n    | omega\n    | (simp [$ts,*] <;> first | omega | (ring_nf; omega)))\n\nmacro \"light_set \" z:term:max \" using \" hs:Lean.Parser.Tactic.simpLemma,* : tactic =>\n  `(tactic|\n    focus\n      light_head\n      refine Ends.setToThen $z ?_ ?_ ?_\n      on_goal -1 => light_time [$hs,*]\n      on_goal -1 => light_side [$hs,*]\n      try light_skip)",
+    "examples": [
+      {
+        "label": "light_set, light_store, light_if, light_call, light_piece",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Tactics.lean"
+      },
+      {
+        "label": "light_time, light_side, light_arith",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Rules.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "macro",
+      "custom tactic",
+      "on_goal",
+      "refine",
+      "obtain",
+      "side goals",
+      "omega",
+      "with_unfolding_none"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/ThreeSumApsp/Lang/Tactics.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "named-holes-for-multi-obligation-rules",
+    "title": "Apply rules with many obligations through named holes and case blocks",
+    "problem": "A rule such as a loop rule has four or five premises (start, round, done, bound) plus side conditions. With anonymous `?_` goals the proof becomes hard to read and fragile when the rule changes.",
+    "method_md": "Apply the rule with named holes, `refine Ends.for I n b ?start ?round ?done ?bound`, and supply autoParam side conditions by name in the same call, `(hT := by light_time [powTableRound])`. Then prove each part in its own `case start => …` block. State the invariant as a separate `def` that existentially quantifies the changed memory and fixes the locals as an explicit list. Then `rintro j _ hj - ⟨μ', rfl, powers, same⟩` substitutes the whole state at once. `-` drops facts the case does not need, and `rfl` replaces the state by its description. The proof reads in the order of the paper's argument, and a failing case is named in the error message.",
+    "lean": "  refine Ends.for (Filled μ dst L b t) L powTableRound.blockCost ?start ?round ?done ?bound\n    (hT := by light_time [powTableRound])\n  case start => exact ⟨μ, by simp [update_frame_setLocal], fun i hi => absurd hi (by omega), .refl⟩\n  case bound =>\n    rintro j _ - - ⟨μ', rfl, -⟩\n    light_side\n  case done =>\n    rintro _ - ⟨μ', rfl, powers, same⟩\n    exact ⟨fun i hi => by rw [getElem_powList]; exact powers i (by simpa using hi), same⟩\n  case round =>\n    rintro j _ hj - ⟨μ', rfl, powers, same⟩\n    -- dst[j] := p ; p := p * b\n    light_store (dst + j) (b ^ j : ℕ)\n    light_set (b ^ (j + 1) : ℕ) using ← pow_succ\n    sorry -- remaining: Filled for j + 1",
+    "examples": [
+      {
+        "label": "the routine powTable, its invariant and proof, explained",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/VERIFYING.md"
+      },
+      {
+        "label": "the file itself",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Lib/PowTable.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "refine",
+      "named holes",
+      "case",
+      "rintro",
+      "rfl pattern",
+      "loop invariant",
+      "autoparam by name",
+      "readability"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/docs/VERIFYING.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "contracts-hide-bodies-and-keep-lemmas",
+    "title": "Give procedures contracts and carry memory facts with keep lemmas",
+    "problem": "Proofs about composed procedures blow up if a caller's proof unfolds its callees, and facts about memory must be carried past every call that writes elsewhere.",
+    "method_md": "State each procedure's behaviour once as a contract, `Meets lim P p d vals μ T R`: procedure number `p` on arguments `vals` ends within `T` steps with a result and memory satisfying `R`. Prove it from the body with `Meets.of_body`. The call rule uses only the contract, so a caller's proof never sees the callee's body. Recursion needs no special rule: prove the contract by Lean induction, and the induction hypothesis is the contract of the recursive call. Every predicate on memory (`Seg`, `ArrayAt`, `MatAt`) comes with a lemma `X.keep` that transports it to a later memory agreeing on the cells it reads. \"Unchanged\" is always one notion, `SameOn K μ μ'`, with named special cases (`SameOutside`, `Kept` below a free pointer). A routine that needs scratch space gets a free pointer argument, and promises to touch nothing below it. The same discipline works for any stateful construction, such as circuits built gate by gate or tableaux.",
+    "lean": "def Seg (μ : ℕ → ℤ) (a : ℕ) (l : List ℤ) : Prop := ∀ i (h : i < l.length), μ (a + i) = l[i]\nabbrev SameOutside (μ μ' : ℕ → ℤ) (a n : ℕ) : Prop := SameOn (Outside a n) μ μ'\n\ndef Meets (lim : Limits) (P : Program) (p d : ℕ) (vals : List ℤ) (μ : ℕ → ℤ) (T : ℕ)\n    (R : ℤ → (ℕ → ℤ) → Prop) : Prop :=\n  ∃ body, P[p]? = some body ∧ Ends lim P d body ⟨frame vals, μ⟩ T fun σ' => R (σ'.loc 0) σ'.mem\n\n-- shape of every contract\ndef XSpec (lim : Limits) (P : Program) : Prop :=\n  ∀ (x : XArgs) (μ : ℕ → ℤ), XPre lim μ x →\n    ∀ d, d + k ≤ lim.depth → Meets lim P pX d x.vals μ (tX x) fun r μ' => XPost x r μ μ'\n\n-- in a caller: r := x(a, b); old facts move to μ₁ with .keep\n--   light_call (hX args μ pre) with r μ₁ ⟨result, same₁⟩\n--   have h' := hSeg.keep same₁",
+    "examples": [
+      {
+        "label": "contracts, conventions of the larger files, names x_spec / x_meets",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/VERIFYING.md"
+      },
+      {
+        "label": "Meets and the call rule",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Calls.lean"
+      },
+      {
+        "label": "regions, SameOn, keep lemmas",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Regions.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "contract",
+      "specification",
+      "frame rule",
+      "separation",
+      "recursion",
+      "induction hypothesis",
+      "memory",
+      "keep lemma"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/docs/VERIFYING.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "softo-growth-calculus-tactic",
+    "title": "Read orders of growth off expressions with a rule-driven calculus",
+    "problem": "Many lemmas need \"this explicit count is O(n^a·D^b·log n)\" for long nested expressions. Proving each by hand means writing constants and inequality chains again and again.",
+    "method_md": "Define a scale: a domain of parameters plus base quantities ≥ 1 whose powers are counted and one hidden quantity whose powers are not. `s.SoftO t e` says that `t ≤ C·hidden^c·∏ base i ^ e i` on the whole domain. Prove one rule per syntactic form: constants (exponent 0), sums (max), products (sum), powers (multiple), max, difference, quotient, and `mono` for raising exponents. Then a tactic applies them from the outside in: `repeat' with_reducible first | exact SoftO.const _ | apply h | apply SoftO.add | …`. Quantities it cannot decompose are closed by facts passed in brackets, and leftover summands stay as goals. Compare the exponent vectors with `decide`. No constant is ever written out. With `hidden = 1` you get plain `O`, with `hidden = log n` you get `Õ`. Use this for any family of asymptotic upper bounds, for example the running times of an algorithm or the size of a construction.",
+    "lean": "structure Scale (α ι : Type*) where\n  dom : α → Prop\n  hidden : α → ℝ\n  base : ι → α → ℝ\n  one_le_hidden : ∀ x, dom x → 1 ≤ hidden x\n  one_le_base : ∀ i x, dom x → 1 ≤ base i x\n\ndef Scale.SoftO (s : Scale α ι) (t : α → ℕ) (e : ι → ℕ) : Prop :=\n  ∃ c : ℕ, Dominated s.dom (fun x => (t x : ℝ)) fun x => s.hidden x ^ c * s.mon e x\n\nmacro \"growth_rules\" \"[\" hs:term,* \"]\" : tactic =>\n  `(tactic|\n    repeat' with_reducible first\n      | exact Scale.SoftO.const _\n      $[| apply $hs]*\n      | apply Scale.SoftO.add\n      | apply Scale.SoftO.mul\n      | apply Scale.SoftO.pow\n      | apply Scale.SoftO.max\n      | apply Scale.SoftO.sub\n      | apply Scale.SoftO.div)\n-- use: growth [steps_tD26, steps_paramD₂₆Nat, Scale.SoftO.log]",
+    "examples": [
+      {
+        "label": "the calculus and the growth / growth_rules tactics",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Util/Asymptotics/Scale.lean"
+      },
+      {
+        "label": "growth with square roots",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Util/Asymptotics/SoftOSqrtPow.lean"
+      },
+      {
+        "label": "a use on the parameters of Theorem 17",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Programs/Sec3/Theorem17/ClaimAtParameters.lean"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "architecture"
+    ],
+    "keywords": [
+      "asymptotics",
+      "big o",
+      "soft o",
+      "growth",
+      "repeat",
+      "first",
+      "apply",
+      "exponent vector",
+      "running time"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/ThreeSumApsp/Util/Asymptotics/Scale.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "verify-in-small-language-then-compile",
+    "title": "Prove running times in a convenient language, then compile once",
+    "problem": "The trusted statement speaks of a primitive machine (a minimal word RAM, Mathlib's `Turing.FinTM2`). Writing and verifying algorithms directly on it is impractical.",
+    "method_md": "Keep the machine of the statement as small as possible (3sum-apsp has nine instructions, no division, and only the constant 1). Then write the algorithms in a structured language with variables, while loops and procedure calls, and verify them there. Prove one compiler theorem: a run of `c` steps becomes a machine run of at most `startCost + stepsPerStep·c` steps, where both constants depend only on the program text. Polynomially bounded limits then give the word size slope, and `solves_of_programSolves` turns a language-level solver into a machine-level `Solves` with time `A·T + A`. eth does the same in the other direction. It proves that step machines are polynomial-time (`PolyT` certificates) and builds the Mathlib Turing machine once, with `exists_tm`. The trusted statement never mentions the intermediate language, so no convention inside it can weaken what is claimed.",
+    "lean": "theorem compileProgram_correct {lim : Limits} {P : Program} {p0 : ℕ} {dec : Bool}\n    {μ : ℕ → ℤ} {i j : ℤ} {σ' : State} {c : ℕ} {m : ℤ → BitVec W}\n    (h : Exec lim P 0 (mainStmt p0) ⟨frame [0, i, j], μ⟩ σ' c)\n    (hfit : Fits W lim (dispPos P dec) (stackCells P lim)) (hm : Input lim μ i j m) :\n    ∃ m' : ℤ → BitVec W, exec (compileProgram P p0 dec) (ramSteps P dec c) 0 m\n        = some (verdictOf dec (σ'.loc 0), m') ∧ Outcome lim P dec m σ' m'",
+    "examples": [
+      {
+        "label": "the compiler theorem",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Lang/Compiler/WholeProgram.lean"
+      },
+      {
+        "label": "the language, the compiler and how a proof goes from a claim down",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/MACHINE.md"
+      },
+      {
+        "label": "from step machines to Mathlib Turing machines",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/machines/ToTuring/PolyT.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "compiler correctness",
+      "simulation",
+      "word ram",
+      "turing machine",
+      "tm2",
+      "running time",
+      "intermediate language",
+      "refinement"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/docs/MACHINE.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "reductions-over-an-abstract-time-model",
+    "title": "Prove reductions as implications over an arbitrary time model",
+    "problem": "A paper chains running-time claims (\"if B is solved in time T_B, then A is solved in time f(T_B)\"). Mixing the exponent arithmetic with concrete programs makes every step heavy.",
+    "method_md": "Abstract the meaning of \"is solved in time T\" into a structure (`DetTimeModel` in 3sum-apsp), and prove each deduction of the paper for every model M: \"if these claims hold for M, then that claim holds for M\". These proofs contain only the arithmetic of the bounds. Afterwards, prove the starting claims for one concrete model (programs of the language), and transfer the result to the machine with one bridge lemma (`solvedInTime_of_claim`). Reductions become hosts: `IsHost lower upper time need` says that from every solver of `lower`, appending procedures yields a solver of `upper`, with given time and need. A call costs the callee's steps plus a constant. Conditional results that rest on unproved cited theorems stay honest: they are implications between claims, not statements about a machine.",
+    "lean": "/-- An arbitrary meaning of \"problem Q is solved in time T\". -/\nstructure TimeModel (Problem : Type) where\n  SolvedIn : Problem → (ℕ → ℕ) → Prop\n  mono : ∀ {Q T T'}, (∀ n, T n ≤ T' n) → SolvedIn Q T → SolvedIn Q T'\n\n/-- A deduction of the paper, proved once for every model. -/\ntheorem claim_A_of_claim_B {Problem : Type} (M : TimeModel Problem) (A B : Problem)\n    (red : ∀ T, M.SolvedIn B T → M.SolvedIn A fun n => n ^ 2 + T (2 * n))\n    {T : ℕ → ℕ} (hB : M.SolvedIn B T) : M.SolvedIn A fun n => n ^ 2 + T (2 * n) :=\n  red T hB",
+    "examples": [
+      {
+        "label": "layers 3 and 4: running-time claims for an arbitrary model, hosts",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/MACHINE.md"
+      },
+      {
+        "label": "the paper's deductions between running-time sentences",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/TimeClaims"
+      },
+      {
+        "label": "conditional lemmas resting on cited results",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/ConditionalTimes"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "reduction",
+      "time model",
+      "conditional result",
+      "host",
+      "solver",
+      "fine-grained complexity",
+      "abstraction",
+      "implication"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/docs/MACHINE.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "polytime-as-a-fun-prop-predicate",
+    "title": "Make \"computable in polynomial time\" a fun_prop predicate",
+    "problem": "Hundreds of auxiliary functions (parsers, encoders, steps of an algorithm) must be shown polynomial-time. Composing the certificates by hand is tedious.",
+    "method_md": "Define the property as a `Prop` on a function, `PolyT f`, and hide the witness (the machine fragment and its constant) under an existential, so that the proposition names no fragment. Tag the definition with `@[fun_prop]`, and tag the closure lemmas in the form that `fun_prop` expects: `id'`, `const`, `comp` (`PolyT f → PolyT g → PolyT fun x => f (g x)`), `prodMk`, `fst`, `snd`, plus case distinction (`ite'`, `cond'`, `optionElim`) and one lemma per library function (`and'`, `decide_eq`, …). After that `by fun_prop` proves `PolyT` of compound terms, and `unfold foo; fun_prop` handles definitions. eth uses about 470 tagged lemmas and about 2,650 `fun_prop` calls. A structure that bundles several such facts (`IsPolyT M` for init, step and output) is declared as a `class` and built with `haveI := …` chains. The same pattern fits any closure property: computable, primitive recursive, polynomially bounded, definable.",
+    "lean": "class Size (α : Type) where size : α → ℕ\n\n/-- Toy version: the output size is polynomial in the input size. -/\n@[fun_prop] def PolyB {α β : Type} [Size α] [Size β] (f : α → β) : Prop :=\n  ∃ c : ℕ, ∀ x, Size.size (f x) ≤ c * (Size.size x + 1) ^ c\n\nnamespace PolyB\nvariable {α β γ : Type} [Size α] [Size β] [Size γ]\n@[fun_prop] theorem id' : PolyB (fun x : α => x) := by\n  sorry\n@[fun_prop] theorem const (b : β) : PolyB (fun _ : α => b) := by\n  sorry\n@[fun_prop] theorem comp {f : β → γ} {g : α → β} (hf : PolyB f) (hg : PolyB g) :\n    PolyB (fun x => f (g x)) := by\n  sorry\nend PolyB\n\nexample {α β γ : Type} [Size α] [Size β] [Size γ] (f : β → γ) (g : α → β)\n    (hf : PolyB f) (hg : PolyB g) : PolyB (fun x => f (g x)) := by fun_prop",
+    "examples": [
+      {
+        "label": "PolyT as a fun_prop predicate on Mathlib multi-stack machines",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/machines/ToTuring/PolyT.lean"
+      },
+      {
+        "label": "closure lemmas id, const, comp, prodMk",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/machines/ToTuring/Closure/Basic.lean"
+      },
+      {
+        "label": "case distinction lemmas",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/machines/ToTuring/Closure/Cases.lean"
+      },
+      {
+        "label": "IsPolyT built by haveI chains and fun_prop",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/consequences/CountKSat/Walk.lean"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "architecture"
+    ],
+    "keywords": [
+      "fun_prop",
+      "polynomial time",
+      "closure lemmas",
+      "composition",
+      "certificate",
+      "custom predicate",
+      "complexity",
+      "turing machine"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (eth)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth",
+      "path": "eth/proof/machines/ToTuring/PolyT.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "pad-budget-for-exponential-loops",
+    "title": "Turn an exponential-time algorithm into a polynomial-time function of input and pad",
+    "problem": "The algorithm runs in exponential time 2^{f(n)}, but the machinery that compiles to Turing machines only handles polynomial-time functions, and exponential loops have no syntactic bound.",
+    "method_md": "Give every program an extra input, a pad: a list of units, a number written in unary. Cut every exponential loop off at the length of the pad. Then each program is polynomial-time in the length of input plus pad, and the polynomial-time calculus (`PolyT`, `fun_prop`) applies unchanged. A bound \"within T operations\" becomes \"the answer is right as soon as the pad has at least T units\". The exponential part of the cost then lives in one place: a front-end machine writes a pad of the right length (2^{C·…} units), and a wrapper runs the padded machine. Only that wrapper's step count has to be analysed against the exponential bound. The same trick (fuel as data) also works when a definition needs a terminating recursion whose natural bound is huge.",
+    "lean": "/-- Run `step` at most `pad.length` times; stop early on `some` answer. -/\ndef runPadded {σ β : Type} (step : σ → σ ⊕ β) : σ → List Unit → Option β\n  | _, [] => none\n  | s, _ :: pad =>\n    match step s with\n    | .inr b => some b\n    | .inl s' => runPadded step s' pad\n\n/-- A bound of T rounds becomes: right as soon as the pad has at least T units. -/\ntheorem runPadded_of_le {σ β : Type} (step : σ → σ ⊕ β) (s : σ) (b : β) (T : ℕ)\n    (h : ∀ pad : List Unit, pad.length = T → runPadded step s pad = some b)\n    (pad : List Unit) (hp : T ≤ pad.length) : runPadded step s pad = some b := by\n  sorry",
+    "examples": [
+      {
+        "label": "the word \"pad\" and the cost conventions",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/README.md"
+      },
+      {
+        "label": "pieces with a budget of blank symbols",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/statements/AppRunningTimeStatement.lean"
+      },
+      {
+        "label": "the padding machine",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/consequences/CountKSatRate/Pad.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "fuel",
+      "pad",
+      "unary budget",
+      "exponential time",
+      "polynomial time",
+      "turing machine",
+      "loop bound",
+      "termination"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (eth)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth",
+      "path": "eth/proof/README.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "hypothesis-boundary-as-prop-structure",
+    "title": "Collect the cited inputs in a Prop structure and discharge them one by one",
+    "problem": "A long proof rests on several classical theorems (explicit formula, zero counting, Stirling, Hilbert-type inequalities) that are not yet formalised. You want the main argument checked now, without axioms, with an exact record of what is still assumed.",
+    "method_md": "Put each cited input into one `structure PaperInputs (Z) : Prop`, one field per input. The docstring of each field quotes the paper's label, the exact sentence and the literature source. Never use `axiom`: every headline theorem takes `(H : PaperInputs Z)` explicitly, so `#print axioms` stays at the three standard axioms, and the trust boundary is this one file. Everything the paper itself derives is a proof obligation and must not become a field. Then discharge the fields one at a time, with a visible ladder of theorems: `thmA₃` takes four inputs, ..., and `thmA₁ (hEF)` needs only the explicit formula. Finally `thmA₀ := thmA₁ zetaEF` is unconditional. eth does the same with small named propositions (`def StTab : Prop`, …) and an assembly theorem `corCircuits_of (hTab : StTab) … : CorCircuits`, each `St…` proved separately. On nosorry this matches stating the missing steps as shared lemmas.",
+    "lean": "structure PaperInputs (Z : ZeroConfig) : Prop where\n  /-- H-EF  [prop:EF]/[eq:EF] -/\n  EF : ExplicitFormulaPaper Z\n  /-- H-RvM [eq:RvM] + local count [prop:tail] -/\n  RvM : RiemannVonMangoldt Z\n  /-- H-cheb [lem:cheb] -/\n  cheb : ChebyshevMertens\n  /-- H-MV [lem:MV], ∃ absolute constant -/\n  MV : ∃ C : ℝ, 0 < C ∧ MVHilbert C\n  /-- H-Γ [eq:mufacts] + Γ-halves of [eq:muints] -/\n  Gamma : GammaFacts\n\ntheorem thmA_abstract (Z : ZeroConfig) (H : PaperInputs Z) (P : Params) (hP : P.Valid) :\n    ... := sorry\n\n-- the ladder ends unconditionally\ntheorem thmA₀ :\n    ∀ ε > 0, ∃ T₀ : ℝ, ∀ T ≥ T₀, (2 / 3 - ε) * (Ncount T (2 * T) : ℝ) ≤ N0star T (2 * T) :=\n  thmA₁ zetaEF",
+    "examples": [
+      {
+        "label": "the hypothesis boundary, principle stated in the header",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Hypotheses.lean"
+      },
+      {
+        "label": "the ladder of headline theorems, hypotheses discharged one by one",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Final.lean"
+      },
+      {
+        "label": "assembly from named St-propositions",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/consequences/CircuitLowerBound/Main.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "hypotheses",
+      "no axioms",
+      "prop structure",
+      "trust boundary",
+      "conditional theorem",
+      "discharge",
+      "print axioms",
+      "shared lemmas"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Zeta23/Hypotheses.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "abstract-configuration-instantiated-once",
+    "title": "Prove the argument for an abstract configuration, instantiate it once",
+    "problem": "The main argument about the zeros of ζ only uses a few properties of the zero set, but working with `riemannZeta` directly drags analytic details everywhere, and the same argument is needed again for L-functions and for ξ′.",
+    "method_md": "Isolate the properties the argument actually uses in a `structure`. zeta23's `ZeroConfig` is a set in the strip `0 ≤ β ≤ 1` with multiplicities ≥ 1, invariant under `ρ ↦ 1 - ρ̄`, and finite in every height window. Define all counting functions (`N`, `Nd`, `N0star`, …) for an arbitrary `Z : ZeroConfig` and prove the whole argument there. Exactly one file builds the instance from Mathlib's ζ (`zetaZeroConfig`), together with `@[simp]` bridge lemmas (`zetaZeroConfig_N : zetaZeroConfig.N T₁ T₂ = Ncount T₁ T₂`) that rewrite to the counting functions of the trusted statement. The Dirichlet case and the ξ′ case reuse the same abstract theorems with other instances. Proving the finiteness field also discharges the obligation that the statement's `ncard` and `finsum` counts are meaningful.",
+    "lean": "structure ZeroConfig where\n  carrier : Set ℂ\n  mult : ℂ → ℕ\n  one_le_mult : ∀ ρ ∈ carrier, 1 ≤ mult ρ\n  strip : ∀ ρ ∈ carrier, 0 ≤ ρ.re ∧ ρ.re ≤ 1\n  reflect_mem : ∀ ρ ∈ carrier, reflect ρ ∈ carrier\n  mult_reflect : ∀ ρ ∈ carrier, mult (reflect ρ) = mult ρ\n  finite_window : ∀ T₁ T₂ : ℝ, (carrier ∩ {ρ | T₁ < ρ.im ∧ ρ.im ≤ T₂}).Finite\n\nnamespace ZeroConfig\nvariable (Z : ZeroConfig)\ndef window (T₁ T₂ : ℝ) : Set ℂ := Z.carrier ∩ {ρ | T₁ < ρ.im ∧ ρ.im ≤ T₂}\ndef N (T₁ T₂ : ℝ) : ℕ := ∑ᶠ ρ ∈ Z.window T₁ T₂, Z.mult ρ\ndef Nd (T₁ T₂ : ℝ) : ℕ := (Z.window T₁ T₂).ncard\nend ZeroConfig\n\n-- the only place where ζ enters\ndef zetaZeroConfig : ZeroConfig := zetaZeros zetaSeam\n@[simp] lemma zetaZeroConfig_N (T₁ T₂ : ℝ) : zetaZeroConfig.N T₁ T₂ = Ncount T₁ T₂ :=\n  zetaZeros_N _ _ _",
+    "examples": [
+      {
+        "label": "ZeroConfig and the counting functions",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Defs.lean"
+      },
+      {
+        "label": "the single instantiation from riemannZeta, simp bridges",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Statement/SeamClosed.lean"
+      },
+      {
+        "label": "reuse for Dirichlet L-functions",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/ThmE/Hypotheses.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "abstraction",
+      "structure",
+      "zero set",
+      "riemannzeta",
+      "dirichlet l-function",
+      "instantiate",
+      "simp bridge",
+      "reuse"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Zeta23/Defs.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "narrow-import-statement-copies-and-small-files",
+    "title": "Build proofs on narrow-import copies of the statements, in many small files",
+    "problem": "Every file that sits on top of `import Mathlib` is slow to compile and needs a lot of memory. A development with a thousand files on top of the trusted statement file becomes impractical.",
+    "method_md": "eth keeps the trusted `MainResults.lean` on `import Mathlib`, but builds all proofs on statement files in `proof/statements/`. These repeat the definitions with narrow imports (only the Mathlib modules needed). `Solution.lean` then passes from one to the other by definitional unfolding: `theorem MainResults.mainTheorem : MainResults.MainTheorem := CountedRoute.mainTheoremHolds` is accepted because the definitions unfold to the same term. The project has 1,052 files (about 145 lines each) and not a single `maxHeartbeats` override. Its largest build process used about 7 GB. 3sum-apsp is similar: 434 files, no heartbeat overrides. Both use the Lean module system (`module`, `public import`, `@[expose] public section`). By contrast, vp-vnp's files mostly `import Mathlib` whole, and it raises `maxHeartbeats` about 17 times. In a nosorry submission, the analogue is to keep each lemma small, so that the default heartbeat budget is never the bottleneck.",
+    "lean": "-- proof/statements/ThreeSatStatement.lean: narrow imports, same definitions\nmodule\npublic import Mathlib.Computability.TMComputable\npublic import Mathlib.Data.Real.Basic\n@[expose] public section\nnamespace Sat3\n-- def ETH_TM : Prop := ...   (repeats MainResults.ETH with the same body)\nend Sat3\n\n-- Solution.lean: the trusted type, the proof from the narrow-import side,\n-- accepted by unfolding definitions\nimport MainResults\nimport CountedRoute.Main\ntheorem MainResults.mainTheorem : MainResults.MainTheorem := CountedRoute.mainTheoremHolds",
+    "examples": [
+      {
+        "label": "why several files define a CNF",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/README.md"
+      },
+      {
+        "label": "the bridge by unfolding",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/Solution.lean"
+      },
+      {
+        "label": "build time and memory",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/README.md"
+      }
+    ],
+    "tags": [
+      "performance",
+      "architecture"
+    ],
+    "keywords": [
+      "import mathlib",
+      "narrow imports",
+      "compile time",
+      "memory",
+      "module system",
+      "expose",
+      "defeq bridge",
+      "small files",
+      "heartbeats"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (eth)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth",
+      "path": "eth/proof/README.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "paper-index-with-aliases-and-name-scheme",
+    "title": "Index the paper's items with compiled aliases and a fixed name scheme",
+    "problem": "In a formalization of hundreds of statements, readers (and later provers) cannot find the Lean counterpart of \"Lemma 4\" or \"equation (5)\", and a separate index document goes stale.",
+    "method_md": "eth's `PaperIndex.lean` has one entry per numbered statement of the paper: `alias PaperIndex.sparsification := SparsificationLemma.Mach.lemSparsification_holds`. The docstring says where the Lean form differs from the printed one. Because the index is a compiled Lean file, a renamed or deleted declaration breaks the build instead of silently rotting, and `#print axioms` can be run over the whole index. 3sum-apsp fixes a name scheme instead. A statement carries its item number (`Lemma_6`, `Eq_5`, `Table_2_c19`). The theorem that proves it has the lower-case name (`lemma_6`), with prefix `wordRam_` for machine statements and `endStatement_` for the five claims. `Agreement_` marks a proof that two definitions agree. A `NOTE` paragraph in a comment marks each place where the Lean text departs from the paper. zeta23 puts the LaTeX label (`[eq:RvM]`, `[lem:MV]`) into every docstring.",
+    "lean": "/-- **Lemma 4** (Sparsification Lemma, deciding form). In Lean: φ is satisfiable iff at\nleast one of the listed formulas is; the exactly-one form is `SparsificationLemma.stExactlyOne`. -/\nalias PaperIndex.sparsification := SparsificationLemma.Mach.lemSparsification_holds\n\n/-- **Section 7**: E^NP does not have linear-size circuits (three Lean forms). -/\nalias PaperIndex.circuits := FromPrinted.Consequences.circuits\n\n-- 3sum-apsp naming: statement `Lemma_6 : Prop`, theorem `lemma_6 : Lemma_6`,\n-- machine statements `wordRam_theorem_5`, the five claims `endStatement_theorem_19`.",
+    "examples": [
+      {
+        "label": "the index of the paper's statements",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/PaperIndex.lean"
+      },
+      {
+        "label": "names of statements and theorems",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/README.md"
+      },
+      {
+        "label": "every NOTE and departure, section by section",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/REMARKS.md"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "alias",
+      "paper index",
+      "naming convention",
+      "docstring",
+      "traceability",
+      "blueprint",
+      "note",
+      "labels"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (eth)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth",
+      "path": "eth/proof/PaperIndex.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "agreement-lemmas-for-twice-defined-notions",
+    "title": "Prove that notions defined twice agree",
+    "problem": "To keep a trusted file minimal (core-only, or narrow imports), some notions are defined twice: once in the small file and once in the convenient library form. A silent difference between the two would make a theorem about one say nothing about the other.",
+    "method_md": "Whenever a notion exists in two versions, state and prove an agreement theorem and keep it among the checked statements. 3sum-apsp has `Agreement_bigO` (the rational-power `BigO` against real-exponent big-O, for r ≥ 0), `Agreement_solvedInTime`, `Agreement_exactTriangle` and `Agreement_minPlusProduct`. They are statements of `PaperStatements.lean` and are compared by Comparator like any other. zeta23 uses rewriting bridges, `@[simp] lemma zetaZeroConfig_N0star : zetaZeroConfig.N0star T₁ T₂ = N0star T₁ T₂`, so that abstract results land exactly on the trusted counting functions. vp-vnp converts between the statement's `Family` and the library's `Nc.Family` with `toNc`/`ofNc`. When you restate a Mathlib notion for convenience in a nosorry proof, prove the bridge lemma first.",
+    "lean": "-- the two definitions of \"solved in time O(n^r)\" agree (shape of the statement)\ntheorem agreement_bigO_shape (T : ℕ → ℕ) (r : ℚ) (hr : 0 ≤ r) :\n    EndStatement.BigO T r ↔\n      ∃ K : ℝ, ∀ n ≥ 2, (T n : ℝ) ≤ K * (n : ℝ) ^ (r : ℝ) := by\n  sorry\n\n-- simp bridges from the abstract configuration to the trusted counts\n@[simp] lemma zetaZeroConfig_N0star (T₁ T₂ : ℝ) :\n    zetaZeroConfig.N0star T₁ T₂ = N0star T₁ T₂ :=\n  zetaZeros_N0star _ _ _",
+    "examples": [
+      {
+        "label": "Agreement_ statements",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/PaperStatements.lean"
+      },
+      {
+        "label": "notions defined twice, listed with their agreement statements",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/MACHINE.md"
+      },
+      {
+        "label": "simp bridges",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Statement/SeamClosed.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "agreement",
+      "bridge lemma",
+      "duplicate definitions",
+      "equivalence",
+      "trusted file",
+      "simp lemma",
+      "restatement",
+      "big o"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/PaperStatements.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "structure-translation-by-definitional-unfolding",
+    "title": "Translate between statement-side and library-side structures by unfolding",
+    "problem": "The trusted statement defines its own structure (`Family` with fields `vars`, `fin`, `poly`), while the library uses another one (`Nc.Family` with `X`, `fin`, `poly`) and its own `VP`/`VNP`. The final theorems must move between them without re-proving anything.",
+    "method_md": "Give the library definitions the same bodies as the statement definitions, up to the names of fields and binders. Then write two trivial maps (`toNc`, `ofNc`) that copy the fields. Membership then transfers by a type ascription, `(hf : toNc f ∈ Nc.VP F)`, because both sides unfold to the same proposition. Likewise `Statement.perm F m = ∑ σ, ∏ i, X (σ i, i)` and the library's `genPerm` (via `Matrix.permanent`) are definitionally equal, so `exact h p hp` closes the goal. Keep this property deliberately: if a library definition is changed for convenience, add an explicit bridge lemma instead, or the Solution file stops compiling. The same check is what nosorry's comparator relies on when a submission restates a definition.",
+    "lean": "/-- The classes of the statement are those of the proof. -/\ndef toNc {F : Type u} [CommSemiring F] (f : Family F) : Nc.Family F :=\n  { X := f.vars, fin := f.fin, poly := f.poly }\n\n/-- And conversely. -/\ndef ofNc {F : Type u} [CommSemiring F] (f : Nc.Family F) : Family F :=\n  { vars := f.X, fin := f.fin, poly := f.poly }\n\n/-- VP is a proper subset of VNP over every field. -/\ntheorem separation : Separation.{u} := fun F _ =>\n  ⟨fun f hf => ((Paper.cor_allclasses F).1 (hf : toNc f ∈ Nc.VP F) : toNc f ∈ Nc.VNP F),\n    fun h => (Paper.cor_allclasses F).2 fun g hg => (h (a := ofNc g) hg : ofNc g ∈ VP F)⟩",
+    "examples": [
+      {
+        "label": "toNc / ofNc and the five delegations",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Solution.lean"
+      },
+      {
+        "label": "library classes VP, VNP with the same bodies",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Nc/Final/CClasses.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "defeq",
+      "type ascription",
+      "structure",
+      "field names",
+      "bridge",
+      "unfold",
+      "statement",
+      "library"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/Solution.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "arithmetic-circuits-as-straight-line-lists",
+    "title": "Formalise arithmetic circuits as straight-line lists of polynomials",
+    "problem": "Statements about algebraic complexity (circuit size, VP, VNP) need a notion of circuit. An inductive syntax tree with an evaluation function is heavy to state and to reason about.",
+    "method_md": "vp-vnp says semantically what a circuit computes. `Computes f s` holds if there is a sequence `l : ℕ → MvPolynomial V R` whose first `s` entries are each a variable, a constant, or the sum or product of two earlier entries, and one of them is `f`. Gates are counted, inputs included. There is no syntax and no evaluation map. Composition lemmas become simple index shifts. For bookkeeping, add a size-and-degree predicate `CSize p s d := Computes p s ∧ p.totalDegree ≤ d` with a small calculus (`CSize.var`, `.mul`, `.sum`, `.prod` over a `Finset`, `.mono`). Then a bound like `CSize (ryserWit F n) (40 * (n + 1) ^ 4) (40 * (n + 1) ^ 4)` is assembled from parts. VNP is defined by summing over Boolean assignments through `aeval (Sum.elim X fun i => if e i then 1 else 0)`. This style suits formal-conjectures statements on algebraic complexity.",
+    "lean": "open MvPolynomial in\n/-- `f` has an arithmetic circuit with at most `s` gates. -/\ndef Computes {R : Type u} {V : Type} [CommSemiring R] (f : MvPolynomial V R) (s : ℕ) : Prop :=\n  ∃ l : ℕ → MvPolynomial V R,\n    (∀ k < s, (∃ v : V, l k = X v) ∨ (∃ a : R, l k = C a) ∨\n      (∃ i < k, ∃ j < k, l k = l i + l j) ∨ (∃ i < k, ∃ j < k, l k = l i * l j)) ∧\n    ∃ k < s, l k = f\n\n/-- Size and degree together, with a small calculus (var, mul, sum, prod, mono). -/\ndef CSize {F X : Type*} [Field F] (p : MvPolynomial X F) (s d : ℕ) : Prop :=\n  Computes p s ∧ p.totalDegree ≤ d\n\n/-- Substituting a Boolean vector into the extra variables. -/\nnoncomputable def bits {F X : Type*} [Field F] {m : ℕ} (q : MvPolynomial (X ⊕ Fin m) F)\n    (e : Fin m → Bool) : MvPolynomial X F :=\n  MvPolynomial.aeval (Sum.elim MvPolynomial.X fun i => if e i then 1 else 0) q",
+    "examples": [
+      {
+        "label": "Computes, perm, hc, VP, VNP in the statement",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Statement.lean"
+      },
+      {
+        "label": "CSize and its calculus, bits, library VNP",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Nc/Final/CClasses.lean"
+      },
+      {
+        "label": "a circuit-size bound assembled with CSize",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Paper/Ryser.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "architecture"
+    ],
+    "keywords": [
+      "arithmetic circuit",
+      "straight-line program",
+      "mvpolynomial",
+      "vp",
+      "vnp",
+      "circuit size",
+      "totaldegree",
+      "aeval",
+      "algebraic complexity"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/Statement.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "approximate-circuits-via-laurent-series",
+    "title": "State border (approximate) complexity with Laurent series coefficients",
+    "problem": "Border complexity (VP-bar, border rank) says that a polynomial is a limit of polynomials of small complexity. Topology on polynomial spaces is awkward to state in Mathlib.",
+    "method_md": "State it algebraically. A circuit over the Laurent series `LaurentSeries F` computes `q = f + ε·g`, where the coefficients of `g` are power series in ε. Coefficientwise: for every monomial `d` and every `i ≤ 0`, the coefficient of `ε^i` in `coeff d q` is `coeff d f` if `i = 0` and `0` otherwise. This reuses the exact circuit predicate (`Computes`) over another ring, needs no topology, and works over every field, including positive characteristic. `VPBar` is then `VP` with `Approximates` in place of `Computes`. The same coefficient trick gives border rank of tensors and other degenerations.",
+    "lean": "/-- `f` is approximated by a circuit with at most `s` gates. -/\ndef Approximates {F : Type u} {V : Type} [Field F] (f : MvPolynomial V F) (s : ℕ) : Prop :=\n  ∃ q : MvPolynomial V (LaurentSeries F), Computes q s ∧\n    ∀ (d : V →₀ ℕ) (i : ℤ), i ≤ 0 →\n      (MvPolynomial.coeff d q).coeff i = if i = 0 then MvPolynomial.coeff d f else 0\n\ndef VPBar (F : Type u) [Field F] : Set (Family F) :=\n  {f | ∃ a : ℕ, ∀ n, Fintype.card (f.vars n) ≤ n ^ a + a ∧\n    (f.poly n).totalDegree ≤ n ^ a + a ∧ Approximates (f.poly n) (n ^ a + a)}",
+    "examples": [
+      {
+        "label": "Approximates, MainTheoremApprox, VPBar, SeparationClosure",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Statement.lean"
+      },
+      {
+        "label": "the approximate form of the main theorem",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Paper/Approximate.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "border complexity",
+      "laurentseries",
+      "approximation",
+      "vp closure",
+      "border rank",
+      "coefficient",
+      "hahnseries",
+      "degeneration"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/Statement.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "reduce-every-characteristic-to-prime-or-zero",
+    "title": "Handle \"for every characteristic p\" by the prime-or-zero case split",
+    "problem": "A statement quantifies over every natural number p and every field of characteristic p, but the library theorem is proved only for p = 0 or p prime.",
+    "method_md": "Split on `p = 0 ∨ p.Prime`. In the other case no field has characteristic p, by `CharP.char_is_prime_or_zero`, so any witness works: take `m₀ = 0` and derive the conclusion by `absurd`. The statement stays uniform in p, as the paper writes it, while the library keeps the natural hypothesis. The same pattern applies to `ringChar`, and to any statement over \"all p\" where only primes are meaningful.",
+    "lean": "theorem mainTheorem : MainTheorem.{u} := by\n  obtain ⟨c, hc, h⟩ := Paper.thm_allfields.{u}\n  refine ⟨c, hc, fun p => ?_⟩\n  by_cases hp : p = 0 ∨ p.Prime\n  · exact h p hp\n  · exact ⟨0, fun F _ _ => absurd (CharP.char_is_prime_or_zero F p).symm hp⟩",
+    "examples": [
+      {
+        "label": "mainTheorem and mainTheoremApprox",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Solution.lean"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "mathlib"
+    ],
+    "keywords": [
+      "charp",
+      "characteristic",
+      "char_is_prime_or_zero",
+      "by_cases",
+      "absurd",
+      "vacuous case",
+      "field",
+      "prime"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/Solution.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "boolean-certificate-checker-with-decide-kernel",
+    "title": "Check numeric certificates with a Boolean checker, a soundness lemma and decide +kernel",
+    "problem": "A proof needs hundreds of explicit numeric inequalities (here 255 row bounds and edge bounds for a 256-point law). Proving them one by one is slow, and `norm_num` on each is too expensive.",
+    "method_md": "Write a checker `check : Data → Bool` that does exact integer interval arithmetic: only `+`, `·`, `max` and `|·|` on `ℤ`, and comparisons of rationals by cross-multiplication, combined with `&&` and `decide (a ≤ b)`. Prove once that `check d = true` implies the real-valued bounds for EVERY real sequence inside the enclosures (`cert_of_check`), using `simp only [check, Bool.and_eq_true, decide_eq_true_eq] at hc`. For the concrete instance, prove `check LawN256 = true` by `decide +kernel`: the kernel evaluates it, with no `native_decide` and no extra axiom. Data that comes from an external computation (here the enclosures, obtained by interval arithmetic outside Lean) becomes a displayed hypothesis of the final theorem (`EnclOK`), not a hidden assumption.",
+    "lean": "structure Row where\n  lo : ℤ\n  hi : ℤ\n\n/-- One pass of integer interval arithmetic; rationals compared by cross-multiplication. -/\ndef checkRow (N K tn td : ℤ) (j : ℕ) (e : Row) : Bool :=\n  decide (N ≤ j + 1) ||\n    (decide (|N * e.lo - ((j : ℤ) + 1) * K| * td ≤ tn * K) &&\n     decide (|N * e.hi - ((j : ℤ) + 1) * K| * td ≤ tn * K))\n\ndef checkRows (N K tn td : ℤ) (rows : List Row) : Bool :=\n  (List.range rows.length).all fun j => checkRow N K tn td j (rows.getD j ⟨0, 0⟩)\n\n/-- Soundness starts by unpacking the Boolean check once; the real bounds follow from it. -/\ntheorem rows_of_check {N K tn td : ℤ} {rows : List Row} (hc : checkRows N K tn td rows = true) :\n    ∀ j ∈ List.range rows.length, checkRow N K tn td j (rows.getD j ⟨0, 0⟩) = true := by\n  simpa [checkRows, List.all_eq_true] using hc\n\n-- the instance: theorem LawN256_check : checkRows LawN256 = true := by decide +kernel",
+    "examples": [
+      {
+        "label": "the checker and cert_of_check",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/PairCeiling/NumericCert.lean"
+      },
+      {
+        "label": "LawN256_check by decide +kernel",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/PairCeiling/LawN256.lean"
+      },
+      {
+        "label": "row certificates",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/PairCeiling/RowCert.lean"
+      }
+    ],
+    "tags": [
+      "performance",
+      "tactics"
+    ],
+    "keywords": [
+      "decide +kernel",
+      "reflection",
+      "certificate",
+      "interval arithmetic",
+      "boolean checker",
+      "cross-multiplication",
+      "no native_decide",
+      "soundness lemma"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Zeta23/PairCeiling/NumericCert.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "liminf-epsilon-form-and-counting-pitfalls",
+    "title": "State liminf proportions in epsilon form and mind ncard / finsum on infinite sets",
+    "problem": "\"liminf_{T→∞} X(T)/N(T) ≥ c\" is awkward with `Filter.liminf` (boundedness side conditions, division by 0), and counts written with `Set.ncard` or `finsum` silently become 0 on infinite sets.",
+    "method_md": "Write the proportion statement without division: `∀ ε > 0, ∃ T₀, ∀ T ≥ T₀, (c - ε) * N T ≤ X T`. This is equivalent to liminf ≥ c when N(T) → ∞, avoids `0/0`, and is easy to use and to prove. Define counts with `Set.ncard` (distinct points) and `∑ᶠ ρ ∈ S, mult ρ` (with multiplicity), straight from Mathlib's `riemannZeta` and `analyticOrderAt`. But both are 0 on an infinite set, so a statement about them is only meaningful once finiteness is known. zeta23 proves finiteness on the solution side (the `finite_window` field), not as a hypothesis. Also check the direction: the count WITH multiplicity stands on the left, the distinct count on the right, which is the strong direction. `(analyticOrderAt f ρ).toNat` sends `⊤` to 0, so `1 ≤ zeroMult ρ` also excludes local identical vanishing.",
+    "lean": "def zeroMult (ρ : ℂ) : ℕ := (analyticOrderAt riemannZeta ρ).toNat\ndef zerosIn (T₁ T₂ : ℝ) : Set ℂ := {ρ | IsNontrivialZero ρ ∧ T₁ < ρ.im ∧ ρ.im ≤ T₂}\n/-- with multiplicity; 0 if the window were infinite -/\ndef Ncount (T₁ T₂ : ℝ) : ℕ := ∑ᶠ ρ ∈ zerosIn T₁ T₂, zeroMult ρ\n/-- distinct, on the line, simple -/\ndef N0simple (T₁ T₂ : ℝ) : ℕ :=\n  (zerosIn T₁ T₂ ∩ {ρ | ρ.re = 1 / 2} ∩ {ρ | zeroMult ρ = 1}).ncard\n\n/-- liminf N₀ˢ(T,2T)/N(T,2T) ≥ 2/3, in ε-form -/\ntheorem two_thirds_simple_on_critical_line :\n    ∀ ε > 0, ∃ T₀ : ℝ, ∀ T ≥ T₀, (2 / 3 - ε) * (Ncount T (2 * T) : ℝ) ≤ N0simple T (2 * T) := by\n  sorry",
+    "examples": [
+      {
+        "label": "reading notes for the statements",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/README.md"
+      },
+      {
+        "label": "the counting functions defined from Mathlib alone",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/ChallengeDeps.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls"
+    ],
+    "keywords": [
+      "liminf",
+      "epsilon form",
+      "ncard",
+      "finsum",
+      "infinite set",
+      "analyticorderat",
+      "multiplicity",
+      "proportion"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/README.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "respect-transparency-off-for-instance-path-mismatch",
+    "title": "Scope respectTransparency off where rw fails on instance-path mismatches",
+    "problem": "`rw` or `exact` fails on `deriv`, `∫` or `ContDiff` terms that look identical, because their instance arguments were synthesized along different paths (for example `IsScalarTower ℝ ℂ ℂ`) and are equal only after unfolding instances.",
+    "method_md": "zeta23 uses Mathlib's own workaround: `set_option backward.isDefEq.respectTransparency false in` on the declaration, or at file level where many lemmas need it (about 35 files of the tree). The definitional equality check may then unfold the instances, and the terms match. Scope it as narrowly as possible, and put a comment with the reason, as the project does. When the failure is instead that an instance cannot be found at all, look for a competing instance path with `set_option trace.Meta.synthInstance true in`. zeta23 found that `LieAlgebra.ofAssociativeAlgebra` supplies a second `Module ℝ ℂ`. It removed it locally with `attribute [-instance] LieAlgebra.ofAssociativeAlgebra`, or demoted `LieAlgebra.toModule` in a shared prelude file. Check first that the verifier accepts `set_option` in submissions; if it does not, use `erw`, `convert … using 2` or an explicit `show` to bridge the instances.",
+    "lean": "-- Mathlib's own workaround for instance-path defeq on IsScalarTower ℝ ℂ ℂ\nset_option backward.isDefEq.respectTransparency false in\ntheorem mu_smooth : ContDiff ℝ ∞ mu := by\n  sorry\n\n-- a competing route to Module ℝ ℂ breaks ContinuousSMul ℝ ℂ / HasDerivAt (f : ℝ → ℂ)\nattribute [-instance] LieAlgebra.ofAssociativeAlgebra\n-- or, shared by importers:  attribute [instance 10] LieAlgebra.toModule",
+    "examples": [
+      {
+        "label": "the option with its reason",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/GammaFacts.lean"
+      },
+      {
+        "label": "instance hygiene prelude, diagnosis with trace.Meta.synthInstance",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Prelude/InstancePriorities.lean"
+      },
+      {
+        "label": "file-local removal of the Lie instance",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/RvM/Backlund.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "performance"
+    ],
+    "keywords": [
+      "respecttransparency",
+      "isdefeq",
+      "instance path",
+      "isscalartower",
+      "rw fails",
+      "liealgebra",
+      "continuoussmul",
+      "set_option"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Zeta23/GammaFacts.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "vp-vnp-superpolynomial-lower-bound-permanent-hc",
+    "title": "Circuits for the Hamiltonian cycle polynomial and the permanent need m^(c·(log m)^(1/3)) gates",
+    "problem": "Over every field of characteristic p, every arithmetic circuit (gates counted, inputs included) for the Hamiltonian cycle polynomial hc_m, and for the permanent perm_m if p ≠ 2, has more than m^(c·(log₂ m)^(1/3)) gates for m ≥ m₀(p), with an absolute constant c > 0. The same holds for approximating (border) circuits.",
+    "method_md": "`Solution.mainTheorem` delegates to `Paper.thm_allfields` (vp-vnp/Paper/Fields.lean), with the case split p = 0 or prime. The constant is c = 1/1600². The library has about 320 files and 73k lines, in the folders `Paper` (the paper's statements in order), `Nc` (cuts, towers, groups, CAT(0) spaces, the circuit and tower combinatorics), `NS1` (sum machines, approximation) and `Ov` (tensors and gauges, duality). The over-ℝ special case is `Solution.permanent_over_real` (`Paper.thm_main`). The approximate form is `Solution.mainTheoremApprox` (`Paper.thm_approx`). The README notes that no human mathematician has checked the proof, and that Lean checks it.",
+    "lean": "def Computes {R : Type u} {V : Type} [CommSemiring R] (f : MvPolynomial V R) (s : ℕ) : Prop :=\n  ∃ l : ℕ → MvPolynomial V R,\n    (∀ k < s, (∃ v : V, l k = X v) ∨ (∃ a : R, l k = C a) ∨\n      (∃ i < k, ∃ j < k, l k = l i + l j) ∨ (∃ i < k, ∃ j < k, l k = l i * l j)) ∧\n    ∃ k < s, l k = f\n\nnoncomputable def perm (F : Type u) [CommSemiring F] (m : ℕ) : MvPolynomial (Fin m × Fin m) F :=\n  ∑ σ : Equiv.Perm (Fin m), ∏ i, X (σ i, i)\n\nopen Classical in\nnoncomputable def hc (F : Type u) [CommSemiring F] (m : ℕ) : MvPolynomial (Fin m × Fin m) F :=\n  ∑ σ : Equiv.Perm (Fin m) with σ.IsCycleOn Set.univ, ∏ i, X (i, σ i)\n\ndef Beyond (c : ℝ) (m s : ℕ) : Prop := (m : ℝ) ^ (c * Real.logb 2 m ^ (1 / 3 : ℝ)) < s\n\ndef MainTheorem : Prop :=\n  ∃ c : ℝ, 0 < c ∧ ∀ p : ℕ, ∃ m₀ : ℕ, ∀ (F : Type u) [Field F] [CharP F p], ∀ m ≥ m₀, ∀ s : ℕ,\n    (Computes (hc F m) s → Beyond c m s) ∧ (p ≠ 2 → Computes (perm F m) s → Beyond c m s)\n\ntheorem Solution.mainTheorem : Statement.MainTheorem.{u}",
+    "examples": [
+      {
+        "label": "statement file (imports Mathlib only)",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Statement.lean"
+      },
+      {
+        "label": "proof by delegation",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Solution.lean"
+      },
+      {
+        "label": "library theorem thm_allfields",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Paper/Fields.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "architecture"
+    ],
+    "keywords": [
+      "vp",
+      "vnp",
+      "permanent",
+      "hamiltonian cycle polynomial",
+      "arithmetic circuit",
+      "lower bound",
+      "algebraic complexity",
+      "valiant"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/Statement.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "Solution.mainTheorem",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 321,
+      "port": "same toolchain as nosorry",
+      "port_notes": "Lean v4.33.1 with Mathlib 0df444a360eaa60ab8c11dca51a86af692955474 (Mathlib tag v4.33.1). If nosorry's Mathlib is the same tag, no version port is needed. Import cone of Solution: 321 local files, about 73k lines, and files import `Mathlib` whole. The library defines root-level namespaces `Paper`, `Nc`, `NS1`, `Ov`, `Cat`, `Unc` that would need a prefix in a shared library. About 17 local `maxHeartbeats` raises (up to 4,000,000), `synthInstance.maxSize 20000` in 4 files, `exponentiation.threshold 1000` in one file, and `linter.unusedSectionVars false` in about 196 files. No axioms, no native_decide."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "vp-vnp-separation-every-field",
+    "title": "VP is a proper subset of VNP, and VNP is not in the closure of VP, over every field",
+    "problem": "With Valiant's classes defined from polynomially bounded numbers of variables, degree and circuit size (`VP`), Boolean sums of VP families (`VNP`), and approximating circuits over Laurent series (`VPBar`): for every field F, VP F ⊂ VNP F and ¬ VNP F ⊆ VPBar F.",
+    "method_md": "`Solution.separation` comes from `Paper.cor_allclasses`. `vp_subset_vnp` adds zero extra variables. Properness uses `hc_mem_VNP` (the Hamiltonian cycle polynomial is in VNP, with a witness of 700-polynomial size) against the main lower bound, via `exists_beyond_poly`: m^(c·(log m)^(1/3)) eventually exceeds every polynomial. `Solution.separationClosure` comes from `Paper.thm_approx`. The statement-side `Family` is translated to `Nc.Family` by `toNc`/`ofNc`, definitionally.",
+    "lean": "structure Family (F : Type u) [CommSemiring F] where\n  vars : ℕ → Type\n  [fin : ∀ n, Fintype (vars n)]\n  poly : ∀ n, MvPolynomial (vars n) F\n\ndef VP (F : Type u) [CommSemiring F] : Set (Family F) :=\n  {f | ∃ a : ℕ, ∀ n, Fintype.card (f.vars n) ≤ n ^ a + a ∧ (f.poly n).totalDegree ≤ n ^ a + a ∧\n    Computes (f.poly n) (n ^ a + a)}\n\ndef VNP (F : Type u) [CommSemiring F] : Set (Family F) :=\n  {f | ∃ (r : ℕ → ℕ) (g : ∀ n, MvPolynomial (f.vars n ⊕ Fin (r n)) F),\n    ({ vars := fun n => f.vars n ⊕ Fin (r n), poly := g } : Family F) ∈ VP F ∧\n      ∀ n, f.poly n = ∑ e : Fin (r n) → Bool, aeval (Sum.elim X fun i => if e i then 1 else 0) (g n)}\n\ndef Separation : Prop := ∀ (F : Type u) [Field F], VP F ⊂ VNP F\n\ndef SeparationClosure : Prop := ∀ (F : Type u) [Field F], ¬ VNP F ⊆ VPBar F\n\ntheorem Solution.separation : Separation.{u}\ntheorem Solution.separationClosure : SeparationClosure.{u}",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Statement.lean"
+      },
+      {
+        "label": "cor_allclasses, hc_mem_VNP",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Paper/Fields.lean"
+      },
+      {
+        "label": "vp_subset_vnp",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Paper/Rate.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "vp",
+      "vnp",
+      "vpbar",
+      "valiant classes",
+      "separation",
+      "border complexity",
+      "algebraic complexity",
+      "every field"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/Statement.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "Solution.separation",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 321,
+      "port": "same toolchain as nosorry",
+      "port_notes": "Same cone as the main theorem (321 files, Mathlib 0df444a360eaa60ab8c11dca51a86af692955474). The small reusable part, `vp_subset_vnp`, needs only the class definitions (`Nc/Final/CClasses.lean`) and could be copied on its own."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "vp-vnp-ryser-formula-permanent-in-vnp",
+    "title": "Ryser's formula as a polynomial identity, and the permanent is in VNP",
+    "problem": "Over any field, the generic permanent is the sum over all Boolean vectors e of the Ryser summand (∏_i ∑_j y_j x_{ij})·∏_j (−1 + 2 y_j) evaluated at y = e. This witness has circuits of size and degree 40·(n+1)^4, so the permanent family is in VNP.",
+    "method_md": "`Paper.genPerm_eq_ryser` expands the Ryser summand with `simp only [ryserWit, bits_mul, bits_prod, bits_sum, …]` into a sum over all maps `f : Fin n → Fin n`, and shows that non-bijective maps cancel. `csize_ryser` builds the size bound with the `CSize` calculus (`CSize.prod`, `CSize.sum`, `.var`, `.mul`). `perm_mem_VNP` combines the two. The import cone is small (14 files, about 2.3k lines), which makes it a good candidate for a shared library.",
+    "lean": "variable (F : Type) [Field F] (n : ℕ)\n\nnoncomputable def ryserWit : MvPolynomial ((Fin n × Fin n) ⊕ Fin n) F :=\n  (∏ i, ∑ j, X (Sum.inr j) * X (Sum.inl (i, j))) * ∏ j, (C (-1) + C 2 * X (Sum.inr j))\n\nopen Classical in\ntheorem genPerm_eq_ryser : genPerm F n = ∑ e : Fin n → Bool, bits (ryserWit F n) e\n\ntheorem csize_ryser : CSize (ryserWit F n) (40 * (n + 1) ^ 4) (40 * (n + 1) ^ 4)\n\ntheorem perm_mem_VNP : ({ X := fun n => Fin n × Fin n, poly := genPerm F } : Family F) ∈ VNP F\n\n-- genPerm F S := (Matrix.of fun i j => X (i, j)).permanent\n-- bits q e := MvPolynomial.aeval (Sum.elim MvPolynomial.X fun i => if e i then 1 else 0) q",
+    "examples": [
+      {
+        "label": "Ryser's formula and perm ∈ VNP",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Paper/Ryser.lean"
+      },
+      {
+        "label": "genPerm via Matrix.permanent",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Nc/PermValiant.lean"
+      },
+      {
+        "label": "CSize, bits, VNP",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp/Nc/Final/CClasses.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "ryser formula",
+      "permanent",
+      "matrix.permanent",
+      "vnp",
+      "mvpolynomial",
+      "inclusion-exclusion",
+      "circuit size",
+      "aeval"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (vp-vnp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/vp-vnp",
+      "path": "vp-vnp/Paper/Ryser.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "Paper.genPerm_eq_ryser",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 14,
+      "port": "same toolchain as nosorry",
+      "port_notes": "14 local files, about 2.3k lines, Mathlib 0df444a360eaa60ab8c11dca51a86af692955474 (v4.33.1), imports Mathlib whole. A port would copy `Nc/Final/CClasses.lean` (Family, Computes, VP, VNP, CSize, bits), `Nc/PermValiant.lean` (genPerm) and `Paper/Ryser.lean`, renamed under a library namespace. Note `Paper.perm_mem_VNP` uses `Hc.quartic_bound` from the hc files."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "eth-is-false-mathlib-turing-machines",
+    "title": "The Exponential Time Hypothesis is false (3-SAT in time 2^(δn) for every δ > 0)",
+    "problem": "On Mathlib's deterministic multi-stack Turing machines (`Turing.FinTM2` with finite alphabets, inputs as bits): for every δ > 0 one machine decides 3-SAT on n variables (any number of clauses, none repeated) within ⌊c·2^(δn)⌋ steps. Equivalently s₃ = 0, so ETH, in the form s₃ > 0, fails.",
+    "method_md": "`MainResults.ethIsFalse` is `(Wrap.countingBoundImpliesFailureOfETH (NamesInOrder.generalFormFollowsAsPropositions CountedRoute.mainTheoremHolds)).2.2.1`. It goes from the counting Main Theorem to arbitrary variable names, then through a front end, a simulation and a last step to one machine for every δ. The development has 1,052 files and 152k lines (Solution cone: 810 files, about 120k lines) in groups: machines (step machines, `PolyT` certificates, the passage to Mathlib TMs), networks (tensor networks on a grid, the eight-square identity), sparsification (Appendix C), rates and variables (Appendices A, B, D), and consequences (#k-SAT, SETH, graph problems, circuit lower bounds). The paper and formalization were written by AI models. The README states that the result is purely asymptotic.",
+    "lean": "def DecidesKSat (k : ℕ) (M : TM2ComputableAux Bool Bool) (t : ℕ → ℕ) : Prop :=\n  ∀ (n : ℕ) (φ : CNF n), IsKCNF k φ → ∃ b : Bool, (b = true ↔ Satisfiable φ) ∧\n    Nonempty (TM2OutputsInTime M.tm ((encClauses k φ).map M.inputAlphabet.invFun)\n      (some ([b].map M.outputAlphabet.invFun)) (t n))\n\ndef InTime (k : ℕ) (δ : ℝ≥0) : Prop :=\n  ∃ (M : TM2ComputableAux Bool Bool) (c : ℕ), (∀ i, Finite (M.tm.Γ i)) ∧\n    DecidesKSat k M fun n => ⌊(c : ℝ) * (2 : ℝ) ^ ((δ : ℝ) * n)⌋₊\n\nnoncomputable def s (k : ℕ) : ℝ≥0∞ := ⨅ (δ : ℝ≥0) (_ : InTime k δ), (δ : ℝ≥0∞)\n\ndef ETH : Prop := 0 < s 3\n\ndef ETHIsFalse : Prop := ¬ ETH\n\ntheorem MainResults.ethIsFalse : MainResults.ETHIsFalse",
+    "examples": [
+      {
+        "label": "statement file (definitions only, imports Mathlib)",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/MainResults.lean"
+      },
+      {
+        "label": "challenge",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/Challenge.lean"
+      },
+      {
+        "label": "proof term",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/Solution.lean"
+      },
+      {
+        "label": "index of the paper's statements",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/PaperIndex.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "eth",
+      "exponential time hypothesis",
+      "3-sat",
+      "turing machine",
+      "tm2",
+      "complexity",
+      "sparsification",
+      "subexponential"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (eth)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth",
+      "path": "eth/MainResults.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "MainResults.ethIsFalse",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 810,
+      "port": "heavy (810 files)",
+      "port_notes": "Lean v4.33.1, Mathlib 0df444a360eaa60ab8c11dca51a86af692955474 (v4.33.1). Solution cone: 810 local files, about 120k lines, built over narrow-import statement copies. Uses the Lean module system (`module`, `public import`, `@[expose]`). Module names drop the group folder (`proof/machines/Wrap/Arith.lean` is module `Wrap.Arith`), so a port must add a lakefile with matching `srcDir`/globs, or rename the modules. Build reported at about 8 min on 24 vCPUs and 7 GB peak memory. No heartbeat overrides. Global option `exponentiation.threshold = 2048` in lakefile.toml."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "eth-counting-k-cnf-main-theorem",
+    "title": "One Turing machine counts k-CNF solutions in 2^(C·min(km/√log m, k²n·loglog n/√log n)) steps",
+    "problem": "One deterministic multi-stack Turing machine with finite alphabets and one constant C, both chosen before k and φ, has this property. For every k ≥ 1, n ≥ 4 and k-CNF φ on x₀…x_{n−1} (all variables occur, no clause repeated, m ≥ 2 clauses), it outputs the number of satisfying assignments in n+1 bits within ⌊2^(C·min(km/√log₂ m, k²n·log₂log₂ n/√log₂ n))⌋ steps.",
+    "method_md": "`MainResults.mainTheorem := CountedRoute.mainTheoremHolds`, accepted by unfolding into `MainTheoremForms.MainTheoremAllOccur`. The proof follows the paper. Theorem B (pieces with ρ = 1/√2), Theorem A(b) with operations counted on a machine with query access (`ExplicitCost.recursionSolves`), the bridge from counted operations to a solver with a pad (`QueryMachines.Bridge.solverOfMachineLevels`), Theorem D(a)/(b) for the bound in n, and Theorem A(c) for the bound in m. Corollary 11 runs the two machines in alternation. The proof README lists every step with its declaration name.",
+    "lean": "noncomputable def lg (x : ℝ) : ℝ := Real.logb 2 x\nnoncomputable def expM (k m : ℕ) : ℝ := (k : ℝ) * m / Real.sqrt (lg m)\nnoncomputable def expN (k n : ℕ) : ℝ := (k : ℝ) ^ 2 * n * lg (lg n) / Real.sqrt (lg n)\nnoncomputable def timeMin (C k m n : ℕ) : ℕ :=\n  ⌊(2 : ℝ) ^ ((C : ℝ) * min (expM k m) (expN k n))⌋₊\n\ndef CountsWithin (M : TM2ComputableAux Bool Bool) (k : ℕ) {n : ℕ} (φ : CNF n) (t : ℕ) : Prop :=\n  Nonempty (TM2OutputsInTime M.tm ((encInput k φ).map M.inputAlphabet.invFun)\n    (some ((binary n (numSat φ)).map M.outputAlphabet.invFun)) t)\n\ndef MainTheorem : Prop :=\n  ∃ (M : TM2ComputableAux Bool Bool) (C : ℕ), (∀ i, Finite (M.tm.Γ i)) ∧\n    ∀ (k n : ℕ) (φ : CNF n), 1 ≤ k → IsKCNF k φ → 2 ≤ φ.length → 4 ≤ n → AllOccur φ →\n      CountsWithin M k φ (timeMin C k φ.length n)\n\ntheorem MainResults.mainTheorem : MainResults.MainTheorem",
+    "examples": [
+      {
+        "label": "statement with encodings encClauses / encInput",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/MainResults.lean"
+      },
+      {
+        "label": "the proof of the Main Theorem, by name",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/README.md"
+      },
+      {
+        "label": "proof term",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/Solution.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "#sat",
+      "model counting",
+      "k-cnf",
+      "turing machine",
+      "tensor network",
+      "running time",
+      "exponential algorithm",
+      "main theorem"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (eth)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth",
+      "path": "eth/MainResults.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "MainResults.mainTheorem",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 810,
+      "port": "heavy (810 files)",
+      "port_notes": "Same cone and notes as `MainResults.ethIsFalse` (810 files, Mathlib 0df444a360eaa60ab8c11dca51a86af692955474). The statement file itself is self-contained on `import Mathlib` and could be imported alone to state related problems."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "eth-enp-no-linear-size-circuits",
+    "title": "E^NP has a language without circuits of linear size",
+    "problem": "There is a language in E^NP (Mathlib multi-stack machines with a SAT oracle, one step per query, 2^{c(n+1)} steps) with no Boolean circuits of c·(n+1) gates, each gate any function of two bits, for any c. Two further forms are proved: one where an ordinary machine is restarted after each oracle answer, and one where circuits fail at infinitely many lengths.",
+    "method_md": "The paper derives this from \"ETH is false\" via a cited theorem of Williams. The Lean proof follows Williams's argument directly (`proof/consequences/CircuitLowerBound/`, 28 files). The assembly `corCircuits_of (hTab : StTab) (hCode : StCode) … : CorCircuits` takes named step propositions, each proved separately. The final form, on the machines of the printed proofs, is `FromPrinted.Consequences.circuits : Circuits`, the conjunction of the three forms. The index entry is `PaperIndex.circuits`.",
+    "lean": "abbrev Lang : Type := List Bool → Prop\n\nstructure Gate where\n  op : Bool → Bool → Bool\n  in₁ : ℕ\n  in₂ : ℕ\n\nabbrev Circuit : Type := List Gate\n\ndef wires (x : List Bool) (C : Circuit) : List Bool := C.foldl (fun w G => w ++ [G.op (w.getD G.in₁ false) (w.getD G.in₂ false)]) x\n\ndef eval (C : Circuit) (x : List Bool) : Bool := (wires x C).getLastD false\n\ndef HasCircuits (L : Lang) (s : ℕ → ℕ) : Prop := ∀ n : ℕ, ∃ C : Circuit, C.length ≤ s n ∧ ∀ x : List Bool, x.length = n → (eval C x = true ↔ L x)\n\ndef HasLinearCircuits (L : Lang) : Prop := ∃ c : ℕ, HasCircuits L fun n => c * (n + 1)\n\ndef CorCircuits : Prop := ∃ L : Lang, InENP L ∧ ¬HasLinearCircuits L\n\n-- Circuits := ENP.CorCircuits ∧ ENP.CorCircuits' ∧ ENP.CorCircuitsInf\ntheorem FromPrinted.Consequences.circuits : Circuits",
+    "examples": [
+      {
+        "label": "statement (InENP with an oracle step for SAT)",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/statements/CircuitLowerBoundStatement.lean"
+      },
+      {
+        "label": "assembly from named steps",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/consequences/CircuitLowerBound/Main.lean"
+      },
+      {
+        "label": "the final form",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth/proof/consequences/FromPrinted/Circuits.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "circuit lower bound",
+      "enp",
+      "williams",
+      "boolean circuit",
+      "oracle machine",
+      "linear size",
+      "sat oracle",
+      "complexity"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (eth)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/eth",
+      "path": "eth/proof/statements/CircuitLowerBoundStatement.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "FromPrinted.Consequences.circuits",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 457,
+      "port": "heavy (457 files)",
+      "port_notes": "Import cone of `FromPrinted.Circuits`: 457 local files, about 67k lines, Mathlib 0df444a360eaa60ab8c11dca51a86af692955474 (v4.33.1). The statement file has narrow imports and is easy to reuse alone. The proof needs the whole machines layer."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "threesum-subquadratic-word-ram",
+    "title": "3SUM on integers of polynomial size is solved in O(n^1.9992) word-RAM steps",
+    "problem": "On a word RAM with signed W-bit words (nine instructions: one, add, sub, mul mod 2^W, load, store, branch-if-negative, accept, reject), for every κ: one program, a slope b and T(n) = O(n^1.9992) decide 3SUM (three distinct positions summing to 0) on n integers of absolute value ≤ n^κ, at every word size W ≥ b(⌊log₂ n⌋+1).",
+    "method_md": "`ThreeSumApsp.endStatement_theorem_22_3SUM := wordRam_theorem_22_second.threeSum.endStatement (by norm_num) (by norm_num)`. The route goes through Corollary 26 (the sparse lopsided triangle data structure, `program26`) and the reduction of [CH20] written as a host program, then compiles to the machine. The statement file imports nothing, not even Mathlib. Programs are written in the verified \"light\" language and compiled by `compileProgram` with `compileProgram_correct`. Orders of growth come from the `SoftO` calculus. The library has 434 files and about 102k lines (the cone of the five claims: 363 files, about 92k lines).",
+    "lean": "def BigO (T : Nat → Nat) (r : Rat) : Prop :=\n  ∃ K : Nat, ∀ n ≥ 2, T n ^ r.den ≤ K * n ^ r.num.toNat\n\ndef Problem.SolvedBy (Q : Problem) {n : Nat} (x : Q.Instance n) (P : List Instr) (W t : Nat) : Prop :=\n  ∃ verdict m, exec P t 0 (loadWords W ((n : Int) :: Q.input x)) = some (verdict, m) ∧\n    (verdict = true ↔ Q.yes x) ∧ Q.output x fun a => (m (1 + (Q.input x).length + a : Nat)).toInt\n\ndef Problem.SolvedInTime (Q : Problem) (r : Rat) : Prop :=\n  ∀ κ : Nat, ∃ (P : List Instr) (b : Nat) (T : Nat → Nat), BigO T r ∧\n    ∀ (n : Nat) (x : Q.Instance n), (∀ a ∈ Q.input x, a.natAbs ≤ n ^ κ) → ∀ W ≥ b * (Nat.log2 n + 1),\n      Q.SolvedBy x P W (T n)\n\ndef ThreeSum : Problem where\n  Instance n := Fin n → Int\n  input x := List.ofFn x\n  yes x := ∃ i j k, i ≠ j ∧ j ≠ k ∧ i ≠ k ∧ x i + x j + x k = 0\n\ndef Theorem_22_3SUM : Prop :=\n  ThreeSum.SolvedInTime 1.9992\n\ntheorem ThreeSumApsp.endStatement_theorem_22_3SUM : EndStatement.Theorem_22_3SUM",
+    "examples": [
+      {
+        "label": "the five claims, core Lean only",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/EndStatement.lean"
+      },
+      {
+        "label": "challenge",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/Challenge/EndStatement.lean"
+      },
+      {
+        "label": "the proofs of the five claims",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Statements/EndStatement.lean"
+      },
+      {
+        "label": "the machine compared with the standard word RAM",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/MACHINE.md"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "3sum",
+      "word ram",
+      "fine-grained complexity",
+      "subquadratic",
+      "running time",
+      "algorithm",
+      "program verification",
+      "compiler"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/EndStatement.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "ThreeSumApsp.endStatement_theorem_22_3SUM",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 363,
+      "port": "heavy (363 files)",
+      "port_notes": "Lean v4.33.1, Mathlib 0df444a360eaa60ab8c11dca51a86af692955474 (the lakefile requires rev \"v4.33.1\"; the manifest resolves to 0df444a360eaa60ab8c11dca51a86af692955474). Cone of `Solution.EndStatement`: 363 local files, about 92k lines. Uses the module system. `scripts/layers.py` enforces a folder import discipline (Util → Sec1–5 → Spec/Machine/Lang → Programs → RunningTimes → Statements). A port would keep the namespaces `ThreeSumApsp`, `Light`, `EndStatement`, `PaperStatements`. No heartbeat overrides."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "apsp-minplus-exact-triangle-subcubic",
+    "title": "APSP and the (min,+)-product in O(n^2.99942), Exact Triangle in O(n^(3−0.0017)) word-RAM steps",
+    "problem": "On the same word RAM and with the same notion of solving: the (min,+)-product of two n×n integer matrices and APSP (no negative cycles; output a path flag and the distance per pair) are computed in O(n^2.99942) steps. Exact Triangle (a zero-weight triangle in a complete tripartite graph) is decided in O(n^(3−0.0017)). Zero-weight k-Clique, for every k ≥ 3, is decided in O(n^(k−0.0017⌊k/3⌋)).",
+    "method_md": "The decls are `ThreeSumApsp.endStatement_theorem_22_MinPlus`, `…_22_APSP`, `…_theorem_19` and `…_corollary_39_zeroWeight`. Each is the last bound of a statement about programs (`Items.Theorem_19`, `wordRam_theorem_22_second`). Those come from running-time claims proved for programs (Theorem 17's host, Corollary 26's solver) plus the compiler bridge. APSP goes through repeated squaring (`theorem_21b_repeated_squaring`). The reductions of [VW13]/[VW18] are written as programs with proofs. Further results of the paper (Theorem 1, Theorems 3–5, Theorem 30, Corollaries 15, 16, 26, 31, 32, 40, and the numbered lemmas) are in `PaperStatements.lean`, with their own comparator configuration.",
+    "lean": "def rowByRow {n : Nat} (w : Fin n → Fin n → Int) : List Int :=\n  (List.ofFn fun u => List.ofFn fun v => w u v).flatten\n\ndef ExactTriangle : Problem where\n  Instance n := (Fin n → Fin n → Int) × (Fin n → Fin n → Int) × (Fin n → Fin n → Int)\n  input := fun (wAB, wBC, wAC) => rowByRow wAB ++ rowByRow wBC ++ rowByRow wAC\n  yes := fun (wAB, wBC, wAC) => ∃ a b c, wAB a b + wBC b c + wAC a c = 0\n\ndef ε_T : Rat := 0.0017\n\ndef Theorem_19 : Prop :=\n  ExactTriangle.SolvedInTime (3 - ε_T)\n\ndef MinPlusProduct : Problem where\n  Instance n := (Fin n → Fin n → Int) × (Fin n → Fin n → Int)\n  input := fun (A, B) => rowByRow A ++ rowByRow B\n  output := fun {n} (A, B) out => ∀ i j : Fin n,\n    (∃ k, out (i.val * n + j.val) = A i k + B k j) ∧ ∀ k, out (i.val * n + j.val) ≤ A i k + B k j\n\ndef Theorem_22_MinPlus : Prop :=\n  MinPlusProduct.SolvedInTime 2.99942\n\ntheorem ThreeSumApsp.endStatement_theorem_22_MinPlus : EndStatement.Theorem_22_MinPlus",
+    "examples": [
+      {
+        "label": "the five claims",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/EndStatement.lean"
+      },
+      {
+        "label": "their proofs",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/ThreeSumApsp/Statements/EndStatement.lean"
+      },
+      {
+        "label": "index of every item of the paper",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/docs/INDEX.md"
+      },
+      {
+        "label": "further statements",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp/PaperStatements.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "apsp",
+      "min-plus product",
+      "exact triangle",
+      "k-clique",
+      "word ram",
+      "subcubic",
+      "fine-grained complexity",
+      "running time"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (3sum-apsp)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/3sum-apsp",
+      "path": "3sum-apsp/EndStatement.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "ThreeSumApsp.endStatement_theorem_22_MinPlus",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.1",
+      "mathlib": "0df444a360eaa60ab8c11dca51a86af692955474",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 363,
+      "port": "heavy (363 files)",
+      "port_notes": "Same cone as the 3SUM claim (363 files for all five claims, Mathlib 0df444a360eaa60ab8c11dca51a86af692955474). The core-only `EndStatement.lean` (139 lines, no imports) is a self-contained word-RAM model that a shared library could import on its own to state further fine-grained problems."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "zeta-two-thirds-zeros-simple-on-critical-line",
+    "title": "At least two thirds of the zeta zeros are simple and on the critical line",
+    "problem": "With N(T₁,T₂) the number of zeros of Mathlib's `riemannZeta` in 0 < Re ρ < 1, T₁ < Im ρ ≤ T₂, counted with multiplicity (`analyticOrderAt`), and N₀ˢ the number of distinct simple zeros on Re ρ = 1/2: for every ε > 0 and all large T, (2/3 − ε)·N(T,2T) ≤ N₀ˢ(T,2T). Cumulative forms, 5/6 distinct, the Montgomery–Taylor window constants, and the analogues for primitive Dirichlet L-functions are also proved (17 comparator statements).",
+    "method_md": "`two_thirds_simple_on_critical_line` (root namespace, Solution.lean) is `Zeta23.thmB₀_mult`. The argument is a rank–trace inequality (`Zeta23/LinAlg/`: Sylvester inertia, von Neumann trace inequality) applied to a Gram matrix. Its prime side is evaluated with Weil's explicit formula, its zero side with Riemann–von Mangoldt and a multiplicity-aware block structure, with c = 2 for simple and c = 3 for distinct zeros. Every analytic input is proved in the repository: the explicit formula, RvM, Stirling-type Γ′/Γ bounds, Chebyshev–Mertens, Montgomery–Vaughan. Some files are ported from PrimeNumberTheoremAnd, with attribution. Unconditional, with no axioms. Total 326 files, about 103k lines; the Solution cone has 190 files and about 62k lines.",
+    "lean": "def IsNontrivialZero (ρ : ℂ) : Prop := riemannZeta ρ = 0 ∧ 0 < ρ.re ∧ ρ.re < 1\n\ndef zeroMult (ρ : ℂ) : ℕ := (analyticOrderAt riemannZeta ρ).toNat\n\ndef zerosIn (T₁ T₂ : ℝ) : Set ℂ := {ρ | IsNontrivialZero ρ ∧ T₁ < ρ.im ∧ ρ.im ≤ T₂}\n\ndef Ncount (T₁ T₂ : ℝ) : ℕ := ∑ᶠ ρ ∈ zerosIn T₁ T₂, zeroMult ρ\n\ndef N0simple (T₁ T₂ : ℝ) : ℕ := (zerosIn T₁ T₂ ∩ {ρ | ρ.re = 1 / 2} ∩ {ρ | zeroMult ρ = 1}).ncard\n\ntheorem two_thirds_simple_on_critical_line :\n    ∀ ε > 0, ∃ T₀ : ℝ, ∀ T ≥ T₀, (2 / 3 - ε) * (Ncount T (2 * T) : ℝ) ≤ N0simple T (2 * T)\n\ntheorem dirichlet_two_thirds_simple_on_critical_line\n    {q : ℕ} [NeZero q] (χ : DirichletCharacter ℂ q) (hq : 1 < q) (hχ : χ.IsPrimitive) :\n    ∀ ε > 0, ∃ T₀ : ℝ, ∀ T ≥ T₀, (2 / 3 - ε) * (NcountL χ T (2 * T) : ℝ) ≤ N0simpleL χ T (2 * T)",
+    "examples": [
+      {
+        "label": "trusted challenge, definitions inlined",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Challenge.lean"
+      },
+      {
+        "label": "definition layer",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/ChallengeDeps.lean"
+      },
+      {
+        "label": "delegations",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Solution.lean"
+      },
+      {
+        "label": "thmB₀_mult and the ladder",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/FinalMult.lean"
+      },
+      {
+        "label": "audit record",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/AUDIT.md"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "architecture"
+    ],
+    "keywords": [
+      "riemann zeta",
+      "critical line",
+      "simple zeros",
+      "zero density",
+      "dirichlet l-function",
+      "explicit formula",
+      "analyticorderat",
+      "conrey"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Challenge.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "two_thirds_simple_on_critical_line",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.0-rc2",
+      "mathlib": "51e6992efd06126df61a496bebf8f49482a4e129",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 190,
+      "port": "needs port from v4.33.0-rc2",
+      "port_notes": "Built on Lean v4.33.0-rc2 with Mathlib 51e6992efd06126df61a496bebf8f49482a4e129 (tag v4.33.0-rc2), not v4.33.1. Porting to nosorry's v4.33.1 means bumping the Mathlib pin and fixing any lemma renames between the two tags. Solution cone: 190 local files, about 62k lines. About 33 files set `backward.isDefEq.respectTransparency false`, and `Zeta23/Prelude/InstancePriorities.lean` demotes `LieAlgebra.toModule` globally, which would affect every importer of a shared library. Several files raise `maxHeartbeats` (up to 4,000,000). `Zeta23/FromPNTPlus/` files carry PrimeNumberTheoremAnd notices (Apache-2.0), to keep."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "zeta-riemann-von-mangoldt-dyadic-and-local",
+    "title": "Riemann–von Mangoldt for dyadic windows and the local zero count, for Mathlib's zeta",
+    "problem": "For the nontrivial zeros of Mathlib's `riemannZeta` (with multiplicity): N(T,2T) = (T/2π)·(log(T/2π) + 2 log 2 − 1) + O(log T) for large T, and N(t, t+1) ≤ A₀·log(|t|+3) for every real t, with some A₀ ≥ 1.",
+    "method_md": "`Zeta23.riemannVonMangoldt_zeta := RvM.riemannVonMangoldt gammaFacts`. The proof is in `Zeta23/RvM/` (13 files): the argument principle on a rectangle, Backlund's bound on the argument via Jensen's formula, the local count, and the Γ side, with Stirling-type estimates from `Zeta23/GammaFacts/`. The statement is about the abstract `ZeroConfig` instantiated at ζ, whose `N` is a `finsum` of multiplicities over a window. The import cone is 34 local files, about 10k lines.",
+    "lean": "def l (T : ℝ) : ℝ := Real.log (T / (2 * Real.pi))\n\ndef ell1 (T : ℝ) : ℝ := l T + 2 * Real.log 2 - 1\n\nstructure RiemannVonMangoldt (Z : ZeroConfig) : Prop where\n  main : ∃ C T₀ : ℝ, ∀ T : ℝ, T₀ ≤ T →\n    |(Z.N T (2 * T) : ℝ) - T / (2 * Real.pi) * ell1 T| ≤ C * Real.log T\n  local_count : ∃ A₀ : ℝ, 1 ≤ A₀ ∧ ∀ t : ℝ, (Z.N t (t + 1) : ℝ) ≤ A₀ * Real.log (|t| + 3)\n\n-- Z.N T₁ T₂ := ∑ᶠ ρ ∈ Z.window T₁ T₂, Z.mult ρ ; zetaZeroConfig.N = Ncount (simp lemma)\ntheorem riemannVonMangoldt_zeta : RiemannVonMangoldt zetaZeroConfig",
+    "examples": [
+      {
+        "label": "the statement as a hypothesis structure",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Hypotheses.lean"
+      },
+      {
+        "label": "the theorem for ζ",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/RvM/Statement.lean"
+      },
+      {
+        "label": "Backlund's bound via Jensen",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/RvM/Backlund.lean"
+      },
+      {
+        "label": "instantiation and simp bridges",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/Statement/SeamClosed.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "riemann-von mangoldt",
+      "zero counting",
+      "riemannzeta",
+      "argument principle",
+      "backlund",
+      "jensen formula",
+      "nontrivial zeros",
+      "n(t)"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Zeta23/RvM/Statement.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "Zeta23.riemannVonMangoldt_zeta",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.0-rc2",
+      "mathlib": "51e6992efd06126df61a496bebf8f49482a4e129",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 34,
+      "port": "needs port from v4.33.0-rc2",
+      "port_notes": "Cone of `Zeta23.RvM.Statement`: 34 local files, about 10k lines, 62 Mathlib imports, on Mathlib 51e6992efd06126df61a496bebf8f49482a4e129 (v4.33.0-rc2). Requires the `ZeroConfig` layer (`Zeta23/Defs.lean`, `Zeta23/Statement*`) and `GammaFacts`. The Lie-algebra instance workaround (`attribute [-instance] LieAlgebra.ofAssociativeAlgebra` in Backlund.lean, priority change in the prelude) must travel with it. A very good candidate for a shared analytic-number-theory library."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "montgomery-vaughan-hilbert-inequality",
+    "title": "Montgomery–Vaughan weighted Hilbert inequality with constant 13",
+    "problem": "For distinct real frequencies λ_r (r in a finite type), weights 0 < δ_r ≤ |λ_r − λ_s| for all s ≠ r, and complex x_r: |Σ_{r≠s} x_r·conj(x_s)/(λ_r − λ_s)| ≤ 13·Σ_r |x_r|²/δ_r.",
+    "method_md": "`Zeta23.MV.mvDiag_thirteen := mvDiag_of_eigenBound eigenBound_thirteen`. The proof goes through duality. The normalised kernel √δ_r√δ_s/(λ_r − λ_s) is skew-Hermitian, so it suffices to bound |μ| for every unit eigenvector, `EigenBound 13`. This follows from an eigen-identity and a spacing estimate (`Zeta23/MV/`: Duality, Eigen, EigenIdentity, Quadratic, Spacing, Final). The bilinear form used in the paper (`MVHilbert`) is derived from the diagonal form. The constant 13 is not optimal (MV74 has 3π/2), but it is explicit. The cone is 11 files, about 2.4k lines, and depends only on Mathlib, which makes it an easy port.",
+    "lean": "def MVDiag (C : ℝ) : Prop :=\n  ∀ (ι : Type) [Fintype ι] [DecidableEq ι] (freq δ : ι → ℝ) (x : ι → ℂ),\n    Function.Injective freq → (∀ r, 0 < δ r) → (∀ r s, r ≠ s → δ r ≤ |freq r - freq s|) →\n    ‖∑ r, ∑ s, if r = s then (0 : ℂ) else x r * conj (x s) / ((freq r - freq s : ℝ) : ℂ)‖\n      ≤ C * ∑ r, ‖x r‖ ^ 2 / δ r\n\ntheorem mvDiag_thirteen : MVDiag 13",
+    "examples": [
+      {
+        "label": "MVDiag and the reduction to the eigenvalue bound",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/MV.lean"
+      },
+      {
+        "label": "mvDiag_thirteen, mv_hilbert",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/MV/Final.lean"
+      },
+      {
+        "label": "duality",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/MV/Duality.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "montgomery-vaughan",
+      "hilbert inequality",
+      "large sieve",
+      "bilinear form",
+      "spacing",
+      "complex sums",
+      "eigenvalue",
+      "analytic number theory"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Zeta23/MV/Final.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "Zeta23.MV.mvDiag_thirteen",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.0-rc2",
+      "mathlib": "51e6992efd06126df61a496bebf8f49482a4e129",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 11,
+      "port": "needs port from v4.33.0-rc2",
+      "port_notes": "11 local files, about 2.4k lines, 16 Mathlib imports (Mathlib 51e6992efd06126df61a496bebf8f49482a4e129, v4.33.0-rc2). Self-contained linear algebra and analysis. Porting means only bumping to v4.33.1 and fixing renames. Note that `MVDiag` is in namespace `Zeta23` and the theorem in `Zeta23.MV`."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "weil-explicit-formula-for-zeta",
+    "title": "Weil's explicit formula for the zeros of Mathlib's zeta, for C_c² test functions",
+    "problem": "For every k ∈ C²_c(ℝ, ℂ) with h = ∫ k(u)e^{izu}du: the sum Σ_ρ m_ρ h(γ_ρ) over the nontrivial zeros of ζ (γ_ρ the ordinate, m_ρ the multiplicity) converges absolutely, and equals h(i/2) + h(−i/2) − Σ_n Λ(n)n^{−1/2}(k(log n) + k(−log n)) + (1/2π)∫ h(r)[Re Γ′/Γ(1/4 + ir/2) − log π] dr.",
+    "method_md": "`Zeta23.WeilEF.EF_lit_zetaZeroConfig := EF_lit_zeta zetaSeam`. The proof (`Zeta23/WeilEF/`, 14 files, plus `ExplicitFormula*`) uses contour integration of ζ′/ζ against the Mellin-type transform, Landau's lemma for the zero sums, and limits of the zero sums. It uses residue calculus on rectangles adapted from PrimeNumberTheoremAnd (`Zeta23/FromPNTPlus/`). The paper's spectral form `EF_paper` is derived from it. The import cone is 57 local files, about 18k lines.",
+    "lean": "def paperFT (f : ℝ → ℂ) (z : ℂ) : ℂ := ∫ u : ℝ, f u * Complex.exp (Complex.I * z * (u : ℂ))\n\ndef gammaBracket (r : ℝ) : ℝ := (Complex.digamma (1 / 4 + I * r / 2)).re - Real.log π\n\ndef literatureRHS (k : ℝ → ℂ) : ℂ :=\n  paperFT k (I / 2) + paperFT k (-I / 2)\n  - ∑' n : ℕ, ((ArithmeticFunction.vonMangoldt n / Real.sqrt n : ℝ) : ℂ)\n      * (k (Real.log n) + k (-Real.log n))\n  + (1 / (2 * π) : ℂ) * ∫ r : ℝ, paperFT k r * (gammaBracket r : ℂ)\n\ndef EF_lit (Z : ZeroConfig) : Prop :=\n  ∀ k : ℝ → ℂ, ContDiff ℝ 2 k → HasCompactSupport k →\n    Summable (fun ρ : Z.carrier => (Z.mult ρ : ℂ) * paperFT k (gammaOf ρ)) ∧\n    ∑' ρ : Z.carrier, (Z.mult ρ : ℂ) * paperFT k (gammaOf ρ) = literatureRHS k\n\ntheorem EF_lit_zetaZeroConfig : Zeta23.EF.EF_lit zetaZeroConfig",
+    "examples": [
+      {
+        "label": "EF_lit, literatureRHS, EF_paper",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/ExplicitFormula.lean"
+      },
+      {
+        "label": "the hypothesis-free form for ζ",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/WeilEF/Main.lean"
+      },
+      {
+        "label": "ported residue calculus with upstream notices",
+        "ref": "https://github.com/anthropics/formal-math/blob/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23/Zeta23/FromPNTPlus/ResidueCalcOnRectangles.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "explicit formula",
+      "weil",
+      "riemannzeta",
+      "von mangoldt",
+      "digamma",
+      "contour integration",
+      "zeros",
+      "fourier transform"
+    ],
+    "source": {
+      "name": "anthropics/formal-math (zeta23)",
+      "url": "https://github.com/anthropics/formal-math/tree/11b6c7e3c927df2658f513b6b68ea7f8929c62c5/zeta23",
+      "path": "zeta23/Zeta23/WeilEF/Main.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "Zeta23.WeilEF.EF_lit_zetaZeroConfig",
+      "repo": "anthropics/formal-math",
+      "commit": "11b6c7e3c927df2658f513b6b68ea7f8929c62c5",
+      "lean": "v4.33.0-rc2",
+      "mathlib": "51e6992efd06126df61a496bebf8f49482a4e129",
+      "axioms": "propext, Classical.choice, Quot.sound (documented; Comparator with nanoda)",
+      "files": 57,
+      "port": "needs port from v4.33.0-rc2",
+      "port_notes": "Cone of `Zeta23.WeilEF.Main`: 57 local files, about 18k lines, 90 Mathlib imports, on Mathlib 51e6992efd06126df61a496bebf8f49482a4e129 (v4.33.0-rc2). Many files set `backward.isDefEq.respectTransparency false`. Ported `FromPNTPlus` files must keep their PrimeNumberTheoremAnd attribution headers (Apache-2.0; see zeta23/NOTICE). `gammaOf ρ` is the ordinate convention of the project (γ with ρ = 1/2 + iγ)."
+    }
+  }
+]

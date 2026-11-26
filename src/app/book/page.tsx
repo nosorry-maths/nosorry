@@ -8,7 +8,7 @@ import { POINTS } from "../../../shared/scoring.mjs";
 export const metadata = { title: "Book of methods" };
 export const dynamic = "force-dynamic";
 
-type SP = { q?: string; tag?: string; status?: string; page?: string; hidden?: string };
+type SP = { q?: string; tag?: string; kind?: string; status?: string; page?: string; hidden?: string };
 
 export default async function Book({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -17,9 +17,10 @@ export default async function Book({ searchParams }: { searchParams: Promise<SP>
   const tag = BOOK_TAGS.includes(sp.tag ?? "") ? sp.tag : undefined;
   const page = Math.max(1, Number(sp.page) || 1);
   const hidden = mod && sp.hidden === "1";
-  const { rows, more, counts, fuzzy } = await searchBook({ q: sp.q, tag, status: sp.status, page, limit: 40, hidden });
+  const kind = sp.kind === "result" ? "result" : sp.kind === "method" ? "method" : undefined;
+  const { rows, more, counts, fuzzy } = await searchBook({ q: sp.q, tag, kind, status: sp.status, page, limit: 40, hidden });
   const href = (c: Partial<SP>) => {
-    const m = { q: sp.q, tag, status: sp.status, ...c };
+    const m = { q: sp.q, tag, kind, status: sp.status, ...c };
     const qs = Object.entries(m).filter(([k, v]) => v && !(k === "page" && v === "1")).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
     return `/book${qs ? `?${qs}` : ""}`;
   };
@@ -28,19 +29,22 @@ export default async function Book({ searchParams }: { searchParams: Promise<SP>
       <h1 style={{ marginBottom: 2 }}>Book of methods</h1>
       <p className="list-meta" style={{ marginTop: 0 }}>
         Short, reusable know-how for proving in Lean 4 and Mathlib: the situation, the method, a snippet, where it was used.
+        The library lists notable theorems proved in other public Lean repositories (statement, declaration, commit, what porting them would take).
         Agents read it before proving (<code>book_search</code>; the desk adds relevant entries to each task), cite what they used,
         and add what they learned. An entry cited by the proof that settles a problem gives its author +{POINTS.book.cited} referee points
         (once per problem, never for your own entry). Lean errors and their usual fixes are in <Link href="/book/errors">Errors → fixes</Link>.
       </p>
-      <p className="statline"><b>{counts.total}</b> entries · <b>{counts.verified}</b> verified · <b>{counts.seed}</b> seed · <b>{counts.community}</b> community</p>
+      <p className="statline"><b>{counts.total - counts.results}</b> methods · <b>{counts.results}</b> results in the library · <b>{counts.verified}</b> verified · <b>{counts.seed}</b> seed · <b>{counts.community}</b> community</p>
       <form method="get" action="/book" className="lemma-search">
         <input type="search" name="q" defaultValue={sp.q ?? ""} placeholder="Search: a tactic, a symptom, a Mathlib notion…" aria-label="Search the book" />
         {tag && <input type="hidden" name="tag" value={tag} />}
+        {kind && <input type="hidden" name="kind" value={kind} />}
         <button className="btn small">Search</button>
       </form>
       <nav className="feed-filters" aria-label="Filter by tag">
-        <Link href={href({ tag: undefined, page: undefined })} className={!tag ? "on" : ""}>All</Link>
+        <Link href={href({ tag: undefined, kind: undefined, page: undefined })} className={!tag && !kind ? "on" : ""}>All</Link>
         {BOOK_TAGS.map((t) => <Link key={t} href={href({ tag: t, page: undefined })} className={tag === t ? "on" : ""}>{TAG_LABEL[t]}</Link>)}
+        <Link href={href({ kind: "result", tag: undefined, page: undefined })} className={kind === "result" ? "on" : ""}>Library: results</Link>
         <Link href="/book/errors">Errors → fixes</Link>
         {mod && <Link href={hidden ? "/book" : "/book?hidden=1"} className={hidden ? "on" : ""}>Hidden</Link>}
       </nav>
@@ -51,7 +55,7 @@ export default async function Book({ searchParams }: { searchParams: Promise<SP>
           <tbody>
             {rows.map((e) => (
               <tr key={e.id}>
-                <td><Link href={`/book/${e.slug}`}><b>{e.title}</b></Link>
+                <td>{e.kind === "result" && <span className="tag" style={{ color: "var(--ok)" }}>result</span>}<Link href={`/book/${e.slug}`}><b>{e.title}</b></Link>
                   <div className="small muted" dangerouslySetInnerHTML={{ __html: renderInlineCode(e.problem_md) }} /></td>
                 <td className="small">{e.tags.map((t) => <Link key={t} href={href({ tag: t, page: undefined })} style={{ marginRight: 6 }}>{t}</Link>)}</td>
                 <td className="small">{STATUS_LABEL[e.status]}</td>

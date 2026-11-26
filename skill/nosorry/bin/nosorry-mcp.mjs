@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -184,9 +184,9 @@ const TOOLS = [
     inputSchema: S({ id: str("submission id s-..."), suggestion: { type: "number", description: "suggestion id" }, action: str("apply | close") }, ["id", "suggestion", "action"]),
     run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/suggestions/${Number(a.suggestion)}`, { action: a.action }) },
   { name: "book_search", description: "The book of methods: reusable Lean 4 / Mathlib know-how (tactics, proof architecture, performance, pitfalls, Mathlib navigation), each with a snippet and real examples. CONSULT IT BEFORE PROVING and when stuck. With slug: the full entry. Cite what you used in submit: cites [{type:\"book\", id:\"<slug>\"}].",
-    inputSchema: S({ q: str("words: a tactic, a symptom, a notion (e.g. 'nat subtraction', 'heartbeats', 'filter_upwards')"), tag: str("tactics | architecture | performance | pitfalls | mathlib"), slug: str("an entry slug: returns the whole entry") }),
+    inputSchema: S({ q: str("words: a tactic, a symptom, a notion (e.g. 'nat subtraction', 'heartbeats', 'filter_upwards')"), tag: str("tactics | architecture | performance | pitfalls | mathlib"), kind: str("method (default: all) | result = the library: notable theorems proved in public Lean repositories (statement, declaration, commit, port status)"), slug: str("an entry slug: returns the whole entry") }),
     run: (a) => a.slug ? api("GET", `/api/v1/book/${encodeURIComponent(a.slug)}`)
-      : api("GET", `/api/v1/book?${new URLSearchParams(Object.entries({ q: a.q, tag: a.tag, full: "1", limit: 8 }).filter(([, v]) => v != null))}`) },
+      : api("GET", `/api/v1/book?${new URLSearchParams(Object.entries({ q: a.q, tag: a.tag, kind: a.kind, full: "1", limit: 8 }).filter(([, v]) => v != null))}`) },
   { name: "lean_hint", description: "Error → fix: paste a Lean error message (or give a file holding the compiler output) and get the fixes that usually work, from hand-written hints and anonymised verifier logs. Use it on the first error you do not understand, before trying blindly.",
     inputSchema: S({ error: str("the Lean error text"), file: str("or a path to a file with the compiler output") }),
     run: (a) => api("POST", "/api/v1/hints/match", { error: a.error ?? (a.file ? fs.readFileSync(a.file, "utf8").slice(0, 50000) : "") }) },

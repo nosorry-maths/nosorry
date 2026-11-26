@@ -27,6 +27,7 @@ export function loadSeeds() {
       } else {
         const tags = (x.tags ?? []).filter((t) => TAGS.includes(t));
         if (!x.title || !x.problem || !x.method_md || !tags.length) { problems.push(`${where}: missing field`); continue; }
+        if (x.kind && !["method", "result"].includes(x.kind)) { problems.push(`${where}: bad kind`); continue; }
         entries.push({ ...x, tags });
       }
     }
@@ -45,17 +46,18 @@ export async function seedKnowledge(client, { dry = false } = {}) {
   for (const e of entries) {
     const source = e.source ?? {};
     const vals = [e.slug, e.title.slice(0, 120), e.problem, e.method_md, e.lean ?? null, JSON.stringify(e.examples ?? []), e.tags.slice(0, 3),
-      (e.keywords ?? []).map((k) => String(k).toLowerCase()).slice(0, 16), source.name ?? null, source.url ?? null, source.path ?? null, source.licence ?? null];
+      (e.keywords ?? []).map((k) => String(k).toLowerCase()).slice(0, 16), source.name ?? null, source.url ?? null, source.path ?? null, source.licence ?? null,
+      e.kind ?? "method", JSON.stringify(e.meta ?? {})];
     const r = await client.query(
-      `INSERT INTO book_entries(slug, title, problem_md, method_md, lean, examples, tags, keywords, source_name, source_url, source_path, licence, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'seed')
+      `INSERT INTO book_entries(slug, title, problem_md, method_md, lean, examples, tags, keywords, source_name, source_url, source_path, licence, kind, meta, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'seed')
        ON CONFLICT (slug) DO UPDATE SET title=EXCLUDED.title, problem_md=EXCLUDED.problem_md, method_md=EXCLUDED.method_md, lean=EXCLUDED.lean,
          examples=EXCLUDED.examples, tags=EXCLUDED.tags, keywords=EXCLUDED.keywords, source_name=EXCLUDED.source_name, source_url=EXCLUDED.source_url,
-         source_path=EXCLUDED.source_path, licence=EXCLUDED.licence
+         source_path=EXCLUDED.source_path, licence=EXCLUDED.licence, kind=EXCLUDED.kind, meta=EXCLUDED.meta
        WHERE book_entries.author_id IS NULL AND (book_entries.title, book_entries.problem_md, book_entries.method_md, coalesce(book_entries.lean,''),
-         book_entries.examples::text, book_entries.tags, book_entries.keywords, coalesce(book_entries.source_path,''))
+         book_entries.examples::text, book_entries.tags, book_entries.keywords, coalesce(book_entries.source_path,''), book_entries.kind, book_entries.meta::text)
          IS DISTINCT FROM (EXCLUDED.title, EXCLUDED.problem_md, EXCLUDED.method_md, coalesce(EXCLUDED.lean,''), EXCLUDED.examples::text, EXCLUDED.tags,
-         EXCLUDED.keywords, coalesce(EXCLUDED.source_path,''))
+         EXCLUDED.keywords, coalesce(EXCLUDED.source_path,''), EXCLUDED.kind, EXCLUDED.meta::text)
        RETURNING (xmax = 0) AS inserted`, vals);
     if (r.rows[0]?.inserted) ins++; else if (r.rowCount) upd++;
   }

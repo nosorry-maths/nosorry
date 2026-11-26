@@ -1,0 +1,1622 @@
+[
+  {
+    "slug": "oai-comparator-challenge-solution-split",
+    "title": "Keep the trusted statement in a Mathlib-only challenge file",
+    "problem": "A huge proof (hundreds of files) must be checked against a statement that a reader can audit in one screen, without trusting any of the project files.",
+    "method_md": "openai/math puts every headline statement in `ComparatorChallenges/<Name>.lean`: it imports only `Mathlib`, contains the minimal definitions the statement needs and ends in `sorry`. A sibling `<Name>.json` names the `challenge_module`, the `solution_module`, the `theorem_names` (and, rarely, `definition_names` for witnesses that must also match), and `permitted_axioms` = `propext`, `Quot.sound`, `Classical.choice`. The Comparator tool (with `lean4export`) then checks that the solution environment contains the same declarations with the same types and only those axioms. Each result also gets `docs/NNN.md` with a plain *Scope* section that says what is formalised and, explicitly, what \"remains unformalized\"; `formalization.yaml` catalogues 225 main results. For nosorry this is the same discipline as the problem statement: write the target exactly once, copy it verbatim into the proof file, and treat any difference as a failure, not a detail.",
+    "lean": "-- ComparatorChallenges/MatrixExponent.lean (shape)\nimport Mathlib\nnamespace OAI.LinearAlgebra.SpectralBooks\n-- ... minimal definitions: Gate, Program, FormalCorrect, formalOmega ...\ntheorem square_exponent (F : Type*) [Field F] : formalOmega F 1 1 1 = (9 : ℝ) / 4 := by\n  sorry\nend OAI.LinearAlgebra.SpectralBooks\n\n-- ComparatorChallenges/MatrixExponent.json\n-- { \"challenge_module\": \"ComparatorChallenges.MatrixExponent\",\n--   \"solution_module\": \"OAI.LinearAlgebra.SpectralBooks.ExactExponent\",\n--   \"theorem_names\": [\"OAI.LinearAlgebra.SpectralBooks.square_exponent\", ...],\n--   \"permitted_axioms\": [\"propext\", \"Quot.sound\", \"Classical.choice\"] }",
+    "examples": [
+      {
+        "label": "challenge statement (omega = 9/4)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/MatrixExponent.lean"
+      },
+      {
+        "label": "comparator config",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/MatrixExponent.json"
+      },
+      {
+        "label": "scope document with unformalised parts listed",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/docs/379.md"
+      },
+      {
+        "label": "catalogue of 225 main results",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/formalization.yaml"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "pitfalls"
+    ],
+    "keywords": [
+      "comparator",
+      "challenge",
+      "statement",
+      "axioms",
+      "lean4export",
+      "trust",
+      "formalization.yaml",
+      "scope"
+    ],
+    "source": {
+      "name": "openai/math (Comparator challenges)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/README.md",
+      "path": "lean/ComparatorChallenges/README.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-redeclare-statement-definitions-verbatim",
+    "title": "Re-declare the statement definitions verbatim, same names and namespaces",
+    "problem": "The proof development has its own richer definitions, but the checker compares the statement against the challenge declaration by declaration; a renamed namespace or reordered field makes the statements different.",
+    "method_md": "In openai/math the solution side copies the challenge definitions character for character under the same fully qualified names (the Sidorenko solution starts with a `Basic.lean` that repeats `faces`, `incidence`, `H`, `homCount`, `homDensity` exactly; the matrix-exponent solution keeps `OAI.MatrixMultiplication.Arithmetic.Gate`/`Program` and `SpectralBooks.formalOmega` with identical bodies). Only after that does it prove the equivalence with its working definitions. The history file records a real failure of this rule: for the CM Hodge result \"diverging namespaces in the Comparator challenge and solution were adjusted\". In a nosorry submission the same applies: paste the problem statement and its auxiliary `def`s unchanged, do not \"tidy\" binder names, implicit arguments or the order of conjuncts, and put your own helper definitions under different names.",
+    "lean": "-- statement side (challenge) and solution side must agree exactly:\nnamespace OAI.SidorenkoCounterexample\ndef faces : Fin 22 → Finset (Fin 13) := ![\n  {0,1,3}, {0,1,9}, {0,2,3}, {0,2,9}, {1,3,10}, {1,7,10},\n  {1,7,12}, {1,9,12}, {2,3,4}, {2,4,9}, {3,4,11}, {3,10,11},\n  {4,8,9}, {4,8,11}, {5,6,7}, {5,6,11}, {5,7,10}, {5,10,11},\n  {6,7,12}, {6,8,11}, {6,8,12}, {8,9,12}]\nnoncomputable def homCount {V W : Type*} (F : SimpleGraph V) (G : SimpleGraph W) : ℕ :=\n  Nat.card {f : V → W // ∀ u v, F.Adj u v → G.Adj (f u) (f v)}\n-- own working notions get *new* names, e.g. `SymmetricCounterKernel`, `FiniteLaw`\nend OAI.SidorenkoCounterexample",
+    "examples": [
+      {
+        "label": "solution re-declares the challenge definitions",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/Basic.lean"
+      },
+      {
+        "label": "challenge file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/SidorenkoCounterexample.lean"
+      },
+      {
+        "label": "namespace-divergence fix (history)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/history.md"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "statement",
+      "namespace",
+      "verbatim",
+      "definitions",
+      "comparator",
+      "mismatch"
+    ],
+    "source": {
+      "name": "openai/math (Sidorenko counterexample)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/Basic.lean",
+      "path": "lean/OAI/Combinatorics/Sidorenko/Basic.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-bridge-statement-model-by-iff-lemmas",
+    "title": "Prove the statement model equivalent to your working model, then transport",
+    "problem": "The statement uses a model convenient to read (e.g. a gate table or a division-free program), while the proof is far easier in another model (a set-valued build relation, circuits with division, tensor rank).",
+    "method_md": "openai/math never proves the headline theorem directly in the statement model. For VP vs VNP the file `Valiant/Project.lean` proves `isVP_iff : Project.IsVP p ↔ VPVNP.IsVP p` and `isVNP_iff` (the latter just reuses the former on the verifier), and the final theorem is a three-line transport through `funext`/`propext`. For ω the challenge counts division-free programs with formal polynomial semantics, the internal `MatrixExponent.omega` uses a `Build` relation on the rational function field with division allowed; `formalOmega_square_eq_omega` closes the gap via tensor rank (`square_rank_iff` swaps the last two tensor indices to match the two rank conventions). Put each bridge in its own small file named after the model pair; it isolates the statement-specific bookkeeping from the mathematics and makes a later change of statement cheap.",
+    "lean": "theorem isVP_iff (p : Family F σ) : IsVP p ↔ VPVNP.IsVP p := by\n  constructor\n  · rintro ⟨hfamily, s, hs, h⟩\n    refine ⟨hfamily, VPVNP.PolynomiallyBounded.of_le hs fun n => ?_⟩\n    obtain ⟨c, hc⟩ := computes_iff.mp (h n)\n    exact hc ▸ VPVNP.circuitSize_le_of_circuit c\n  · rintro ⟨hfamily, hsize⟩\n    exact ⟨hfamily, fun n => VPVNP.circuitSize (p n), hsize,\n      fun n => computes_iff.mpr (VPVNP.circuitSize_spec (p n))⟩\n\ntheorem vp_ne_vnp (F : Type u) [Field F] :\n    (Valiant.Project.IsVP : Valiant.Project.Family F (fun n => Fin n × Bool) → Prop) ≠\n      Valiant.Project.IsVNP := by\n  intro same\n  apply VPVNP.vp_ne_vnp F\n  funext f\n  apply propext\n  exact (Valiant.Project.isVP_iff f).symm.trans ((Iff.of_eq (congrFun same f)).trans\n    (Valiant.Project.isVNP_iff f))",
+    "examples": [
+      {
+        "label": "VP/VNP statement-model bridge",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Computability/VPVNP/Valiant/Project.lean"
+      },
+      {
+        "label": "final transport",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Computability/VPVNP/ClassSeparation.lean"
+      },
+      {
+        "label": "circuit model to rank model for omega",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/SquareRankModel.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "bridge",
+      "model",
+      "iff",
+      "transport",
+      "propext",
+      "funext",
+      "statement",
+      "vp",
+      "vnp"
+    ],
+    "source": {
+      "name": "openai/math (VP vs VNP)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Computability/VPVNP/Valiant/Project.lean",
+      "path": "lean/OAI/Computability/VPVNP/Valiant/Project.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-straight-line-program-indexed-by-register-count",
+    "title": "Model straight-line programs as an inductive indexed by register count",
+    "problem": "Arithmetic circuits need a cost, a semantics and reuse of earlier values; ad hoc lists of gates make every gate reference a proof obligation.",
+    "method_md": "The ω statement uses `Gate F Input Register` (constant, input, add, sub, mul) and `Program F Input r` with `step : Program F Input r → Gate F Input (Fin r) → Program F Input (r+1)`: each new gate may only read the `r` existing registers, so well-formedness is by typing. Cost and semantics are structural recursions; the semantics `registerPolynomial` maps a program to `Fin r → MvPolynomial I F` with `Fin.cases`, so the newest register is index `0`, and the two `rfl` lemmas `registerPolynomial_zero`/`_succ` are tagged `@[simp]`. Constants and inputs cost 0, so the cost counts exactly the binary operations. The VP statement uses the alternative \"table\" form (`Computes s p : ∃ v : Fin s → MvPolynomial σ F, …` with an `available k` predicate); both forms avoid any graph or DAG library.",
+    "lean": "inductive Gate (F Input Register : Type*) where\n  | constant : F → Gate F Input Register\n  | input : Input → Gate F Input Register\n  | add : Register → Register → Gate F Input Register\n  | sub : Register → Register → Gate F Input Register\n  | mul : Register → Register → Gate F Input Register\n\ninductive Program (F Input : Type*) : ℕ → Type _ where\n  | nil : Program F Input 0\n  | step {r : ℕ} : Program F Input r → Gate F Input (Fin r) → Program F Input (r + 1)\n\ndef gatePolynomial [CommRing F] (g : Gate F I R) (v : R → MvPolynomial I F) :\n    MvPolynomial I F :=\n  g.casesOn (fun c => MvPolynomial.C c) (fun i => MvPolynomial.X i)\n    (fun i j => v i + v j) (fun i j => v i - v j) (fun i j => v i * v j)\n\ndef registerPolynomial [CommRing F] : {r : ℕ} → Program F I r → Fin r → MvPolynomial I F\n  | _, .nil => Fin.elim0\n  | _, .step p g => Fin.cases (gatePolynomial g (registerPolynomial p)) (registerPolynomial p)\n\n@[simp] theorem registerPolynomial_zero [CommRing F] {r : ℕ} (p : Program F I r)\n    (g : Gate F I (Fin r)) :\n    registerPolynomial (p.step g) 0 = gatePolynomial g (registerPolynomial p) := rfl",
+    "examples": [
+      {
+        "label": "statement definitions",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/MatrixExponent.lean"
+      },
+      {
+        "label": "semantics and simp lemmas",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/FormalCircuit.lean"
+      },
+      {
+        "label": "table-style circuits for VP",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/VPVNP.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "circuit",
+      "straight-line program",
+      "inductive",
+      "fin.cases",
+      "mvpolynomial",
+      "gate",
+      "cost",
+      "registers"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/FormalCircuit.lean",
+      "path": "lean/OAI/LinearAlgebra/SpectralBooks/FormalCircuit.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-formal-polynomial-identity-over-finite-fields",
+    "title": "Demand formal polynomial identities, not function equality, over finite fields",
+    "problem": "Over a finite field two different polynomials can define the same function (x^q = x on F_q), so \"the circuit computes the product\" is ambiguous and a function-level statement can be much weaker.",
+    "method_md": "The ω statement defines correctness as equality in `MvPolynomial I F` (`FormalCorrect`), and the docs say so explicitly: \"requires formal polynomial identities even over finite fields\". The internal model works in `FractionRing (MvPolynomial (Var n) F)`, so a division gate tests `y ≠ 0` as a rational function, again independent of the size of `F` (\"the division rule tests the denominator in the rational function field, even in positive characteristic\"). When you read or write a statement about algebraic complexity, check which notion is used: `MvPolynomial.eval`-equality on all points of a finite field is strictly weaker, and a proof for one does not transfer to the other without `MvPolynomial.funext` (which needs an infinite field).",
+    "lean": "/-- Formal correctness, including over a finite ground field. -/\ndef FormalCorrect [CommRing F] {a b c : ℕ} (P : MatrixAlgorithm F a b c) : Prop :=\n  ∀ i k, registerPolynomial P.program (P.output i k) =\n    ∑ j : Fin b, MvPolynomial.X (Sum.inl (i, j)) * MvPolynomial.X (Sum.inr (j, k))\n\n-- Internal model: values live in the field of rational functions.\nabbrev Rat (F : Type*) [Field F] (n : ℕ) := FractionRing (MvPolynomial (Var n) F)\n\ninductive Build {K : Type*} [Field K] (S : Set K) : ℕ → Set K → Prop\n  | nil : Build S 0 S\n  | add {m T x y} : Build S m T → x ∈ T → y ∈ T → Build S (m + 1) (insert (x + y) T)\n  | mul {m T x y} : Build S m T → x ∈ T → y ∈ T → Build S (m + 1) (insert (x * y) T)\n  | div {m T x y} : Build S m T → x ∈ T → y ∈ T → y ≠ 0 → Build S (m + 1) (insert (x / y) T)",
+    "examples": [
+      {
+        "label": "FormalCorrect",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/FormalCircuit.lean"
+      },
+      {
+        "label": "rational-function circuit model",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/RationalCircuits.lean"
+      },
+      {
+        "label": "scope statement",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/docs/107.md"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "mathlib"
+    ],
+    "keywords": [
+      "finite field",
+      "polynomial identity",
+      "mvpolynomial",
+      "fractionring",
+      "circuit",
+      "division",
+      "funext"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/RationalCircuits.lean",
+      "path": "lean/OAI/LinearAlgebra/MatrixExponent/RationalCircuits.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-exponent-as-sinf-with-epsilon-slack",
+    "title": "Define exponents as sInf with ε-slack so the infimum is itself admissible",
+    "problem": "Exponents like ω are infima of admissible exponents; working with `sInf` on ℝ is painful (it is 0 on the empty set and on unbounded-below sets) and the infimum is usually not attained.",
+    "method_md": "Make admissibility already carry an ε: `Admissible τ := ∀ ε > 0, ∃ C > 0, ∀ N ≥ 1, cost N ≤ C * N^(τ+ε)`. Then (1) the set is nonempty as soon as one naive algorithm is admissible (here `formalAdmissibleExponent_naive` with constant 16), which is needed before any `csInf` lemma; (2) the infimum is admissible: given ε, pick τ < sInf + ε/2 in the set with `exists_lt_of_csInf_lt`, use its ε/2 bound and monotonicity of `rpow` in the exponent. Lower bounds `load ≤ τ` for every admissible τ give `≤ sInf` by `le_csInf`; upper bounds come from a single admissible witness and `csInf_le` (bounded below by the lower bound). Keep the \"nonempty\" and \"bounded below\" facts as named lemmas; without them `sInf` silently returns 0 and goals become false.",
+    "lean": "theorem formalOmega_admissible (F : Type*) [Field F] {w12 w23 w31 : ℝ}\n    (h12 : 0 ≤ w12) (h23 : 0 ≤ w23) (h31 : 0 ≤ w31) :\n    FormalAdmissibleExponent F w12 w23 w31 (formalOmega F w12 w23 w31) := by\n  intro ε hε\n  let S := {τ : ℝ | FormalAdmissibleExponent F w12 w23 w31 τ}\n  have hS : S.Nonempty := ⟨_, formalAdmissibleExponent_naive F h12 h23 h31⟩\n  obtain ⟨τ, hτ, hclose⟩ := exists_lt_of_csInf_lt hS\n    (lt_add_of_pos_right (sInf S) (half_pos hε))\n  obtain ⟨C, hC, hbound⟩ := hτ (ε / 2) (half_pos hε)\n  refine ⟨C, hC, fun N hN => ?_⟩\n  obtain ⟨P, hP, hcost⟩ := hbound N hN\n  refine ⟨P, hP, hcost.trans (mul_le_mul_of_nonneg_left ?_ hC.le)⟩\n  apply Real.rpow_le_rpow_of_exponent_le (by exact_mod_cast hN)\n  change τ + ε / 2 ≤ sInf S + ε\n  linarith",
+    "examples": [
+      {
+        "label": "formalOmega and admissibility",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ArithmeticExponent.lean"
+      },
+      {
+        "label": "internal omega as sInf",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/RationalCircuits.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "pitfalls"
+    ],
+    "keywords": [
+      "sinf",
+      "csinf",
+      "exists_lt_of_csinf_lt",
+      "exponent",
+      "infimum",
+      "epsilon",
+      "rpow",
+      "admissible"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ArithmeticExponent.lean",
+      "path": "lean/OAI/LinearAlgebra/SpectralBooks/ArithmeticExponent.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-rpow-threshold-to-nat-powers",
+    "title": "Turn a real-power threshold into a natural-number inequality",
+    "problem": "Comparisons like `r < n ^ (9/4 : ℝ)` with `Real.rpow` resist `norm_num`/`decide`, yet the concrete cases are integer facts.",
+    "method_md": "Raise both sides to the denominator of the exponent and cast back: `(r : ℝ) < (n : ℝ) ^ (9/4 : ℝ) ↔ r ^ 4 < n ^ 9`. The proof rewrites `(n ^ (9/4)) ^ 4 = n ^ 9` with `Real.rpow_mul_natCast`, uses `pow_lt_pow_iff_left₀` (both sides nonnegative) and finishes with `norm_cast`. After this one lemma every threshold test is a `Nat` inequality decidable by `decide`/`norm_num`, which the repo exploits in the prime-field reduction (\"the threshold can be tested with integer arithmetic alone\"). The same trick works for any rational exponent p/q.",
+    "lean": "theorem rank_threshold (n r : ℕ) :\n    (r : ℝ) < (n : ℝ) ^ (9 / 4 : ℝ) ↔ r ^ 4 < n ^ 9 := by\n  have he : ((n : ℝ) ^ (9 / 4 : ℝ)) ^ (4 : ℕ) = (n : ℝ) ^ (9 : ℕ) := by\n    rw [← Real.rpow_mul_natCast (Nat.cast_nonneg n)]\n    norm_num\n  rw [← pow_lt_pow_iff_left₀ (Nat.cast_nonneg (α := ℝ) r)\n    (Real.rpow_nonneg (Nat.cast_nonneg n) (9 / 4)) (by decide : (4 : ℕ) ≠ 0), he]\n  norm_cast",
+    "examples": [
+      {
+        "label": "rank_threshold",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/PrimeFields.lean"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "mathlib"
+    ],
+    "keywords": [
+      "rpow",
+      "real power",
+      "norm_cast",
+      "pow_lt_pow_iff_left₀",
+      "rpow_mul_natcast",
+      "threshold",
+      "nat"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/PrimeFields.lean",
+      "path": "lean/OAI/LinearAlgebra/MatrixExponent/PrimeFields.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-reduce-every-field-to-prime-fields",
+    "title": "Prove \"for every field\" via prime fields, extension invariance and a universe lift",
+    "problem": "Statements quantify over `(F : Type*) [Field F]` in an arbitrary universe, but the proof only works for concrete fields (ZMod p, ℚ, algebraic closures).",
+    "method_md": "First prove that the quantity is invariant under field extension (`omega_extension F K [Algebra F K] : omega F = omega K`; here because rank conditions are polynomial equations with coefficients in the prime field). Then, for an arbitrary `F`, take `p` with `CharP F p` (`CharP.exists`), split on `CharP.char_is_prime_or_zero`, install `ZMod.algebra F p` or (char 0) `CharP.charP_to_charZero` and the ℚ-algebra, and rewrite. This also lifts a result proved only for `k : Type` to all universes (`upper_of_small`). Conversely, a strict inequality over `F` is witnessed by a finite system and thus specialises to some `ZMod p` (`prime_specialization`). The final ω theorem is literally `contact_of_installations (fun p _ => Rounds.installable (ZMod p)) F`.",
+    "lean": "theorem upper_of_small {s : ℝ} (h : ∀ (k : Type) [Field k], omega k ≤ s)\n    (F : Type*) [Field F] : omega F ≤ s := by\n  obtain ⟨p, hp⟩ := CharP.exists F\n  rcases CharP.char_is_prime_or_zero F p with hprime | rfl\n  · have : Fact p.Prime := ⟨hprime⟩\n    let : Algebra (ZMod p) F := ZMod.algebra F p\n    rw [omega_extension (ZMod p) F]\n    exact h _\n  · let : CharZero F := CharP.charP_to_charZero F\n    rw [omega_extension ℚ F]\n    exact h _",
+    "examples": [
+      {
+        "label": "prime-field reduction",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/PrimeFields.lean"
+      },
+      {
+        "label": "extension invariance",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/FieldExtension.lean"
+      },
+      {
+        "label": "final assembly over ZMod p",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/FieldFormula.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "charp",
+      "zmod",
+      "prime field",
+      "field extension",
+      "universe",
+      "charzero",
+      "zmod.algebra",
+      "every field"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/PrimeFields.lean",
+      "path": "lean/OAI/LinearAlgebra/MatrixExponent/PrimeFields.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-lower-bound-circuit-cost-by-tensor-rank",
+    "title": "Lower-bound circuit cost by tensor rank via bilinearisation",
+    "problem": "Lower bounds on arithmetic circuits (with additions, subtractions, even divisions) need an algebraic invariant that every gate can increase only a little.",
+    "method_md": "The repo proves `tensorRank (matrixTensor F b c a) ≤ 2 * P.cost` for any formally correct program: track, for each wire, the matrix of mixed second partial derivatives in a left and a right variable; a multiplication gate adds at most two outer products, additions add none. It works in the rational function field (`FractionRing (MvPolynomial _ F)`) so divisions never require choosing a regular point, and the doc-string notes this \"also avoids polarization in characteristic two\". Once cost ≥ rank/2, exponent statements reduce to rank statements, where Strassen-style block recursion and asymptotic-rank arguments are available. Rank decompositions are stated as coefficient equations `∑ i, a i x * b i y * c i z = if … then 1 else 0` (`RankLE`), which are easy to specialise.",
+    "lean": "/-- Coefficient equations for a rank decomposition. The last index is an\noutput position (row of the left input, column of the right input). -/\ndef RankLE (F : Type*) [Field F] (n r : ℕ) : Prop :=\n  ∃ a b c : Fin r → Pos n → F, ∀ x y z : Pos n,\n    ∑ i : Fin r, a i x * b i y * c i z =\n      if x.1 = z.1 ∧ x.2 = y.1 ∧ y.2 = z.2 then 1 else 0\n\ntheorem matrixTensor_rank_le_twice_cost {a b c : ℕ} {P : MatrixAlgorithm F a b c}\n    (h : FormalCorrect P) : tensorRank (matrixTensor F b c a) ≤ 2 * P.cost :=\n  (matrixTensor_rank_le_twice_multiplicationCount h).trans\n    (Nat.mul_le_mul_left 2 (multiplicationCount_le_cost _))",
+    "examples": [
+      {
+        "label": "rank ≤ 2·cost",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/Circuit.lean"
+      },
+      {
+        "label": "bilinearisation by mixed partials",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/Bilinearize.lean"
+      },
+      {
+        "label": "RankLE",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/RationalCircuits.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "tensor rank",
+      "lower bound",
+      "circuit",
+      "bilinear",
+      "partial derivative",
+      "strassen",
+      "matrix multiplication"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/Circuit.lean",
+      "path": "lean/OAI/LinearAlgebra/SpectralBooks/Circuit.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-sort-symmetric-formula-split-ifs-grind",
+    "title": "Normalise a symmetric max/min formula with split_ifs and grind",
+    "problem": "A formula stated for sorted weights x ≥ y ≥ z must be matched against an internal function defined by cases on the order of a, b, c.",
+    "method_md": "Name the sorted values with `let x := max a (max b c)`, `z := min …`, `y := a + b + c - x - z`, reduce the goal with `change` to the internal benchmark at (x, y, z), prove once that the benchmark is symmetric in its first two arguments (a `simp only` with `add_comm`, `mul_comm` and one `ring` fact), and then `unfold` the case definition and run `split_ifs <;> apply sorted <;> dsimp only [x, y, z] <;> grind`. `grind` closes the dozens of order side-conditions (which of a, b, c is max/min) that would otherwise each need `max_eq_left`/`min_eq_right` bookkeeping. The ω development uses `grind` only 68 times in 592 files, always for such finite order/arith case splits.",
+    "lean": "private theorem benchmark_sorted (a b c : ℝ) :\n    U c b a =\n      let x := max a (max b c)\n      let z := min a (min b c)\n      let y := a + b + c - x - z\n      x + y + (max ((x + y) * z - x * y) 0) ^ 2 / (4 * x * y * z) := by\n  let x := max a (max b c)\n  let z := min a (min b c)\n  let y := a + b + c - x - z\n  change U c b a = benchmark x y z\n  have sorted (u v w : ℝ) (hw : w = z)\n      (huv : (u = x ∧ v = y) ∨ (u = y ∧ v = x)) :\n      benchmark u v w = benchmark x y z := by\n    rcases huv with ⟨hu, hv⟩ | ⟨hu, hv⟩ <;> rw [hu, hv, hw]\n    simp only [benchmark, add_comm y x, mul_comm y x,\n      show 4 * y * x = 4 * x * y by ring]\n  unfold U\n  split_ifs <;> apply sorted <;> dsimp only [x, y, z] <;> grind",
+    "examples": [
+      {
+        "label": "benchmark_sorted",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "grind",
+      "split_ifs",
+      "max",
+      "min",
+      "sorting",
+      "symmetric",
+      "let",
+      "change"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean",
+      "path": "lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-forced-pde-force-defined-as-residual",
+    "title": "Check whether a forced-PDE statement lets the force absorb the equation",
+    "problem": "A statement asks for a solution of a forced equation (Navier–Stokes with force f) with extra properties; if f is free, any smooth u solves the equation with f := residual.",
+    "method_md": "openai/math's Navier–Stokes computation theorem uses exactly this: pressure 0 and `f = f₀ + ν f₁` with `f₀ = inertialCoefficient U = ∂ₜU + (U·∇)U` and `f₁ = viscousCoefficient U = -ΔU`, so `ZeroDataSolution ν f U 0` holds by construction. The whole content is elsewhere: U divergence free and zero at t = 0, smoothness and bounded mixed derivatives of U and f, common compact support, periodicity after time 1, effectivity (computable rational approximations) of U, f₀, f₁, uniqueness in an energy class, and the halting equivalence for a particle trajectory. When a formal-conjectures style statement involves a forced PDE, first ask what constrains the force; if nothing does, the existence part is trivial and the real target is the side conditions. Conversely, when you prove such a statement, define the force as the residual and spend the effort on regularity and uniqueness.",
+    "lean": "def inertialCoefficient (u : Velocity) : Velocity :=\n  fun t x => timeD u t x + convection u t x\n\ndef viscousCoefficient (u : Velocity) : Velocity :=\n  fun t x => -laplacian u t x\n\ndef affineForce (f₀ f₁ : Velocity) (ν : ℝ) : Velocity :=\n  fun t x => f₀ t x + ν • f₁ t x\n\ndef ZeroDataSolution (ν : ℝ) (f u : Velocity) (p : Pressure) : Prop :=\n  Smooth u ∧ Smooth p ∧\n  (∀ x, u 0 x = 0) ∧\n  (∀ t, 0 ≤ t → ∀ x, div u t x = 0) ∧\n  (∀ t, 0 ≤ t → ∀ x,\n    timeD u t x + convection u t x =\n      -gradient p t x + ν • laplacian u t x + f t x)\n-- theorem: ∃ U f₀ f₁ ..., f₀ M w = inertialCoefficient (U M w) ∧\n--   f₁ M w = viscousCoefficient (U M w) ∧ ... ∧ ZeroDataSolution ν f (U M w) (fun _ _ => 0)",
+    "examples": [
+      {
+        "label": "challenge statement",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean"
+      },
+      {
+        "label": "main proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/MainResult.lean"
+      },
+      {
+        "label": "scope",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/docs/376.md"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "navier-stokes",
+      "forced",
+      "force",
+      "residual",
+      "pde",
+      "statement",
+      "zero pressure",
+      "existence"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "path": "lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-energy-uniqueness-via-gronwall-bound",
+    "title": "Prove uniqueness by an energy inequality and Mathlib's Gronwall bound",
+    "problem": "Uniqueness of PDE solutions in a regularity class: the difference w = u − U has w(0) = 0 and an energy estimate dE/dt ≤ K E; one needs E ≡ 0 formally.",
+    "method_md": "Represent the difference as an `Lp`-valued curve `V : ℝ → Lp Space 2 volume` with `HasDerivWithinAt V (W t) (Ici 0) t`, define `l2Energy V = ∑ i, ‖coordinateL2 i V‖^2` and its rate `2 * ∑ i, ⟪coord V, coord W⟫`, and get the derivative from `HasDerivWithinAt.norm_sq` summed with `HasDerivWithinAt.fun_sum`. Then apply `le_gronwallBound_of_liminf_deriv_right_le` with ε = 0 and initial value ≤ 0, rewrite with `gronwallBound_ε0_δ0` and conclude by `le_antisymm` with nonnegativity. The PDE work is only the pointwise bound `rate ≤ K * energy` on `Ico 0 T`, obtained by integration by parts on the convection term. Finally a continuous representative with zero L² energy is identically zero.",
+    "lean": "lemma l2Energy_eq_zero_of_bound\n    {V W : ℝ → Lp Space 2 (volume : Measure Space)}\n    (hV : ContinuousOn V (Ici 0))\n    (hderiv : ∀ t, 0 ≤ t → HasDerivWithinAt V (W t) (Ici 0) t)\n    (hzero : V 0 = 0) {T K : ℝ} (hT : 0 ≤ T)\n    (hbound : ∀ t ∈ Ico (0 : ℝ) T, l2EnergyRate (V t) (W t) ≤ K * l2Energy (V t)) :\n    l2Energy (V T) = 0 := by\n  have hec : ContinuousOn (fun t => l2Energy (V t)) (Icc 0 T) :=\n    l2Energy_continuous.comp_continuousOn (hV.mono (fun _ ht => ht.1))\n  have he0 : l2Energy (V 0) ≤ 0 := by simp [hzero, l2Energy]\n  have he' : ∀ x ∈ Ico (0 : ℝ) T, ∀ r : ℝ, l2EnergyRate (V x) (W x) < r →\n      ∃ᶠ z in 𝓝[>] x, (z-x)⁻¹ * (l2Energy (V z) - l2Energy (V x)) < r := by\n    intro x hx r hr\n    have hh : HasDerivWithinAt (fun t => l2Energy (V t))\n        (l2EnergyRate (V x) (W x)) (Ici x) x :=\n      (l2Energy_hasDerivWithinAt (hderiv x hx.1)).mono (Ici_subset_Ici.mpr hx.1)\n    simpa only [slope_def_field, vsub_eq_sub, smul_eq_mul, div_eq_mul_inv, mul_comm]\n      using hh.liminf_right_slope_le hr\n  have H := le_gronwallBound_of_liminf_deriv_right_le (K := K) (ε := 0) hec he' he0\n    (fun t ht => by simpa only [add_zero] using hbound t ht) T ⟨hT, le_rfl⟩\n  rw [gronwallBound_ε0_δ0] at H\n  exact le_antisymm H (l2Energy_nonneg _)",
+    "examples": [
+      {
+        "label": "energy curve and Gronwall",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EnergyCurve.lean"
+      },
+      {
+        "label": "uniqueness in the comparison class",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Comparison.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "tactics"
+    ],
+    "keywords": [
+      "gronwall",
+      "gronwallbound",
+      "energy",
+      "uniqueness",
+      "lp",
+      "hasderivwithinat",
+      "pde",
+      "liminf_right_slope_le"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EnergyCurve.lean",
+      "path": "lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EnergyCurve.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-sobolev-time-regularity-as-lp-curves",
+    "title": "Encode C_t H^k regularity as continuous Lp-valued curves a.e. equal to the field",
+    "problem": "Mathlib has no ready Bochner–Sobolev spaces C([0,∞); H^k); statements and uniqueness proofs still need \"u ∈ C_t H²_x ∩ C¹_t L²_x\".",
+    "method_md": "Define the class directly: `CH k v` says for every list `a` of at most k spatial directions there is `V : ℝ → Lp F 2 volume`, continuous on `Ici 0`, with `V t =ᵐ spatialD a v t`; `C1L2 v` adds a second curve `W` that is the `HasDerivWithinAt` derivative of `V` on `Ici 0` and is a.e. the classical time derivative. Derivatives are classical (`fderiv` applied to `Pi.single i 1`), so smooth fields need no weak-derivative theory, while the Hilbert-space structure of `Lp` gives inner products and norms for energy arguments. Coordinates are extracted by `ContinuousLinearMap.compLpL 2 volume (ContinuousLinearMap.proj i)`, whose coercion lemma `coeFn_compLpL` gives the a.e. identity. This is a cheap, honest substitute for Sobolev spaces when all fields involved are smooth.",
+    "lean": "def CH (k : ℕ) (v : Field F) : Prop :=\n  ∀ a : List (Fin 3), a.length ≤ k →\n    ∃ V : ℝ → Lp F 2 (volume : Measure Space),\n      ContinuousOn V (Set.Ici 0) ∧\n      ∀ t, 0 ≤ t → (V t : Space → F) =ᵐ[volume] spatialD a v t\n\ndef C1L2 (v : Field F) : Prop :=\n  ∃ V W : ℝ → Lp F 2 (volume : Measure Space),\n    ContinuousOn V (Set.Ici 0) ∧ ContinuousOn W (Set.Ici 0) ∧\n    ∀ t, 0 ≤ t →\n      (V t : Space → F) =ᵐ[volume] v t ∧\n      (W t : Space → F) =ᵐ[volume] timeD v t ∧\n      HasDerivWithinAt V (W t) (Set.Ici 0) t\n\ndef coordinateL2 (i : Fin 3) :\n    Lp Space 2 (volume : Measure Space) →L[ℝ] Lp ℝ 2 (volume : Measure Space) :=\n  ContinuousLinearMap.compLpL 2 volume (ContinuousLinearMap.proj i)",
+    "examples": [
+      {
+        "label": "statement definitions",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean"
+      },
+      {
+        "label": "coordinateL2 and energy",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EnergyCurve.lean"
+      },
+      {
+        "label": "Sobolev slices",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Sobolev.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "architecture"
+    ],
+    "keywords": [
+      "sobolev",
+      "lp",
+      "complpl",
+      "ae",
+      "continuouson",
+      "regularity",
+      "navier-stokes",
+      "hilbert"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "path": "lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-integration-by-parts-on-whole-space",
+    "title": "Integrate by parts on ℝ³ with only integrability hypotheses",
+    "problem": "Energy estimates need ∫ f ∂ⱼg = −∫ ∂ⱼf g on the whole space without compact support, and the transport identity 2∫ a (∂w) w = −∫ (∂a) w².",
+    "method_md": "Use `integral_mul_fderiv_eq_neg_fderiv_mul_of_integrable`: it needs integrability of `∂f·g`, `f·∂g` and `f·g` plus differentiability, no decay assumption. Supply integrability by one reusable lemma: a bounded continuous coefficient times two `MemLp _ 2` functions is integrable (`(hf.integrable_mul hg).bdd_mul`). The transport identity then follows from the product rule for `w*w` and the general formula. Keep a local notation `pd j f x` for the partial derivative `fderiv ℝ f x (Pi.single j 1)` so lemmas compose.",
+    "lean": "lemma integrable_bounded_mul_l2_mul_l2 {a f g : Space → ℝ} {C : ℝ}\n    (ha : Continuous a) (hab : ∀ x, ‖a x‖ ≤ C)\n    (hf : MemLp f 2 (volume : Measure Space)) (hg : MemLp g 2 (volume : Measure Space)) :\n    Integrable (fun x => a x * f x * g x) (volume : Measure Space) := by\n  convert (hf.integrable_mul hg).bdd_mul ha.aestronglyMeasurable\n      (Eventually.of_forall hab) using 1\n  ext x\n  simp only [Pi.mul_apply, mul_assoc]\n\nlemma integral_mul_pd_eq_neg_pd_mul {f g : Space → ℝ}\n    (hf : Differentiable ℝ f) (hg : Differentiable ℝ g) (j : Fin 3)\n    (hdg : Integrable (fun x => pd j f x * g x) (volume : Measure Space))\n    (hfd : Integrable (fun x => f x * pd j g x) (volume : Measure Space))\n    (hfg : Integrable (fun x => f x * g x) (volume : Measure Space)) :\n    (∫ x, f x * pd j g x) = - ∫ x, pd j f x * g x :=\n  integral_mul_fderiv_eq_neg_fderiv_mul_of_integrable hdg hfd hfg\n    (fun x _ => hf x) (fun x _ => hg x)",
+    "examples": [
+      {
+        "label": "energy lemmas",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Energy.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "integration by parts",
+      "integral_mul_fderiv_eq_neg_fderiv_mul_of_integrable",
+      "memlp",
+      "integrable",
+      "bdd_mul",
+      "fderiv"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Energy.lean",
+      "path": "lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Energy.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-one-sided-time-derivative-on-ici",
+    "title": "Take time derivatives within Ici 0 for initial-value problems",
+    "problem": "Fields defined for t ≥ 0 only (or glued at t = 0) have no two-sided derivative at 0; `deriv` silently returns 0 there and `ContDiff` on all of ℝ is too strong.",
+    "method_md": "The Navier–Stokes statement uses `timeD v t x := derivWithin (fun s => v s x) (Set.Ici 0) t`, smoothness `ContDiffOn ℝ ⊤ (fun z : ℝ × Space => v z.1 z.2) (Set.Ici 0 ×ˢ Set.univ)`, trajectories with `HasDerivWithinAt (fun s => X s a) (u t (X t a)) (Set.Ici 0) t`, and every quantified property is restricted to `0 ≤ t`. The junk-value convention still matters: `derivWithin` and `fderiv` return 0 at non-differentiable points, so each definition is paired with a `Smooth` hypothesis. When reading a statement, check that each derivative is constrained by such a regularity clause; when proving, convert `derivWithin` to `HasDerivWithinAt` early and use `uniqueDiffOn_Ici` for uniqueness of one-sided derivatives.",
+    "lean": "abbrev Space := Fin 3 → ℝ\nabbrev Field (F : Type*) := ℝ → Space → F\n\ndef timeD [NormedAddCommGroup F] [NormedSpace ℝ F] (v : Field F) : Field F :=\n  fun t x => derivWithin (fun s => v s x) (Set.Ici 0) t\n\ndef spaceD [NormedAddCommGroup F] [NormedSpace ℝ F] (i : Fin 3) (v : Field F) : Field F :=\n  fun t x => fderiv ℝ (v t) x (Pi.single i 1)\n\ndef Smooth [NormedAddCommGroup F] [NormedSpace ℝ F] (v : Field F) : Prop :=\n  ContDiffOn ℝ (⊤ : ℕ∞) (fun z : ℝ × Space => v z.1 z.2) (Set.Ici 0 ×ˢ Set.univ)\n\ndef IsMaterialFlow (u : Field Space) (X : ℝ → Space → Space) : Prop :=\n  (∀ a, X 0 a = a) ∧\n  ∀ a t, 0 ≤ t → HasDerivWithinAt (fun s => X s a) (u t (X t a)) (Set.Ici 0) t",
+    "examples": [
+      {
+        "label": "statement definitions",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean"
+      },
+      {
+        "label": "Smooth.slice and friends",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Energy.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "mathlib"
+    ],
+    "keywords": [
+      "derivwithin",
+      "ici",
+      "hasderivwithinat",
+      "contdiffon",
+      "initial value",
+      "junk value",
+      "time derivative"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "path": "lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-computable-via-combinator-composition",
+    "title": "Prove Computable by composing Primrec/Computable combinators",
+    "problem": "Effectivity claims (\"the force is computable\", \"a computable name of ν gives computable approximations\") need `Computable f` for functions built from ℚ arithmetic, lists and finite types, and Mathlib lacks many basic instances.",
+    "method_md": "Build the term bottom-up: `Computable.comp`, `Computable₂`, `Computable.cond`, `Computable.const`, `Primrec.to_comp`, and finish with `.of_eq` to match the intended function up to definitional unfolding (`by cases … <;> rfl` or `simp`). Missing primitives are proved once from encodings, e.g. `Primrec Int.ofNat` via `Primrec.encode_iff` and `Primrec.nat_double`, then ℤ case analysis, `natAbs`, negation, and the ℚ operations `computable_rat_add/mul/div/le/pow/abs`. For finite alphabets use `Primcodable.ofEquiv (Fin (Fintype.card S)) (Fintype.equivFin S)`. Decidable predicates become computable through `decide`, and unbounded search uses an `∃ k, accurate q n k` lemma proved analytically (e.g. from `Real.summable_pow_div_factorial`).",
+    "lean": "lemma primrec_int_ofNat : Primrec (Int.ofNat : ℕ → ℤ) := by\n  apply Primrec.encode_iff.mp\n  exact Primrec.nat_double\n\nlemma computable_decide_and {α : Type*} [Primcodable α]\n    {p q : α → Prop} [DecidablePred p] [DecidablePred q]\n    (hp : Computable fun a => decide (p a)) (hq : Computable fun a => decide (q a)) :\n    Computable (fun a => decide (p a ∧ q a)) := by\n  exact (Computable.cond hp hq (Computable.const false)).of_eq (fun a => by\n    by_cases h : p a <;> simp [h])\n\n-- finite alphabet with a Primcodable structure\nexample (S : Type) [Fintype S] : Primcodable S :=\n  Primcodable.ofEquiv (Fin (Fintype.card S)) (Fintype.equivFin S)",
+    "examples": [
+      {
+        "label": "ℤ primitives",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EffectiveArithmetic.lean"
+      },
+      {
+        "label": "computable exp approximation",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EffectiveExp.lean"
+      },
+      {
+        "label": "computable initial code",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/ComputableInitial.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "tactics"
+    ],
+    "keywords": [
+      "computable",
+      "primrec",
+      "primcodable",
+      "of_eq",
+      "computability",
+      "encode",
+      "rat",
+      "effective"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EffectiveArithmetic.lean",
+      "path": "lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EffectiveArithmetic.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-effective-reals-by-dyadic-names",
+    "title": "State effectivity of real fields with dyadic rational names",
+    "problem": "Mathlib has no computable-real type; a statement that a real-valued field is \"effective\" needs a precise, checkable formulation.",
+    "method_md": "Use names: `RealName name x := ∀ n, |(name n : ℝ) - x| ≤ (1/2)^n` with `name : ℕ → ℚ`, and `ComputableReal x := ∃ name, Computable name ∧ RealName name x`. A field is effective when one computable function `E : MultiIndex × ℚ-point × ℕ → (Fin 3 → ℚ)` approximates every mixed derivative at every rational space-time point to 2^-n, together with computable integer bounds `b a` on each derivative (and a computable support radius). Relative computability uses `ComputableIn {nameOracle name}` with `nameOracle name n := Part.some (encode (name n))`. Bundling the bounds into the definition is what makes later compositions (sums, products, gluing) effective without re-deriving moduli.",
+    "lean": "def error (n : ℕ) : ℝ := (2 : ℝ)⁻¹ ^ n\n\ndef RealName (name : ℕ → ℚ) (x : ℝ) : Prop :=\n  ∀ n, |(name n : ℝ) - x| ≤ error n\n\ndef ComputableReal (x : ℝ) : Prop :=\n  ∃ name : ℕ → ℚ, Computable name ∧ RealName name x\n\ndef nameOracle (name : ℕ → ℚ) : ℕ →. ℕ :=\n  fun n => Part.some (Encodable.encode (name n))\n\ndef EffectiveFieldIn (O : Set (ℕ →. ℕ)) (v : Velocity) : Prop :=\n  ∃ E : (MultiIndex × RationalPoint × ℕ) → (Fin 3 → ℚ),\n  ∃ b : MultiIndex → ℕ,\n    ComputableIn O E ∧ ComputableIn O b ∧\n    (∀ a z n, 0 ≤ z.1 → ∀ i,\n      |(E (a, z, n) i : ℝ) - mixedD a v (z.1 : ℝ) (rationalSpace z.2) i| ≤ error n) ∧\n    (∀ a t, 0 ≤ t → ∀ x, ‖mixedD a v t x‖ ≤ (b a : ℝ))",
+    "examples": [
+      {
+        "label": "statement definitions",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean"
+      },
+      {
+        "label": "effective construction",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EffectiveConstruction.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "computable real",
+      "name",
+      "dyadic",
+      "computablein",
+      "oracle",
+      "effective",
+      "approximation"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "path": "lean/ComparatorChallenges/ForcedNavierStokesComputation.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-decide-kernel-split-into-small-lemmas",
+    "title": "Check finite certificates with decide +kernel, one small lemma per case",
+    "problem": "A proof needs thousands of finite verifications; one big `decide` times out or hits recursion limits, and `native_decide` adds the axiom `Lean.ofReduceBool`, which strict checkers reject.",
+    "method_md": "openai/math contains about 1.3 million `decide +kernel` calls and zero `native_decide` (its Comparator configs permit only `propext`, `Quot.sound`, `Classical.choice`). `decide +kernel` skips the elaborator's `whnf` and lets the kernel evaluate the `Decidable` instance, which is much faster and avoids \"maximum recursion depth\" in `Meta`. The checks are split into one lemma per index (`histLeft0_0`, …, `histLeft0_7` in the Sidorenko proof; one `entryCheck` per Gram entry in the MUB proof), each with a closed, small statement, then assembled with `fin_cases`/`Fin.forall_fin_succ`. Small lemmas keep each kernel reduction short, parallelise across files and make failures local. Data are defined with `![…]` / lists of integers so reduction stays in `Nat`/`Int` literals.",
+    "lean": "-- one closed decidable fact per index, each checked by the kernel\nlemma histLeft0_0 : ∀ c, neighborHistogram cornerPoint\n    (fun k : ActCorner => refineRight0 k.1) 0 c = histLeft0 0 c := by decide +kernel\nlemma histLeft0_1 : ∀ c, neighborHistogram cornerPoint\n    (fun k : ActCorner => refineRight0 k.1) 1 c = histLeft0 1 c := by decide +kernel\n-- ...\nlemma histLeft0_all (j : Fin 8) : ∀ c, neighborHistogram cornerPoint\n    (fun k : ActCorner => refineRight0 k.1) j c = histLeft0 j c := by\n  fin_cases j\n  exacts [histLeft0_0, histLeft0_1, histLeft0_2, histLeft0_3,\n    histLeft0_4, histLeft0_5, histLeft0_6, histLeft0_7]",
+    "examples": [
+      {
+        "label": "Sidorenko refinement checks",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/Refinement.lean"
+      },
+      {
+        "label": "MUB Gram entry checks",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Analysis/MutuallyUnbiased/GramEntries/Block4Row7.lean"
+      }
+    ],
+    "tags": [
+      "performance",
+      "tactics"
+    ],
+    "keywords": [
+      "decide +kernel",
+      "decide",
+      "native_decide",
+      "ofreducebool",
+      "certificate",
+      "kernel",
+      "fin_cases",
+      "axioms"
+    ],
+    "source": {
+      "name": "openai/math (Sidorenko counterexample)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/Refinement.lean",
+      "path": "lean/OAI/Combinatorics/Sidorenko/Refinement.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-sparse-integer-certificate-with-eval-soundness",
+    "title": "Verify polynomial identities as sparse integer lists plus one soundness lemma",
+    "problem": "An argument needs that a target polynomial expression in many real unknowns is an integer combination of known vanishing expressions; `ring`/`linear_combination` on thousands of terms is far too slow.",
+    "method_md": "The MUB-in-dimension-6 proof represents linear forms as `Sparse ι := List (ι × ℤ)` with a noncomputable `eval v x := ∑ (i, c) ∈ v, c * x i` and a computable `coeff`. A generic lemma `consequence` says: if the integer coefficients of `target` equal those of a combination of `rows` (pure `ℤ` computation, closed by `decide +kernel`), and every row evaluates to 0 at `x`, then `target` evaluates to 0. So the heavy part is integer arithmetic checked by the kernel, and the real-number reasoning is done once, generically (`eval_eq_sum_coeff`). Each row's link to the actual mathematical quantity (`rowEval…`) is a separate small lemma. This scales to millions of coefficient checks across ~3400 files.",
+    "lean": "abbrev Sparse (ι : Type*) := List (ι × ℤ)\n\nnamespace Sparse\nnoncomputable def eval (v : Sparse ι) (x : ι → ℝ) : ℝ :=\n  (v.map fun p => (p.2 : ℝ) * x p.1).sum\n\ndef coeff [DecidableEq ι] (v : Sparse ι) (i : ι) : ℤ :=\n  (v.filter fun p => p.1 = i).foldr (fun p s => p.2 + s) 0\n\ntheorem eval_eq_sum_coeff [Fintype ι] [DecidableEq ι] (v : Sparse ι) (x : ι → ℝ) :\n    eval v x = ∑ i, (coeff v i : ℝ) * x i := by\n  sorry -- induction on v; one-time generic proof\nend Sparse\n\n-- per entry: integer identity by the kernel, then transport to ℝ\n-- theorem entryCheck7_0 : entry7_0 = collectLevels ... rows7_0 ... := by decide +kernel\n-- theorem entryEval7_0 ... := by rw [entryCheck7_0, collectWeightedRows_eval, ...]",
+    "examples": [
+      {
+        "label": "Sparse certificates",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Analysis/MutuallyUnbiased/Certificate/Integer.lean"
+      },
+      {
+        "label": "one Gram block",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Analysis/MutuallyUnbiased/GramEntries/Block4Row7.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "performance"
+    ],
+    "keywords": [
+      "certificate",
+      "reflection",
+      "sparse",
+      "integer",
+      "decide +kernel",
+      "linear combination",
+      "polynomial identity",
+      "soundness"
+    ],
+    "source": {
+      "name": "openai/math (MUBs in dimension six)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Analysis/MutuallyUnbiased/Certificate/Integer.lean",
+      "path": "lean/OAI/Analysis/MutuallyUnbiased/Certificate/Integer.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-generated-case-files-for-finite-obstruction",
+    "title": "Split a large finite case analysis into numbered generated files",
+    "problem": "A combinatorial obstruction (e.g. no labelling of a complex satisfies some rules) needs hundreds of cases; a single file is slow to elaborate and impossible to review.",
+    "method_md": "The Borsuk dimension-9 proof abstracts the geometry into a finite system (`TenSystem T Q` over subsets of a 10-label set) and then refutes every branch in `FiniteCases/Cases001.lean` … `Cases145.lean`. Each file has the same header (`import OAI.Geometry.Borsuk.TenLabels.Labels`, `attribute [local instance] Classical.propDecidable`) and short theorems `c3 (h : TenSystem T Q) : Q {0,1,2,3} → ¬ T {0,1,2} → False`, whose side conditions on concrete finsets are `by decide`. About 19,600 `decide` calls live in these 269 files. A master file chains the case theorems. Numbered files build in parallel, and an error points to a single case. In a single nosorry file, the same idea gives one lemma per case with a uniform signature, generated by a script and assembled by `rcases`.",
+    "lean": "namespace BorsukNine.FiniteObstruction\nattribute [local instance] Classical.propDecidable\nvariable {T Q : Family}\n\ntheorem c3 (h : TenSystem T Q) :\n    Q {0, 1, 2, 3} → ¬ T {0, 1, 2} → False := by\n  intro a121 n1\n  exact n1 (h.down {0, 1, 2, 3} {0, 1, 2} a121 (by decide) (by decide))\n\ntheorem c4 (h : TenSystem T Q) (a121 : Q {0, 1, 2, 3}) : False := by\n  obtain ⟨S, hS, hUS, hne⟩ := h.no_boundary {0, 1, 2, 3} {0, 1, 2} a121 (by decide) (by decide)\n  obtain ⟨v, hv, rfl⟩ := tetra_extension hUS (h.tetra_card S hS)\n    (show ({0, 1, 2} : Finset Labels).card = 3 by decide)\n  sorry -- remaining branches, each closed by an earlier cN\nend BorsukNine.FiniteObstruction",
+    "examples": [
+      {
+        "label": "first case file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Geometry/Borsuk/FiniteCases/Cases001.lean"
+      },
+      {
+        "label": "main theorem",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Geometry/Borsuk/Main.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "performance"
+    ],
+    "keywords": [
+      "case analysis",
+      "finite",
+      "decide",
+      "finset",
+      "generated",
+      "borsuk",
+      "classical.propdecidable"
+    ],
+    "source": {
+      "name": "openai/math (Borsuk in dimension nine)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Geometry/Borsuk/FiniteCases/Cases001.lean",
+      "path": "lean/OAI/Geometry/Borsuk/FiniteCases/Cases001.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-first-moment-from-kernel-to-finite-graph",
+    "title": "Get a finite counterexample from a kernel by a first-moment sampling argument",
+    "problem": "A density inequality (Sidorenko) fails for a weighted kernel/graphon, but the statement demands a finite simple graph with at least one edge.",
+    "method_md": "Sample n vertices independently from the kernel's finite probability space and each edge as an independent coin with the kernel probability. Using a small discrete `FiniteLaw` structure (means of products over independent coordinates, `independent_mean_apply`, `independent_mean_two`) instead of measure theory, compute the expectation of edge density and of the homomorphism count. Injective homomorphisms have exactly the kernel density; non-injective ones are bounded by a union over the 595 collision pairs of the 35 pattern vertices, an O(1/n) error. A strict kernel gap `τ < μ^66` then survives for large n, and \"some outcome is at most the mean\" gives a concrete host (`finiteHost_exists_at_size`). Everything is finite sums, so `Finset` algebra and `positivity` suffice.",
+    "lean": "lemma independent_mean_apply (p : I → FiniteLaw A) (i : I) (f : A → ℝ) :\n    (independent p).mean (fun x => f (x i)) = (p i).mean f := by\n  have h := independent_mean_injective p (fun _ : Unit => i)\n    (fun _ _ _ => Subsingleton.elim _ _) (fun x => f (x ()))\n  exact h.trans (independent_mean_unit (p i) f)\n\ndef bitsGraph (b : Sym2 V → Bool) : SimpleGraph V where\n  Adj x y := x ≠ y ∧ b s(x, y) = true\n  symm _ _ h := ⟨h.1.symm, by rw [Sym2.eq_swap]; exact h.2⟩\n  loopless _ h := h.1 rfl\n\nlemma collisionPair_card : Fintype.card CollisionPair = 595 := by\n  sorry -- 35 choose 2\n\ntheorem main : ∃ n : ℕ, 0 < n ∧ ∃ G : SimpleGraph (Fin n),\n    (∃ u v, G.Adj u v) ∧ homDensity H G < (edgeDensity G) ^ 66 := by\n  obtain ⟨U⟩ := exists_symmetric_kernel\n  exact finiteHost_main U",
+    "examples": [
+      {
+        "label": "random host",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/RandomHost.lean"
+      },
+      {
+        "label": "challenge",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/SidorenkoCounterexample.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "first moment",
+      "probabilistic method",
+      "sampling",
+      "graphon",
+      "kernel",
+      "homomorphism density",
+      "sidorenko",
+      "finite law"
+    ],
+    "source": {
+      "name": "openai/math (Sidorenko counterexample)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/RandomHost.lean",
+      "path": "lean/OAI/Combinatorics/Sidorenko/RandomHost.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-main-claim-as-named-prop",
+    "title": "Name the main claim as a Prop and prove it once",
+    "problem": "A long existential statement is repeated in several files (internal theorem, final theorem, challenge); each copy re-elaborates and copies drift apart.",
+    "method_md": "Several openai/math results define `def MainClaim : Prop := ∃ …` and state the theorems as `theorem main_theorem : MainClaim` (Kaplansky direct finiteness, Sidorenko). The development proves `main_proved : MainClaim` deep inside, and the exported theorem is a one-liner (`theorem main_theorem : MainClaim := Prescription.Output.prescribed_main`). Unfolding is needed only where the witness is built. With a comparator-style checker this is harmless as long as `MainClaim` is itself part of the challenge with the same body; in nosorry, keep the problem's own theorem statement and use an auxiliary `def` only internally, proving the final theorem by `exact main_proved` (definitional unfolding is checked by the kernel).",
+    "lean": "def MainClaim : Prop :=\n  ∃ (K : Type) (_ : Field K) (_ : Fintype K) (_ : CharP K 2),\n    ∃ (G : Type) (_ : Group G) (_ : Group.FG G),\n      ∃ a b : MonoidAlgebra K G, a * b = 1 ∧ b * a ≠ 1\n\ntheorem main_proved : MainClaim := by\n  sorry -- the construction\n\n/-- exported statement: one line, no re-elaboration of the body -/\ntheorem main_theorem : MainClaim := main_proved",
+    "examples": [
+      {
+        "label": "Kaplansky challenge with MainClaim",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/KaplanskyDirectFiniteness.lean"
+      },
+      {
+        "label": "Kaplansky main",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/RingTheory/DirectFiniteness/Main.lean"
+      },
+      {
+        "label": "Sidorenko main_proved",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/RandomHost.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "mainclaim",
+      "prop",
+      "statement",
+      "definition",
+      "export",
+      "theorem"
+    ],
+    "source": {
+      "name": "openai/math (Kaplansky direct finiteness)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/KaplanskyDirectFiniteness.lean",
+      "path": "lean/ComparatorChallenges/KaplanskyDirectFiniteness.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-scoped-heartbeat-budgets",
+    "title": "Raise maxHeartbeats per declaration with `in`, never globally to 0",
+    "problem": "Some declarations legitimately need more than the default 200000 heartbeats; global settings hide regressions elsewhere.",
+    "method_md": "Across openai/math there are about 4,500 `set_option maxHeartbeats N` lines, almost all of the form `set_option maxHeartbeats N in` before a single theorem, with N between 350000 and 4000000 (most common 1200000, 1600000, 800000, 1000000) and never `0`. The ω proof uses 31 such settings in 592 files, the VP≠VNP closure 389 in 3189 files, the NS main result none. File-level settings without `in` appear in a few heavy files (the Hadwiger counterexample has about 225, mostly 600000–1200000). The practical rule: start at the default, and when a declaration times out, first split it; if a split is unnatural, raise the budget for that declaration only, to a finite value with some headroom, so a later blow-up is still caught.",
+    "lean": "set_option maxHeartbeats 1600000 in\n/-- heavy normalisation; the budget is local to this declaration -/\ntheorem heavy_identity (x y : ℝ) (h : x = y) : (x + y) ^ 4 = 16 * y ^ 4 := by\n  subst h\n  ring",
+    "examples": [
+      {
+        "label": "omega proof (e.g. Sphere/Assembly files)",
+        "ref": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent"
+      },
+      {
+        "label": "Hadwiger counterexample",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/HadwigerCounterexample/Main.lean"
+      }
+    ],
+    "tags": [
+      "performance"
+    ],
+    "keywords": [
+      "maxheartbeats",
+      "set_option",
+      "timeout",
+      "heartbeats",
+      "performance",
+      "in"
+    ],
+    "source": {
+      "name": "openai/math (repository-wide counts)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI",
+      "path": "lean/OAI",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-backward-defeq-options-when-porting",
+    "title": "Expect file-level backward.* defeq options in Lean 4.34 code and drop them when porting",
+    "problem": "Code from a newer toolchain carries options such as `backward.isDefEq.respectTransparency false`; on another toolchain these may be unknown, unnecessary, or necessary for proofs to go through.",
+    "method_md": "In openai/math (Lean v4.34.1) about 8,400 `set_option backward.isDefEq.respectTransparency false`, 5,200 `backward.isDefEq.respectTransparency.types false` and 2,500 `backward.defeqAttrib.useBackward true` lines appear, mostly at the top of algebraic-geometry and p-adic Hodge files (DivisorClass, CycleClass, PadicHodge), together with `quotPrecheck`, `hygiene` and `maxRecDepth` settings. They restore older definitional-unfolding behaviour that heavy category-theory proofs rely on. The matrix exponent, Navier–Stokes, Sidorenko and Borsuk closures use none of them. When porting a file to Lean v4.33.1, delete each option that the toolchain reports as unknown and recompile; if proofs then fail with defeq or `rfl` errors, add explicit `show`/`change`, `unfold` or `erw` at the failing spot. Do not copy such options into new code that does not need them.",
+    "lean": "-- header of a heavy file in the source repository (Lean v4.34.1)\nset_option backward.isDefEq.respectTransparency false\nset_option backward.isDefEq.respectTransparency.types false\nset_option backward.defeqAttrib.useBackward true\n\n-- porting to another toolchain: remove unknown options, then repair locally, e.g.\nexample (f : ℕ → ℕ) (h : ∀ n, f n = n) : f 3 = 3 := by\n  show f 3 = 3\n  exact h 3",
+    "examples": [
+      {
+        "label": "file header with backward options",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/AlgebraicGeometry/DivisorClass/Chern/Abelian/CechClasses.lean"
+      },
+      {
+        "label": "dependency patches removing such options",
+        "ref": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/patches"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "performance"
+    ],
+    "keywords": [
+      "respecttransparency",
+      "backward",
+      "set_option",
+      "defeq",
+      "port",
+      "toolchain",
+      "unknown option"
+    ],
+    "source": {
+      "name": "openai/math (repository-wide counts)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI",
+      "path": "lean/OAI",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-lean-434-to-433-name-changes",
+    "title": "Translate the Lean 4.34 / Mathlib d13f23 idioms back to v4.33",
+    "problem": "Code written against Lean v4.34.1 and Mathlib d13f23b uses lemma names and idioms that may be missing or different on nosorry's Lean v4.33.1 Mathlib.",
+    "method_md": "The repository's `patches/*-lean4341.patch` files (161k lines) show the systematic edits needed to bring older dependencies up to v4.34.1. Read in reverse, they show what to change when moving OAI code down to v4.33. The main ones: `Set.mem_setOf_eq` → `Set.mem_ofPred_eq` (211 removals; OAI uses the new name, e.g. in `ExactExponent.lean`). `rw [if_pos h]`/`if_neg`/`dif_neg` → `ite_eq_left h`/`ite_eq_right h`/`dite_eq_right` (470 replacements; OAI has 1,313 `ite_eq_left` and no `if_pos` in the main closures). `haveI`/`letI` → `have`/`let` for instances (OAI writes `let : Algebra (ZMod p) F := …`). Module moves: `Mathlib.Order.SuccPred.Nat` → `Mathlib.Data.Nat.SuccPred`, `Mathlib.LinearAlgebra.Matrix.Array` → `…Matrix.Defs`. When porting down, rename back whenever v4.33 reports an unknown identifier, or let `simp` choose (`simp [h]` instead of `rw [ite_eq_left h]`). Imports matter less on nosorry, which uses `import Mathlib`.",
+    "lean": "-- Lean v4.34.1 / Mathlib d13f23 style (source)\nexample (s : ℕ) (hk : 3 < s) :\n    (if 3 < s then (1 : ℕ) else 0) = 1 := by\n  rw [ite_eq_left hk]        -- v4.33: rw [if_pos hk]\n\nexample (x : ℕ) (h : x ∈ {n : ℕ | 2 ≤ n}) : 2 ≤ x := by\n  simpa only [Set.mem_ofPred_eq] using h   -- v4.33: Set.mem_setOf_eq\n\n-- robust on both toolchains:\nexample (s : ℕ) (hk : 3 < s) : (if 3 < s then (1 : ℕ) else 0) = 1 := by simp [hk]\nexample (x : ℕ) (h : x ∈ {n : ℕ | 2 ≤ n}) : 2 ≤ x := h",
+    "examples": [
+      {
+        "label": "AbsorptionCutoff patch (mem_setOf_eq, if_pos)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/patches/AbsorptionCutoff-lean4341.patch"
+      },
+      {
+        "label": "complexitylib patch (module renames)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/patches/complexitylib-lean4341.patch"
+      },
+      {
+        "label": "ClassFieldTheory patch (haveI, dif_neg)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/patches/ClassFieldTheory-lean4341.patch"
+      },
+      {
+        "label": "OAI usage of Set.mem_ofPred_eq",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "mathlib"
+    ],
+    "keywords": [
+      "port",
+      "v4.34",
+      "v4.33",
+      "mem_setof_eq",
+      "mem_ofpred_eq",
+      "if_pos",
+      "ite_eq_left",
+      "havei",
+      "rename",
+      "deprecated"
+    ],
+    "source": {
+      "name": "openai/math (dependency patches)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/patches",
+      "path": "lean/patches",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-reduce-sets-to-words-with-explicit-universe",
+    "title": "Prove a universe-polymorphic combinatorial bound via a Fin-indexed core",
+    "problem": "A statement quantifies over `(α : Type u)` and families of finsets in it (sunflower bound); the core argument is about words over finite alphabets.",
+    "method_md": "The sunflower proof first shows a bound for words, `∀ k m (W : Finset (Fin k → Fin m)), WordFree r W → W.card ≤ D ^ k`, where every type is `Fin _` and lives in `Type`. A separate transfer lemma `fixedBase_of_wordBound` converts it to finsets of k-sets in an arbitrary `α : Type u` (the sets are encoded as words by enumerating elements). The universe is passed explicitly, `fixedBase_of_wordBound.{u} (D := D) hword`, so Lean does not try to unify universes from the goal. The constant is fixed before k and α, matching the order of quantifiers in the statement (`∃ C, 1 ≤ C ∧ ∀ k α F, …`). Keep this split: the core lemma uses only finite types and the transfer handles universes and encodings.",
+    "lean": "universe u\n\ntheorem erdosRadoSunflower (r : ℕ) (hr : 3 ≤ r) :\n    ∃ C : ℕ, 1 ≤ C ∧ ∀ (k : ℕ) (α : Type u) (F : Finset (Finset α)),\n      (∀ A ∈ F, A.card = k) → C ^ k < F.card →\n      ∃ G ⊆ F, G.card = r ∧ ∃ K : Finset α,\n        ∀ A ∈ G, ∀ B ∈ G, A ≠ B → A ∩ B = K := by\n  obtain ⟨D, _, hword⟩ := fixedBase_words r hr\n  obtain ⟨C, hC, hsets⟩ := fixedBase_of_wordBound.{u} (D := D) hword\n  exact ⟨C, hC, fun k α F => hsets k α F⟩",
+    "examples": [
+      {
+        "label": "fixed-base sunflower",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sunflower/FixedBase.lean"
+      },
+      {
+        "label": "transfer",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sunflower/Transfer.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "universe",
+      "sunflower",
+      "words",
+      "fin",
+      "transfer",
+      "erdos-rado",
+      "explicit universe"
+    ],
+    "source": {
+      "name": "openai/math (sunflower bound)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sunflower/FixedBase.lean",
+      "path": "lean/OAI/Combinatorics/Sunflower/FixedBase.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "oai-flat-many-small-files-naming",
+    "title": "Organise huge developments as many small, descriptively named files",
+    "problem": "Developments with hundreds of thousands of lines become impossible to build incrementally or navigate if lemmas are piled into a few files.",
+    "method_md": "openai/math averages about 150–440 lines per file: ω takes 592 files and 258k lines, VP≠VNP 3,189 files and 476k lines, the forced Navier–Stokes theorem 60 files and 11k lines. Directories group a paper (`OAI/LinearAlgebra/MatrixExponent/{Rectangle,Sphere,Assembly,Rounds,...}`), and file names are nouns for the concept (`PrimeFields`, `FieldExtension`, `RationalCircuits`, `EnergyCurve`). Each file opens with a `/-! # Title -/` docstring stating its role in one or two sentences. Helper lemmas are `private theorem` (about 4,300 in the ω directories), and the public API is a few theorems per file. Main results live in a short `Main.lean`/`MainResult.lean`/`ExactExponent.lean` that only assembles. Imports name the needed Mathlib modules instead of `import Mathlib` in most areas (the ω closure imports 776 specific Mathlib modules), which keeps rebuilds small. The `lakefile` also sets `autoImplicit := false` for the whole package.",
+    "lean": "-- OAI/LinearAlgebra/MatrixExponent/FieldFormula.lean (whole file)\nimport OAI.LinearAlgebra.MatrixExponent.Realization\nimport OAI.LinearAlgebra.MatrixExponent.Rounds.Installation\n\n/-! # The square exponent and rectangular rigidity over every field -/\n\nnamespace OAI.LinearAlgebra.MatrixExponent\n\ntheorem omega_eq_and_rigidity (F : Type*) [Field F] :\n    omega F = 9 / 4 ∧ Rectangle.Rigidity F :=\n  contact_of_installations (fun p _ => Rounds.installable (ZMod p)) F\n\ntheorem omega_eq (F : Type*) [Field F] : omega F = 9 / 4 :=\n  (omega_eq_and_rigidity F).1\n\nend OAI.LinearAlgebra.MatrixExponent",
+    "examples": [
+      {
+        "label": "assembly file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/FieldFormula.lean"
+      },
+      {
+        "label": "NS BalancedTransport directory (60 files)",
+        "ref": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport"
+      },
+      {
+        "label": "lakefile (autoImplicit false)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/lakefile.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "performance"
+    ],
+    "keywords": [
+      "file organisation",
+      "naming",
+      "private theorem",
+      "imports",
+      "main.lean",
+      "autoimplicit",
+      "module docstring"
+    ],
+    "source": {
+      "name": "openai/math (repository structure)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI",
+      "path": "lean/OAI",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-matrix-multiplication-exponent-nine-fourths",
+    "title": "Over every field the square matrix multiplication exponent is 9/4 (division-free circuit model)",
+    "problem": "For every field F, `formalOmega F 1 1 1 = 9/4`, where formalOmega is the infimum of τ such that n×n matrices (rounded dimensions ⌈N^w⌉) are multiplied by division-free straight-line programs of cost O(N^(τ+ε)) for every ε > 0, cost counting additions, subtractions and multiplications, and correctness being a formal identity in MvPolynomial even over finite fields.",
+    "method_md": "Full Lean proof (no sorry, Comparator-checked statement). The final file is short: `square_exponent` = `formalOmega_square_eq_omega F` (challenge model = internal rational-circuit model via tensor rank: rank ≤ 2·cost by bilinearisation, plus asymptotic rank of the n×n×n tensor) composed with `MatrixExponent.omega_eq F`, which comes from `contact_of_installations (fun p _ => Rounds.installable (ZMod p)) F`. That theorem combines a lower bound (\"exact many-list hardness over all finite fields\", `BatchDescent.hard`) and an upper-bound construction over prime fields (\"compression installation\"), transferred to all fields by extension invariance (`omega_extension`, `prime_specialization`, `upper_of_small`). The import closure of the solution module has 592 project files and 258k lines (MatrixExponent: Sphere 68, Assembly 69, Rectangle 50, Integral 39, Upper 32, BatchDescent 26, Rounds 25, Routing 25, …), and only Mathlib outside the project. Small reusable leaves: PrimeFields has a 25-file closure and ArithmeticExponent a 19-file closure. Tactic profile in the whole closure: simp ≈9.2k, `omega` ≈4.8k (raw token count), positivity ≈2.0k, decide ≈1.7k, linarith ≈1.3k, ring ≈1.2k, calc ≈1.0k, bound ≈0.9k, grind 68, native_decide 0, 15 maxHeartbeats settings.",
+    "lean": "/-- The arithmetic exponent in base size `N` at three prescribed wire weights. -/\ndef formalOmega (F : Type*) [Field F] (w12 w23 w31 : ℝ) : ℝ :=\n  sInf {τ : ℝ | FormalAdmissibleExponent F w12 w23 w31 τ}\n\n/-- The square matrix multiplication exponent over every field. -/\ntheorem square_exponent (F : Type*) [Field F] : formalOmega F 1 1 1 = (9 : ℝ) / 4 := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/MatrixExponent.lean"
+      },
+      {
+        "label": "proof (assembly)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean"
+      },
+      {
+        "label": "internal omega = 9/4",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/FieldFormula.lean"
+      },
+      {
+        "label": "scope",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/docs/107.md"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "matrix multiplication",
+      "omega",
+      "exponent",
+      "9/4",
+      "tensor rank",
+      "circuit",
+      "algebraic complexity",
+      "every field"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent",
+      "path": "lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.LinearAlgebra.SpectralBooks.square_exponent",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 592,
+      "port": "heavy (592 files) and needs port from v4.34.1",
+      "port_notes": "Self-contained apart from Mathlib (776 distinct Mathlib module imports, no other packages), so a port does not drag in other libraries. Its 258k lines are far too many for one nosorry file, so the realistic use is to cite the result, or to port small leaves (PrimeFields.rank_threshold, ArithmeticExponent.formalOmega_admissible, FormalCircuit) as lemmas. Typical 4.34→4.33 breakage: `Set.mem_ofPred_eq` (used in ExactExponent/dual_exponent) → `Set.mem_setOf_eq`; `ite_eq_left`/`ite_eq_right`/`dite_eq_*` rewrites → `if_pos`/`if_neg`/`dif_*` or `simp [h]`; possibly renamed Mathlib lemmas, and `grind` behaviour differences (68 calls). No backward.* options and no native_decide in this closure. 15 maxHeartbeats settings up to 4,000,000."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-rectangular-and-dual-matrix-exponents",
+    "title": "Exact rectangular matrix multiplication exponent formula and dual exponent α = 1/2",
+    "problem": "In the same division-free model, for all real weights a, b, c (negative parts clipped to 0, sorted x ≥ y ≥ z), ω(F;a,b,c) = x + y + max((x+y)z − xy, 0)² / (4xyz); and the dual exponent sup{t ∈ [0,1] : ω(F;1,1,t) = 2} equals 1/2.",
+    "method_md": "Full Lean proof in the same solution module. `rectangular_exponent` rewrites with `formalOmega_max_zero` (clip negative weights), `formalOmega_eq_integral` (circuit exponent = internal rectangular exponent) and `MatrixExponent.Integral.exponent_eq` (= the benchmark function U), then matches U to the sorted closed form with `benchmark_sorted` (split_ifs + grind). `dual_exponent` uses `omega_eq_and_rigidity` and `Rectangle.dual_square`, with set extensionality inside `dualExponent`. Convention trap: at z = 0 the formula has 0/0, and Lean's `x / 0 = 0` makes the correction term 0, which is what the docstring means by \"on coordinate planes the correction term is zero\".",
+    "lean": "theorem rectangular_exponent (F : Type*) [Field F] (a b c : ℝ) :\n    formalOmega F a b c =\n      let A := max a 0\n      let B := max b 0\n      let C := max c 0\n      let x := max A (max B C)\n      let z := min A (min B C)\n      let y := A + B + C - x - z\n      x + y + (max ((x + y) * z - x * y) 0) ^ 2 / (4 * x * y * z) := by\n  sorry\n\ndef dualExponent (ω : ℝ → ℝ) : ℝ :=\n  sSup {t : ℝ | t ∈ Set.Icc 0 1 ∧ ω t = 2}\n\ndef formalAlpha (F : Type*) [Field F] : ℝ := dualExponent (formalOmega F 1 1)\n\ntheorem dual_exponent (F : Type*) [Field F] : formalAlpha F = (1 : ℝ) / 2 := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/MatrixExponent.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "pitfalls"
+    ],
+    "keywords": [
+      "rectangular matrix multiplication",
+      "dual exponent",
+      "alpha",
+      "omega",
+      "division by zero",
+      "formula"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean",
+      "path": "lean/OAI/LinearAlgebra/SpectralBooks/ExactExponent.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.LinearAlgebra.SpectralBooks.rectangular_exponent",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 592,
+      "port": "heavy (shares the 592-file closure) and needs port from v4.34.1",
+      "port_notes": "Same closure and same port issues as square_exponent. The `dual_exponent` proof itself uses `Set.mem_ofPred_eq` in a `simp only`, which needs renaming on older Mathlib.",
+      "also": [
+        "OAI.LinearAlgebra.SpectralBooks.dual_exponent"
+      ]
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-forced-navier-stokes-universal-computation",
+    "title": "Forced 3D Navier–Stokes flows from rest whose fixed particle detects Turing-machine halting",
+    "problem": "There are effective families U, f₀, f₁ (indexed by finite machine M and input w) of smooth, compactly supported, periodic-after-time-1 fields with bounded mixed derivatives such that for every ν > 0, U with zero pressure solves incompressible Navier–Stokes on ℝ³ from rest with force f₀ + νf₁ (f₀ = ∂ₜU + (U·∇)U, f₁ = −ΔU), is unique in an energy comparison class, and the particle starting at (4,0,0) enters (−1,2)³ iff M halts on w. This is NOT the Millennium regularity problem.",
+    "method_md": "Full Lean proof (comparator-checked). The force is the residual of U, so the equation holds by construction. The work is (i) a universal reversible machine and a \"guarded template\" of smooth divergence-free motions on rational boxes that implement its steps (`Universal.exists_universal_machine`, `Effectivity.exists_elementary_guarded_template`); (ii) loading from rest and periodic repetition (`loadedRepeat`, `loaded_template_realization`); (iii) the halting equivalence for the material flow (`compiled_continuous_halting_iff`); (iv) regularity, `ComparisonClass` and uniqueness by an L² energy/Gronwall argument (`unique_in_comparison`); (v) effectivity through Computable combinators. The closure is small: 60 files, 11k lines, all `import Mathlib`. Profile: simp 484, lemma 561/theorem 172, linarith 186, fun_prop 47, no maxHeartbeats settings. Related comparator results in `docs/376.md`: rapidly decaying alternating memory (NavierStokesAlternating, 41 files), pointwise and integral velocity-field detection (NavierStokesVelocity, 152 files), solenoidal sheet programs, and box routing.",
+    "lean": "theorem balanced_three_stack_realization :\n    ∃ U f₀ f₁ : Family Velocity,\n    ∃ X : Family MaterialFlow,\n    ∃ repeated : FiniteMachine → Velocity,\n      EffectiveFamily U ∧ EffectiveFamily f₀ ∧ EffectiveFamily f₁ ∧\n      (∀ M, Function.Periodic (repeated M) 1) ∧\n      ∀ (M : FiniteMachine) (w : Input M),\n        Smooth (U M w) ∧ Smooth (f₀ M w) ∧ Smooth (f₁ M w) ∧\n        f₀ M w = inertialCoefficient (U M w) ∧\n        f₁ M w = viscousCoefficient (U M w) ∧\n        CommonCompactSupport (U M w) (f₀ M w) (f₁ M w) ∧\n        BoundedMixed (U M w) ∧\n        PeriodicAfterOne (U M w) ∧\n        (∀ t, 1 ≤ t → ∀ x, U M w t x = repeated M t x) ∧\n        ComparisonClass (U M w) (fun _ _ => 0) ∧\n        IsMaterialFlow (U M w) (X M w) ∧\n        ((∃ t : ℝ, 0 ≤ t ∧ X M w t fixedLabel ∈ observer) ↔ Halts M w) ∧\n        ∀ ν : ℝ, 0 < ν →\n          let f := affineForce (f₀ M w) (f₁ M w) ν\n          ZeroDataSolution ν f (U M w) (fun _ _ => 0) ∧\n          Smooth f ∧ BoundedMixed f ∧ PeriodicAfterOne f ∧\n          UniqueInComparison ν f (U M w) ∧\n          (ComputableReal ν → EffectiveFieldIn ∅ f) ∧\n          (∀ name : ℕ → ℚ, RealName name ν → EffectiveFieldIn {nameOracle name} f) := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/ForcedNavierStokesComputation.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/MainResult.lean"
+      },
+      {
+        "label": "scope of all NS results",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/docs/376.md"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "pitfalls"
+    ],
+    "keywords": [
+      "navier-stokes",
+      "fluid",
+      "turing machine",
+      "halting",
+      "universal computation",
+      "forced",
+      "uniqueness",
+      "effective"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport",
+      "path": "lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/MainResult.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.BalancedTransport.balanced_three_stack_realization",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 60,
+      "port": "needs port from v4.34.1 (moderate: 60 files, 11k lines, Mathlib only)",
+      "port_notes": "The most portable of the headline results: 60 files, every file uses `import Mathlib`, and there are no heartbeat or backward.* options. Expect renamed analysis lemmas (Lp/`compLpL` coercions, `HasDerivWithinAt.fun_sum`, `contDiff` API with `(⊤ : ℕ∞)` smoothness) and Computability lemma names to be the main breakages between Mathlib versions. Reusable leaves: EnergyCurve (Gronwall uniqueness), Energy (integration by parts), EffectiveArithmetic (Primrec for ℤ/ℚ). The statement is about forced flows with a constructed force; it says nothing about global regularity of unforced Navier–Stokes."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-ns-uniqueness-in-comparison-class",
+    "title": "Uniqueness of smooth zero-data Navier–Stokes solutions in an energy comparison class",
+    "problem": "Reusable intermediate result: if U solves forced Navier–Stokes from rest with zero pressure and lies in the comparison class (C_tH² ∩ C¹_tL², u and ∇u bounded on finite slabs, pressure in C_tH¹ modulo a function of time), then every other smooth zero-data solution in that class equals U and has spatially constant pressure.",
+    "method_md": "Takes the Lp-valued curves of both solutions, forms V = Vu − VU with derivative W, proves `l2EnergyRate (V t) (W t) ≤ 12C · l2Energy (V t)` on [0,T) from `energy_pairing_bound` (integration by parts of the convection and pressure terms, divergence freeness), then applies `l2Energy_eq_zero_of_bound` (Gronwall) and `l2Energy_zero_pointwise` (continuous representative). Pressure: `constant_pressure_of_velocity_eq`. Valid for ν ≥ 0, so it covers Euler too. About 55 lines on top of EnergyCurve/Energy/Sobolev.",
+    "lean": "theorem unique_in_comparison {ν : ℝ} (hν : 0 ≤ ν) {f U : Velocity}\n    (hU : ZeroDataSolution ν f U (fun _ _ => 0)) (hUC : ComparisonClass U (fun _ _ => 0)) :\n    UniqueInComparison ν f U := by\n  sorry",
+    "examples": [
+      {
+        "label": "theorem",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Comparison.lean"
+      },
+      {
+        "label": "Gronwall energy lemma",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/EnergyCurve.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "uniqueness",
+      "navier-stokes",
+      "energy",
+      "gronwall",
+      "weak-strong",
+      "comparison class",
+      "euler"
+    ],
+    "source": {
+      "name": "openai/math (forced Navier–Stokes computation)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Comparison.lean",
+      "path": "lean/OAI/MathematicalPhysics/NavierStokes/BalancedTransport/Comparison.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.BalancedTransport.Analysis.unique_in_comparison",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 31,
+      "port": "needs port from v4.34.1 (small: 31 files, 5.8k lines)",
+      "port_notes": "Import closure: 31 files, 5.8k lines, all in the BalancedTransport directory (Model, Sobolev, Energy, EnergyCurve, Elementary and their helpers), Mathlib only. A good candidate for a nosorry-lib lemma once the statement definitions (Smooth, CH, C1L2, ZeroDataSolution) are fixed."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-vp-ne-vnp-every-field",
+    "title": "VP ≠ VNP over every field (exact binary-gate circuits)",
+    "problem": "For each field F, the classes of polynomial families (variables Fin n × Bool at index n) computable by polynomial-size exact circuits (binary +, −, × with free variables and constants), and those obtained by summing a VP verifier over polynomially many Boolean witnesses, are different. Arity and degree are polynomially bounded in both.",
+    "method_md": "Full Lean proof. The headline is a transport (`Standalone.vp_ne_vnp`) through `Valiant.Project.isVP_iff`/`isVNP_iff` to the internal `VPVNP.vp_ne_vnp`, which is `vp_ne_vnp_of_uniform_P separation_lower_bound F`. The lower bound is for state sums on square grids (via Euclidean tensor prices), and the same machinery gives `corollary12` (Hamiltonian cycle for all characteristics, permanent outside characteristic 2). The separate ArithmeticHierarchy challenge proves VF ⊊ VBP ⊊ VP ⊊ VNP. The import closure is 3,189 project files and 476k lines. It depends on external packages Lemmata, complexitylib and cslib besides Mathlib. Profile: simp ≈16.8k, omega ≈12.4k, decide ≈4.6k, bound ≈2.6k, 389 maxHeartbeats settings, 133 `irreducible` markers. The docs say that the explicit n^Ω((log n)^{1/12}) grid bound remains unformalized; only super-polynomial is proved.",
+    "lean": "def Computes {F σ : Type*} [Field F] (s : ℕ) (p : MvPolynomial σ F) : Prop :=\n  ∃ v : Fin s → MvPolynomial σ F,\n    let available (k : ℕ) (x : MvPolynomial σ F) :=\n      (∃ j : σ, MvPolynomial.X j = x) ∨ (∃ a : F, MvPolynomial.C a = x) ∨\n        ∃ j : Fin s, j.val < k ∧ v j = x\n    available s p ∧ ∀ i : Fin s, ∃ a b, available i.val a ∧ available i.val b ∧\n      (v i = a + b ∨ v i = a - b ∨ v i = a * b)\n\ndef IsVP (p : Family F σ) : Prop :=\n  PFamily p ∧ ∃ s : ℕ → ℕ, PolynomiallyBounded s ∧ ∀ n, Computes (s n) (p n)\n\ndef IsVNP (p : Family F σ) : Prop :=\n  PFamily p ∧ ∃ (W : ℕ → Type) (inst : ∀ n, Fintype (W n)) (g : Family F (fun n => σ n ⊕ W n)),\n    PolynomiallyBounded (fun n => @Fintype.card _ (inst n)) ∧ IsVP g ∧ ∀ n,\n      p n = ∑ y : W n → Bool, MvPolynomial.eval₂Hom MvPolynomial.C\n        (Sum.elim MvPolynomial.X (fun i => MvPolynomial.C (if y i then 1 else 0))) (g n)\n\ntheorem vp_ne_vnp (F : Type u) [Field F] :\n    (Valiant.Project.IsVP : Valiant.Project.Family F (fun n => Fin n × Bool) → Prop) ≠\n      Valiant.Project.IsVNP := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/VPVNP.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Computability/VPVNP/ClassSeparation.lean"
+      },
+      {
+        "label": "scope (Valiant hierarchy)",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/docs/379.md"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "vp",
+      "vnp",
+      "valiant",
+      "algebraic complexity",
+      "arithmetic circuit",
+      "permanent",
+      "lower bound"
+    ],
+    "source": {
+      "name": "openai/math (VP vs VNP)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Computability/VPVNP",
+      "path": "lean/OAI/Computability/VPVNP/ClassSeparation.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.Computability.VPVNP.Standalone.vp_ne_vnp",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 3189,
+      "port": "heavy (3189 files) and needs port from v4.34.1",
+      "port_notes": "Not realistically portable into nosorry-lib. It would need Lemmata (ZIB-IOL), complexitylib and cslib at the same revisions plus their v4.34.1 compatibility patches, and much of the SpectralBooks development. Cite rather than port. The definitional bridge (Valiant/Project.lean) is a model for statement adapters."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-erdos-rado-sunflower-fixed-base",
+    "title": "Erdős–Rado sunflower bound with a base depending only on r",
+    "problem": "For each r ≥ 3 there is C ≥ 1 such that every family of more than C^k distinct k-element finsets (in any type) contains r members with identical pairwise intersections (an r-petal sunflower). This is the sunflower conjecture in its Erdős–Rado form (Erdős problem #20 style).",
+    "method_md": "Full Lean proof. `fixedBase_words` gives a base D for word families `Finset (Fin k → Fin m)` avoiding the word pattern, using rule devices and diagonal prices from the Euclidean tensor-price theory (SpectralBooks) and `exists_natBase_of_logb_bound`. `fixedBase_of_wordBound.{u}` transfers this to k-sets in any universe. The import closure is very large: 7,272 project files and 893k lines, because it reuses the tensor-spectrum machinery. Besides Mathlib it imports Lemmata and fixed-point-theorems. Profile: simp ≈28k, omega ≈14k, decide ≈8.7k, 1,644 maxHeartbeats settings. The docs say that the quantitative B_r^k bound for sets of size at most k remains unformalized.",
+    "lean": "theorem erdosRadoSunflower (r : ℕ) (hr : 3 ≤ r) :\n    ∃ C : ℕ, 1 ≤ C ∧ ∀ (k : ℕ) (α : Type u) (F : Finset (Finset α)),\n      (∀ A ∈ F, A.card = k) → C ^ k < F.card →\n      ∃ G ⊆ F, G.card = r ∧ ∃ K : Finset α,\n        ∀ A ∈ G, ∀ B ∈ G, A ≠ B → A ∩ B = K := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/Sunflower.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sunflower/FixedBase.lean"
+      },
+      {
+        "label": "scope",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/docs/379.md"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "sunflower",
+      "erdos-rado",
+      "erdos problem 20",
+      "delta-system",
+      "extremal combinatorics",
+      "finset"
+    ],
+    "source": {
+      "name": "openai/math (sunflower bound)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sunflower/FixedBase.lean",
+      "path": "lean/OAI/Combinatorics/Sunflower/FixedBase.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.Combinatorics.Sunflower.erdosRadoSunflower",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 7272,
+      "port": "heavy (7272 files) and needs port from v4.34.1",
+      "port_notes": "Not portable in practice. If a formal-conjectures sunflower statement differs (e.g. sets of size ≤ k, explicit C), check the quantifier order (C before k and α) and the cardinality convention (strict `C ^ k < F.card`) before claiming a match. External deps: Lemmata, FixedPointTheorems."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-sidorenko-counterexample",
+    "title": "A finite counterexample to Sidorenko's conjecture (35-vertex bipartite pattern)",
+    "problem": "Let H be the point–triple incidence graph of 22 explicit triples on 13 points (35 vertices, 66 edges). There is a finite simple graph G with an edge such that the homomorphism density t(H,G) is less than edgeDensity(G)^66 (homomorphisms include non-injective maps).",
+    "method_md": "Full Lean proof, compact: 35 files, 24k lines, Mathlib only, no heartbeat settings. A symmetric counter-kernel is built and verified (`exists_symmetric_kernel`: orbits, signs, moments, coercivity, refinement histograms checked with `decide +kernel`; about 544 decide calls). `finiteHost_main` then samples a finite host by a first-moment argument, with collision error over 595 vertex pairs. The structure is a good template for \"kernel counterexample → finite graph\" proofs.",
+    "lean": "def H : SimpleGraph PatternVertex where\n  Adj := incidence\n  symm.symm := by intro left right; cases left <;> cases right <;> simp [incidence]\n  loopless.irrefl := by intro vertex; cases vertex <;> simp [incidence]\n\nnoncomputable def homCount {V W : Type*} (F : SimpleGraph V) (G : SimpleGraph W) : ℕ :=\n  Nat.card {hom : V → W // ∀ left right, F.Adj left right → G.Adj (hom left) (hom right)}\n\nnoncomputable def homDensity {V W : Type*} (F : SimpleGraph V) (G : SimpleGraph W) : ℝ :=\n  (homCount F G : ℝ) / (Nat.card W : ℝ) ^ Nat.card V\n\nnoncomputable def edgeDensity {W : Type*} (G : SimpleGraph W) : ℝ :=\n  2 * (Nat.card G.edgeSet : ℝ) / (Nat.card W : ℝ) ^ 2\n\n/-- A finite simple host with at least one edge violates Sidorenko's inequality. -/\ntheorem main : ∃ size : ℕ, 0 < size ∧ ∃ host : SimpleGraph (Fin size),\n    (∃ left right, host.Adj left right) ∧ homDensity H host < (edgeDensity host) ^ 66 := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/SidorenkoCounterexample.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko/RandomHost.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "performance"
+    ],
+    "keywords": [
+      "sidorenko",
+      "homomorphism density",
+      "counterexample",
+      "bipartite",
+      "graphon",
+      "extremal graph theory"
+    ],
+    "source": {
+      "name": "openai/math (Sidorenko counterexample)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/Sidorenko",
+      "path": "lean/OAI/Combinatorics/Sidorenko/RandomHost.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.SidorenkoCounterexample.main",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 35,
+      "port": "needs port from v4.34.1 (small: 35 files, Mathlib only)",
+      "port_notes": "The best port candidate: 35 files, one Mathlib import each, no heartbeat or backward options. The kernel checks (`decide +kernel`) should behave the same on v4.33.1, though kernel time may differ. Watch `Nat.card`/`Fintype.card` lemma renames, `ite_eq_left` → `if_pos`, `Set.mem_ofPred_eq` → `Set.mem_setOf_eq`. Note the pattern (statement form) uses 35 vertices and the exponent 66 = |E(H)|."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-hadwiger-conjecture-counterexample",
+    "title": "Hadwiger's conjecture is false (graphs with independence number 2)",
+    "problem": "¬ ∀ m (G : SimpleGraph (Fin m)), χ(G) ≤ hadwigerNumber G, where hadwigerNumber is the sSup of t admitting t disjoint connected, pairwise adjacent branch sets. The stronger statement gives for every M a graph on m ≥ max M 5 vertices with α(G) ≤ 2, connected matching number < m/100 and Hadwiger number < 26m/75 + 2/3 < m/2 ≤ χ(G).",
+    "method_md": "Full Lean proof: 288 files, 40k lines, Mathlib only. `not_hadwiger_conjecture` is three lines from `exists_counterexamples 0` and `exact_mod_cast`. The bulk is a probabilistic or analytic construction with many quantitative bound files (`AdaptiveProjectionBounds`, `CollisionInequality`, …). It is performance-heavy: about 225 file-level maxHeartbeats settings between 240k and 2.4M. Statement traps that the challenge handles: `chromaticNumber` is `ℕ∞` (hence `≠ ⊤` and `toNat`), and `hadwigerNumber` is an `sSup` over ℕ (0 if unbounded, though for finite graphs it is bounded).",
+    "lean": "def HasCliqueMinor {V : Type} (G : SimpleGraph V) (t : ℕ) : Prop :=\n  ∃ B : Fin t → Set V,\n    (∀ i, (G.induce (B i)).Connected) ∧\n    (∀ i j, i ≠ j → Disjoint (B i) (B j)) ∧\n    (∀ i j, i ≠ j → ∃ v ∈ B i, ∃ w ∈ B j, G.Adj v w)\n\nnoncomputable def hadwigerNumber {V : Type} (G : SimpleGraph V) : ℕ :=\n  sSup {t : ℕ | HasCliqueMinor G t}\n\ntheorem not_hadwiger_conjecture :\n    ¬ (∀ (m : ℕ) (G : SimpleGraph (Fin m)),\n      G.chromaticNumber ≤ ↑(hadwigerNumber G)) := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/HadwigerCounterexample.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/HadwigerCounterexample/Main.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "performance"
+    ],
+    "keywords": [
+      "hadwiger",
+      "clique minor",
+      "chromatic number",
+      "counterexample",
+      "graph minor",
+      "independence number"
+    ],
+    "source": {
+      "name": "openai/math (Hadwiger counterexample)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Combinatorics/HadwigerCounterexample",
+      "path": "lean/OAI/Combinatorics/HadwigerCounterexample/Main.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.HadwigerCounterexample.not_hadwiger_conjecture",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 288,
+      "port": "needs port from v4.34.1 (medium: 288 files, Mathlib only)",
+      "port_notes": "Mathlib only (53 distinct Mathlib modules). The heavy heartbeat budgets suggest elaboration-time sensitivity, so expect timeouts as well as renames when changing Mathlib. A formal-conjectures Hadwiger statement may use `G.Minor`/`CliqueFree` style definitions, so an adapter proving the equivalence with `HasCliqueMinor` would be needed."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-mub-dimension-six-at-most-five",
+    "title": "At most five mutually unbiased bases in dimension 6",
+    "problem": "Two claims: (1) every complex 6×6 Hadamard matrix not equivalent to Tao's matrix has vanishing Fourier-type moment g(H, π·α) = 0 for every permutation of the charge (1,1,1,−1,−1,−1); (2) any family of n mutually unbiased orthonormal bases of ℂ⁶ has n ≤ 5.",
+    "method_md": "Full Lean proof and an extreme example of certificate checking. The closure has 3,381 project files and 2.84 million lines. Most of it is generated Gram-matrix data (`GramEntries`, `GramRows`, `GramKeys`, …) represented as `Integer.Sparse` coefficient lists and checked by `decide +kernel` (about 2,400 files with such checks). Generic soundness lemmas (`Sparse.eval_eq_sum_coeff`, `Combination.consequence`) transfer the integer identities to the real Gram entries of a hypothetical 7-basis family. Profile: linarith ≈7.8k, ring ≈6.6k, simp ≈5.8k, only 128 Mathlib module imports.",
+    "lean": "def IsMUBFamily {n : ℕ} (B : Fin n → Basis) : Prop :=\n  ∀ r s, r ≠ s → ∀ i j,\n    Complex.normSq (inner ℂ (B r i) (B s j)) = (1 : ℝ) / 6\n\ndef Attainable (n : ℕ) : Prop := ∃ B : Fin n → Basis, IsMUBFamily B\n\ntheorem fourier_and_family_bound :\n    (∀ H : CMatrix, IsHadamard H → ¬Equivalent H tao →\n      ∀ π : Equiv.Perm Coord, g H (permuteCharge π alpha) = 0) ∧\n    (∀ n : ℕ, Attainable n → n ≤ 5) := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/MUBSix.lean"
+      },
+      {
+        "label": "certificate kernel",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Analysis/MutuallyUnbiased/Certificate/Integer.lean"
+      }
+    ],
+    "tags": [
+      "performance",
+      "architecture"
+    ],
+    "keywords": [
+      "mutually unbiased bases",
+      "mub",
+      "dimension 6",
+      "hadamard matrix",
+      "certificate",
+      "decide +kernel",
+      "quantum information"
+    ],
+    "source": {
+      "name": "openai/math (MUBs in dimension six)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Analysis/MutuallyUnbiased",
+      "path": "lean/OAI/Analysis/MutuallyUnbiased/Main.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.MUB6.fourier_and_family_bound",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 3381,
+      "port": "heavy (3381 files, 2.8M lines) and needs port from v4.34.1",
+      "port_notes": "Not portable into a single submission. Kernel-checked data should be toolchain-stable, but the volume alone rules out nosorry use. Cite the result. The Sparse certificate pattern itself is reusable. Statement detail: `Basis` here is `OrthonormalBasis (Fin 6) ℂ (EuclideanSpace ℂ (Fin 6))`, and the bound is n ≤ 5, not the conjectured 3."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-borsuk-counterexample-dimension-nine",
+    "title": "Rank-one projectors of ℝ⁴ give a Borsuk counterexample in dimension 9",
+    "problem": "The set of rank-one projectors uuᵀ (‖u‖ = 1, u ∈ ℝ⁴), viewed in the 16-dimensional Euclidean space of 4×4 matrices, is compact, lies in the 9-dimensional affine space of symmetric trace-one matrices, has diameter √2, and cannot be covered by 10 subsets of diameter < √2. This gives a counterexample to Borsuk's conjecture in dimension 9 (9+1 = 10 pieces are not enough).",
+    "method_md": "Full Lean proof: 269 files, 79k lines, Mathlib only. `coordinates9` is an explicit isometry from the trace-zero symmetric part to ℝ⁹ (`fin_cases` + `simp` + `ring`). The topological and combinatorial core reduces any 10-cover to a finite labelled system (`TenSystem`) refuted in 145 generated `FiniteCases/CasesNNN.lean` files, with about 19,600 `decide` calls on small finset facts. It also uses Smith-theory and local-parity arguments for the projective-space part.",
+    "lean": "def projector (u : Vector4) : Matrix4 :=\n  WithLp.toLp 2 (fun ij => u ij.1 * u ij.2)\n\ndef projectorSet : Set Matrix4 :=\n  projector '' {u : Vector4 | ‖u‖ = 1}\n\ndef HasTenSmallCover : Prop :=\n  ∃ C : Fin 10 → Set Matrix4,\n    (∀ i, C i ⊆ projectorSet) ∧\n    projectorSet ⊆ ⋃ i, C i ∧\n    ∀ i, Metric.diam (C i) < Real.sqrt 2\n\ntheorem main_theorem :\n    IsCompact projectorSet ∧\n    projectorSet ⊆ traceOneSymmetric ∧\n    Metric.diam projectorSet = Real.sqrt 2 ∧\n    ¬ HasTenSmallCover := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/BorsukNine.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Geometry/Borsuk/Main.lean"
+      },
+      {
+        "label": "case files",
+        "ref": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Geometry/Borsuk/FiniteCases"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "performance"
+    ],
+    "keywords": [
+      "borsuk",
+      "diameter",
+      "counterexample",
+      "projector",
+      "covering",
+      "decide",
+      "dimension 9"
+    ],
+    "source": {
+      "name": "openai/math (Borsuk in dimension nine)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/Geometry/Borsuk",
+      "path": "lean/OAI/Geometry/Borsuk/Main.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.BorsukNine.main_theorem",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 269,
+      "port": "needs port from v4.34.1 (medium: 269 files, Mathlib only)",
+      "port_notes": "Uses `WithLp.toLp`, so the `WithLp`/`EuclideanSpace` API at the target Mathlib must match: this API changed in 2025–2026 and is the most likely breakage. The finite-case files are plain `decide` on `Finset (Fin 10)` facts and should port unchanged. A formal-conjectures Borsuk statement in the usual form (any bounded set in ℝⁿ splits into n+1 pieces of smaller diameter) needs an adapter: an isometric embedding of the trace-one symmetric matrices in `EuclideanSpace ℝ (Fin 9)`, which is `coordinates9` in Main.lean."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-kaplansky-direct-finiteness-char-two",
+    "title": "Kaplansky's direct-finiteness conjecture fails over a finite field of characteristic 2",
+    "problem": "There exist a finite field K of characteristic 2, a finitely generated group G and a, b in the group algebra K[G] (`MonoidAlgebra K G`) with a·b = 1 but b·a ≠ 1.",
+    "method_md": "Full Lean proof: 121 files, 13k lines, Mathlib only (one `import Mathlib` each). It goes through `Prescription.Output.prescribed_main`, and the file names (CycleFactorization, CharacterIdempotents, CandidateClassification, BoundaryFilling, …) show an explicit construction of the elements with a combinatorial verification. The statement is packaged as `MainClaim : Prop`. A companion challenge (OddKaplansky) treats odd characteristic.",
+    "lean": "def MainClaim : Prop :=\n  ∃ (K : Type) (_ : Field K) (_ : Fintype K) (_ : CharP K 2),\n    ∃ (G : Type) (_ : Group G) (_ : Group.FG G),\n      ∃ a b : MonoidAlgebra K G, a * b = 1 ∧ b * a ≠ 1\n\ntheorem main_theorem : MainClaim := by\n  sorry",
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/ComparatorChallenges/KaplanskyDirectFiniteness.lean"
+      },
+      {
+        "label": "proof",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/RingTheory/DirectFiniteness/Main.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "kaplansky",
+      "direct finiteness",
+      "group algebra",
+      "monoidalgebra",
+      "characteristic 2",
+      "counterexample"
+    ],
+    "source": {
+      "name": "openai/math (Kaplansky direct finiteness)",
+      "url": "https://github.com/openai/math/tree/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/RingTheory/DirectFiniteness",
+      "path": "lean/OAI/RingTheory/DirectFiniteness/Main.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.KaplanskyCounterexample.main_theorem",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 121,
+      "port": "needs port from v4.34.1 (small-medium: 121 files, Mathlib only)",
+      "port_notes": "Mathlib-only and moderate in size. `MonoidAlgebra` API changes (e.g. `single`/`of` lemma names) are the likely breakages. In the challenge the field and group live in `Type` (not universe-polymorphic), and a formal-conjectures statement quantified over all universes would need a `ULift` adapter."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "oai-result-tensor-rank-le-twice-circuit-cost",
+    "title": "Matrix multiplication tensor rank is at most twice the division-free circuit cost",
+    "problem": "Reusable intermediate result: for a formally correct division-free program P multiplying a×b by b×c matrices over a field, tensorRank(matrixTensor F b c a) ≤ 2 · cost(P).",
+    "method_md": "Two steps: `matrixTensor_rank_le_twice_multiplicationCount` (bilinearisation: the mixed left/right second partials of each wire span a space that grows by at most two rank-one terms per multiplication gate) and `multiplicationCount_le_cost`. The rational-circuit version in MatrixExponent/Bilinearize.lean handles division gates by working at the generic point of the rational function field. This is the standard bridge from cost lower bounds to rank lower bounds (Strassen), proved formally and without characteristic assumptions.",
+    "lean": "theorem matrixTensor_rank_le_twice_cost {a b c : ℕ} {P : MatrixAlgorithm F a b c}\n    (h : FormalCorrect P) : tensorRank (matrixTensor F b c a) ≤ 2 * P.cost :=\n  (matrixTensor_rank_le_twice_multiplicationCount h).trans\n    (Nat.mul_le_mul_left 2 (multiplicationCount_le_cost _))",
+    "examples": [
+      {
+        "label": "theorem",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/Circuit.lean"
+      },
+      {
+        "label": "rational version",
+        "ref": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/MatrixExponent/Bilinearize.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "tensor rank",
+      "circuit cost",
+      "strassen",
+      "bilinear",
+      "lower bound",
+      "matrix multiplication"
+    ],
+    "source": {
+      "name": "openai/math (matrix multiplication exponent)",
+      "url": "https://github.com/openai/math/blob/3344da59991ed94f9ba711217b29c1d760badfa6/lean/OAI/LinearAlgebra/SpectralBooks/Circuit.lean",
+      "path": "lean/OAI/LinearAlgebra/SpectralBooks/Circuit.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "OAI.LinearAlgebra.SpectralBooks.matrixTensor_rank_le_twice_cost",
+      "repo": "openai/math",
+      "commit": "3344da59991ed94f9ba711217b29c1d760badfa6",
+      "lean": "v4.34.1",
+      "mathlib": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+      "axioms": "Comparator config permits only propext, Quot.sound, Classical.choice",
+      "files": 13,
+      "port": "needs port from v4.34.1 (small subset)",
+      "port_notes": "Import closure of Circuit.lean: 13 files, 1.7k lines, 18 Mathlib modules (Tensor, Rank, FormalCircuit, MatrixMultiplication.Arithmetic and helpers). It needs the repository's own `tensorRank`/`matrixTensor` definitions, not Mathlib's. It is a candidate for nosorry-lib if algebraic-complexity problems appear."
+    }
+  }
+]

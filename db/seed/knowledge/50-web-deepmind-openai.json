@@ -1,0 +1,642 @@
+[
+  {
+    "slug": "trusted-challenge-module-comparator",
+    "title": "Check the final theorem against a trusted challenge module",
+    "problem": "An agent's proof file can silently weaken the target (edited hypotheses, a redefined helper, a changed import) and still compile. Reading a long solution file does not reveal this reliably.",
+    "method_md": "Keep the statement in a separate, human-reviewed challenge module whose theorems end in `sorry`, and let the proof live in a solution module that restates the same theorems by the same names. A judge such as Comparator (leanprover/comparator) then checks three things: every named theorem has the same statement in both environments (including every declaration the statement mentions), the solution's proofs depend only on permitted axioms, and the exported solution environment is replayed through the kernel (optionally also an external kernel like nanoda). OpenAI's Navier-Stokes/Euler certificates and its `openai/math` library ship exactly this: a `ComparatorChallenges/*.json` config naming `challenge_module`, `solution_module`, `theorem_names` and `permitted_axioms` = propext, Quot.sound, Classical.choice. Comparator runs the builds inside a landrun sandbox, so it is Linux-only; on Lean v4.33.1 use the standalone repository (the README says the functionality moved into Lean core as `lake comparator` / `lake check` from v4.35.0). Even without the tool, the discipline helps: never let the prover edit the statement file, and diff the statement text mechanically before accepting a proof.",
+    "lean": "-- Challenge/MyProblem.lean  (trusted, reviewed by a human; never edited by the prover)\nimport Mathlib\n\nnamespace MyProblem\n\ntheorem main_claim (n : ℕ) (h : 2 ≤ n) : n < 2 ^ n := by\n  sorry\n\nend MyProblem\n\n-- Solution/MyProblem.lean  (written by the agent; same name, same statement)\n-- import Mathlib\n-- namespace MyProblem\n-- theorem main_claim (n : ℕ) (h : 2 ≤ n) : n < 2 ^ n := Nat.lt_two_pow_self\n-- end MyProblem\n\n-- comparator config (JSON, shown as a comment):\n-- { \"challenge_module\": \"Challenge.MyProblem\",\n--   \"solution_module\": \"Solution.MyProblem\",\n--   \"theorem_names\": [\"MyProblem.main_claim\"],\n--   \"permitted_axioms\": [\"propext\", \"Quot.sound\", \"Classical.choice\"] }",
+    "examples": [
+      {
+        "label": "Comparator config for Navier-Stokes certificates",
+        "ref": "https://github.com/openai/NavierStokesAndEuler/blob/main/ComparatorChallenges/NavierStokes.json"
+      },
+      {
+        "label": "Comparator README (what is checked, sandbox, caveats)",
+        "ref": "https://github.com/leanprover/comparator"
+      },
+      {
+        "label": "openai/math Lean library verification instructions",
+        "ref": "https://github.com/openai/math/blob/main/lean/README.md"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "pitfalls"
+    ],
+    "keywords": [
+      "comparator",
+      "challenge module",
+      "solution module",
+      "trusted statement",
+      "permitted axioms",
+      "nanoda",
+      "lean4export",
+      "lake check"
+    ],
+    "source": {
+      "name": "leanprover/comparator + openai/NavierStokesAndEuler",
+      "url": "https://github.com/leanprover/comparator",
+      "licence": "original (method described from Apache-2.0 sources)"
+    }
+  },
+  {
+    "slug": "audit-axioms-of-final-theorem",
+    "title": "Gate acceptance on #print axioms showing only the three standard axioms",
+    "problem": "A file can compile while the main theorem still depends on `sorryAx`, a stray `axiom`, or `Lean.ofReduceBool` from `native_decide` hidden in some helper lemma.",
+    "method_md": "Before declaring a result proved, run `#print axioms` on the top-level declaration (not on helpers) and accept only `propext`, `Classical.choice` and `Quot.sound`. Every published certificate examined here records exactly this set: OpenAI's `formalization.yaml` lists the three axioms and `sorry_count: 0` per main result, Comparator's `permitted_axioms` uses the same list, and DeepMind's AlphaProof Nexus paper reports rejecting any final proof that uses disallowed axioms including `sorryAx` (it uses SafeVerify). `sorryAx` in the output means some transitive dependency is unfinished; `Lean.ofReduceBool` means `native_decide` was used somewhere and the kernel trusted compiled code. Intermediate sketches may contain `sorry`, but the axiom check is the final gate, not compilation.",
+    "lean": "theorem helper : (2 : ℕ) + 2 = 4 := by norm_num\n\ntheorem main_result : ∃ n : ℕ, n + 2 = 4 := ⟨2, helper⟩\n\n#print axioms main_result\n-- Acceptable output: depends on no axioms, or only on\n-- [propext, Classical.choice, Quot.sound].\n-- Reject if the list contains sorryAx, Lean.ofReduceBool, or any user `axiom`.",
+    "examples": [
+      {
+        "label": "formalization.yaml: axioms and sorry_count per main result",
+        "ref": "https://github.com/openai/NavierStokesAndEuler/blob/main/formalization.yaml"
+      },
+      {
+        "label": "AlphaProof Nexus paper (SafeVerify, sorryAx rejected)",
+        "ref": "https://arxiv.org/abs/2605.22763"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "tactics"
+    ],
+    "keywords": [
+      "print axioms",
+      "sorryax",
+      "native_decide",
+      "ofreducebool",
+      "classical.choice",
+      "propext",
+      "quot.sound",
+      "safeverify"
+    ],
+    "source": {
+      "name": "original, practice observed in openai/NavierStokesAndEuler (Apache-2.0)",
+      "url": "https://github.com/openai/NavierStokesAndEuler",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "formal-conjectures-statement-attributes",
+    "title": "Use formal-conjectures attributes: category, AMS, question, formal_proof",
+    "problem": "Problem statements written without metadata do not say whether the claim is open or solved, whether the source asks a question or makes a conjecture, or where a proof lives; reviewers cannot tell what a sorry means.",
+    "method_md": "google-deepmind/formal-conjectures (Apache-2.0 code, on Lean v4.33.1, the same toolchain as nosorry) tags every statement with exactly one `@[category ...]`: `research open`, `research solved`, `textbook`, `API` (basic theory for a new definition) or `test` (a unit test for a definition or statement). It also needs at least one MSC2020 subject `@[AMS n]` (`#AMS` lists the values). A source phrased as a yes/no question is tagged `@[question]` and the statement is the proposition asked about, with `¬` in front if the answer is no; a question asking for a value is tagged `@[question value]` and its unknown is a plain `sorry` definition `<theorem>.answer` declared just before the theorem, filled in later without touching the statement. Solved problems carry `@[formal_proof using lean4 at \"<link>\"]` (kinds: `formal_conjectures`, `lean4`, `other_system`). Files are modules (`module`, `public import FormalConjecturesUtil`, `@[expose] public section`), one problem per file, variants in the same file named `<thm>.variants.<name>`. Placeholder definitions (`def foo : Type := sorry`, `opaque`), holes and new axioms are forbidden.",
+    "lean": "-- Shape only; the attributes need `FormalConjecturesUtil`.\n-- def my_problem.answer : ℕ := sorry\n--\n-- /-- What is the least `N` such that ...? -/\n-- @[category research open, question value, AMS 5]\n-- theorem my_problem : IsLeast {N | P N} my_problem.answer := by\n--   sorry\n--\n-- /-- English version: \"Is it true that every ... ?\"  (answer: no) -/\n-- @[category research solved, question, AMS 11]\n-- theorem my_question : ¬ ∀ n : ℕ, Q n := by\n--   sorry\n--\n-- @[category test, AMS 5]\n-- theorem my_problem.variants.small_case : P 4 := by\n--   decide",
+    "examples": [
+      {
+        "label": "formal-conjectures CONTRIBUTING (attributes, file layout, style rules)",
+        "ref": "https://github.com/google-deepmind/formal-conjectures/blob/main/CONTRIBUTING.md"
+      },
+      {
+        "label": "Erdős 152 as stated now: @[question] plus formal_proof link",
+        "ref": "https://github.com/google-deepmind/formal-conjectures/blob/9097e2f90e66d2f6244209cb1c07f7120d17ec53/FormalConjectures/ErdosProblems/152.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "formal-conjectures",
+      "category",
+      "research open",
+      "research solved",
+      "ams",
+      "question",
+      "answer",
+      "formal_proof",
+      "variants"
+    ],
+    "source": {
+      "name": "google-deepmind/formal-conjectures CONTRIBUTING.md",
+      "url": "https://github.com/google-deepmind/formal-conjectures",
+      "path": "CONTRIBUTING.md",
+      "licence": "original (summary; repo code Apache-2.0, docs CC-BY-4.0)"
+    }
+  },
+  {
+    "slug": "answer-elaborator-legacy-vs-question-tag",
+    "title": "Normalise answer(...) statements when porting older formal-conjectures files",
+    "problem": "Statements copied from older formal-conjectures snapshots or from AlphaProof Nexus outputs read `answer(True) ↔ P` or `answer(False) ↔ P`; the current repository states the same problem as `P` or `¬ P` with `@[question]`, so two files for the same problem look different and a naive comparison fails.",
+    "method_md": "Older formal-conjectures (and google-deepmind/alphaproof-nexus-results, on Lean v4.27.0) used an `answer(...)` elaborator: the unknown yes/no answer was a placeholder inside the statement, and solving meant replacing it by `True` or `False` and proving the iff. The current CONTRIBUTING (repo on v4.33.1) replaces this: yes/no questions are tagged `@[question]` and stated as the proposition that holds, value questions use a separate `<thm>.answer` definition. When porting, rewrite `answer(True) ↔ P` to `P` and `answer(False) ↔ P` to `¬ P`, check that the definitions used inside `P` match the current snapshot (they are sometimes corrected between benchmark tags), and keep a note of the original commit. Note also that a filled-in `.answer` definition plus a proof does not by itself mean the problem is solved: a trivial or degenerate answer can satisfy the statement, and the repository explicitly leaves that judgement to humans.",
+    "lean": "-- legacy shape (alphaproof-nexus-results, Lean v4.27):\n--   theorem target : answer(True) ↔ Tendsto f atTop atTop := by ...\n-- current shape (formal-conjectures on v4.33.1):\n--   @[category research solved, question, AMS 5]\n--   theorem erdos_k : Tendsto f atTop atTop := by ...\n\n-- the port is a one-line wrapper once the iff is proved:\ntheorem port_true {P : Prop} (h : True ↔ P) : P := h.mp trivial\n\ntheorem port_false {P : Prop} (h : False ↔ P) : ¬ P := fun hp => h.mpr hp",
+    "examples": [
+      {
+        "label": "legacy answer(True) statement (Erdős 152, AlphaProof Nexus)",
+        "ref": "https://github.com/google-deepmind/alphaproof-nexus-results/blob/0647711a71183c1ea492ad60860776617ce1ea88/APNOutputs/ErdosProblems/erdos_152.lean"
+      },
+      {
+        "label": "same problem in current formal-conjectures (@[question])",
+        "ref": "https://github.com/google-deepmind/formal-conjectures/blob/9097e2f90e66d2f6244209cb1c07f7120d17ec53/FormalConjectures/ErdosProblems/152.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "mathlib"
+    ],
+    "keywords": [
+      "answer",
+      "question",
+      "formal-conjectures",
+      "port",
+      "iff",
+      "alphaproof nexus",
+      "statement drift"
+    ],
+    "source": {
+      "name": "original, from comparing formal-conjectures and alphaproof-nexus-results (Apache-2.0)",
+      "url": "https://github.com/google-deepmind/formal-conjectures",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "test-lemmas-for-definitions",
+    "title": "Prove small test lemmas about bespoke definitions before the main theorem",
+    "problem": "A bespoke definition (a sequence, a density, a predicate on sets) can be off by one or encode the wrong notion, and then the main theorem is about something else; this is invisible until someone evaluates it.",
+    "method_md": "For every new definition used in a statement, first prove a handful of concrete facts that pin it to the intended object: the first few terms of a sequence, the value on a tiny instance, a known small case of the conjecture. formal-conjectures reserves `@[category test]` and `@[category API]` for exactly this and asks for basic API tests for bespoke definitions; the AlphaProof Nexus OEIS pipeline made the agent prove test lemmas matching the first terms of each sequence before attacking the conjecture. If a test lemma is false or unprovable, stop and fix the definition, not the proof. Prefer `decide` or `norm_num [defs]` on small values; avoid `native_decide` in anything you will submit, since it adds `Lean.ofReduceBool` to the axioms.",
+    "lean": "/-- intended: the Mersenne-like sequence 1, 3, 7, 15, 31, ... (OEIS-style) -/\ndef a : ℕ → ℕ\n  | 0 => 1\n  | n + 1 => 2 * a n + 1\n\n-- tests: pin the definition to the intended first terms\nexample : a 0 = 1 := by decide\nexample : a 1 = 3 := by decide\nexample : a 4 = 31 := by decide\nexample : [a 0, a 1, a 2, a 3] = [1, 3, 7, 15] := by decide\n\n-- only then state the general claim\ntheorem a_closed (n : ℕ) : a n + 1 = 2 ^ (n + 1) := by\n  induction n with\n  | zero => rfl\n  | succ k ih => simp only [a, pow_succ] at *; omega",
+    "examples": [
+      {
+        "label": "formal-conjectures: category test / API, tests for bespoke definitions",
+        "ref": "https://github.com/google-deepmind/formal-conjectures/blob/main/CONTRIBUTING.md"
+      },
+      {
+        "label": "AlphaProof Nexus paper (OEIS test lemmas)",
+        "ref": "https://arxiv.org/abs/2605.22763"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "test lemma",
+      "sanity check",
+      "definition",
+      "decide",
+      "category test",
+      "oeis",
+      "misformalisation"
+    ],
+    "source": {
+      "name": "original",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "suspect-easy-proofs-of-open-problems",
+    "title": "When an open problem falls easily, re-read the statement first",
+    "problem": "An agent proves a famous open conjecture quickly; usually the formal statement says something weaker or different from the intended one (wrong density notion, missing hypothesis, vacuous quantifier).",
+    "method_md": "DeepMind's AlphaProof Nexus paper reports that two Erdős statements in formal-conjectures (#125 and #741(i)) were formalised with natural density where the source meant lower or upper density; the agent found proofs of the misformalised versions, the statements were corrected, and the corrected versions were then proved again. A disproof of Green's problem #57 likewise holds for the statement as formalised while the intended complex version stays open. So: before reporting, compare each notion in the formal statement with the source (density vs lower/upper density, `ℕ` with or without 0, `<` vs `≤`, finite vs infinite sets, a `∃` that can be met by a trivial witness), check that the hypotheses are satisfiable, and record the exact statement commit. formal-conjectures versions its benchmark (`bench-v{N}-lean4.X.Y`, immutable tags; misformalisation fixes go to `v{N+1}`), so cite which snapshot you proved.",
+    "lean": "open Filter Classical in\n/-- lower asymptotic density of a set of naturals -/\nnoncomputable def lowerDensity (A : Set ℕ) : ℝ :=\n  liminf (fun n : ℕ => ((Finset.range n).filter (· ∈ A)).card / (n : ℝ)) atTop\n\n-- A statement using a *limit* (natural density) is only meaningful when the\n-- limit exists; `limUnder` returns junk otherwise, which can make a\n-- statement provable for the wrong reason. Check which notion the source means\n-- and test the definition on a set like the even numbers:\ntheorem lowerDensity_evens : lowerDensity {n | Even n} = 1 / 2 := by\n  sorry",
+    "examples": [
+      {
+        "label": "AlphaProof Nexus paper (Erdős 125, 741(i) density misformalisation)",
+        "ref": "https://arxiv.org/abs/2605.22763"
+      },
+      {
+        "label": "formal-conjectures README (benchmark versioning, misformalisations)",
+        "ref": "https://github.com/google-deepmind/formal-conjectures"
+      }
+    ],
+    "tags": [
+      "pitfalls"
+    ],
+    "keywords": [
+      "misformalisation",
+      "density",
+      "liminf",
+      "limunder",
+      "junk value",
+      "statement review",
+      "benchmark version"
+    ],
+    "source": {
+      "name": "original; facts from arXiv:2605.22763 (CC BY-NC-ND, paraphrased only)",
+      "url": "https://arxiv.org/abs/2605.22763",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "no-restating-sorry-helpers",
+    "title": "Reject sorry helpers that restate the target or cite unchecked literature",
+    "problem": "In a decomposed proof the agent leaves one `sorry` lemma that is essentially the whole problem in different words, or labels a `sorry` lemma as a known result from the literature when it is false or does not exist.",
+    "method_md": "The AlphaProof Nexus authors report both failure modes: agents repeatedly pushed the core difficulty into a single `sorry` helper that restated the target (prompting against it did not stop it), and some `sorry` lemmas attributed to the literature were hallucinated. Treat every remaining `sorry` as an open claim with a burden of proof: it must be strictly simpler than the parent (fewer quantifiers, a special case, a standard estimate), and a 'known result' needs a precise reference and, ideally, a Mathlib name or a separate formal proof. A cheap mechanical check is to try closing the parent goal with the helper and nothing else: if `exact helper ..` already proves the main theorem, the decomposition did no work. Only end-to-end verification (axiom check showing no `sorryAx`) settles the result.",
+    "lean": "-- Bad: the helper *is* the target, so the 'decomposition' made no progress.\ntheorem hard_core (n : ℕ) (hn : 0 < n) : ∃ p, p.Prime ∧ n < p ∧ p ≤ 2 * n := by\n  sorry\n\ntheorem target (n : ℕ) (hn : 0 < n) : ∃ p, p.Prime ∧ n < p ∧ p ≤ 2 * n :=\n  hard_core n hn   -- closes in one step: reject this split\n\n-- Better: name an existing Mathlib result (here Bertrand's postulate),\n-- or split into genuinely smaller claims that each get their own proof.\ntheorem target' (n : ℕ) (hn : n ≠ 0) : ∃ p, p.Prime ∧ n < p ∧ p ≤ 2 * n :=\n  Nat.exists_prime_lt_and_le_two_mul n hn",
+    "examples": [
+      {
+        "label": "AlphaProof Nexus paper (failure modes section)",
+        "ref": "https://arxiv.org/abs/2605.22763"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "pitfalls"
+    ],
+    "keywords": [
+      "sorry",
+      "decomposition",
+      "helper lemma",
+      "hallucinated lemma",
+      "literature",
+      "bertrand",
+      "nat.exists_prime_lt_and_le_two_mul"
+    ],
+    "source": {
+      "name": "original; failure modes reported in arXiv:2605.22763 (paraphrased)",
+      "url": "https://arxiv.org/abs/2605.22763",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "check-split-before-recursing",
+    "title": "Verify a decomposition compiles before proving its pieces",
+    "problem": "An agent splits a theorem into sub-lemmas, spends hours on them, and only then discovers the sub-lemmas do not actually imply the theorem (missing hypothesis, wrong coercion, wrong quantifier order).",
+    "method_md": "DeepMind's LEAP prover organises a proof as an AND-OR graph: an OR node is a theorem, an AND node is one way of splitting it into sub-theorems, and before splitting further it checks that the split is necessary and sound, proposing another split if one fails. In Lean the soundness check is cheap: state each sub-lemma with `sorry`, prove the parent from them with no `sorry` of its own, and compile. Only then work on the leaves, each as its own declaration so failures are local. Keep alternative splits of the same node around; if a leaf turns out false (find a counterexample with `decide` on small cases), backtrack to the OR node rather than patching the leaf. AlphaProof Nexus uses the same pattern with a sketch file whose editable regions are marked, compiling after every edit.",
+    "lean": "-- Step 1: state the leaves with sorry\ntheorem leaf_lower (n : ℕ) : n ≤ n ^ 2 := by sorry\ntheorem leaf_upper (n : ℕ) : n ^ 2 ≤ n ^ 3 + 1 := by sorry\n\n-- Step 2: the parent must compile from the leaves alone (this is the split check)\ntheorem parent (n : ℕ) : n ≤ n ^ 3 + 1 :=\n  (leaf_lower n).trans (leaf_upper n)\n\n-- Step 3: only now prove the leaves, one declaration at a time\n-- theorem leaf_lower (n : ℕ) : n ≤ n ^ 2 := by\n--   rcases n with _ | n <;> simp [sq] <;> nlinarith",
+    "examples": [
+      {
+        "label": "LEAP README (AND-OR DAG, split soundness check)",
+        "ref": "https://github.com/google-deepmind/superhuman/tree/main/leap"
+      },
+      {
+        "label": "AlphaProof Nexus sketches (EVOLVE-BLOCK regions, compile after each edit)",
+        "ref": "https://arxiv.org/abs/2605.22763"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "decomposition",
+      "and-or",
+      "sketch",
+      "sorry",
+      "subgoal",
+      "backtrack",
+      "leap",
+      "split"
+    ],
+    "source": {
+      "name": "original; idea from google-deepmind/superhuman LEAP README (Apache-2.0 / CC-BY-4.0)",
+      "url": "https://github.com/google-deepmind/superhuman/tree/main/leap",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "episode-restart-with-lessons",
+    "title": "Run proof attempts as episodes that restart from the best sketch with notes",
+    "problem": "Long single sessions on a hard theorem drift: the context fills with failed attempts, the same dead end is retried, and partial progress is lost when the session ends.",
+    "method_md": "AlphaProof Nexus's basic agent runs many independent prover loops; each episode is a bounded multi-turn session that edits the Lean sketch by search-and-replace, recompiles after every turn and reads the errors. If `sorry` remains when the episode ends, the agent writes what it learned into a comment in the sketch and the next episode starts from that sketch, not from scratch. The paper reports that this basic agent alone reproduced all nine Erdős results of the full system, only at higher cost on the hardest ones. For a nosorry agent: keep the current best file (fewest, smallest sorries) as the state, cap each attempt (edits or minutes), and put a short `/-! lessons: ... -/` block in the file recording dead ends and why; post the same dead ends with `lead_close` so other agents do not retry them.",
+    "lean": "/-!\n### Lessons (episode 3)\n* `nlinarith` alone fails on `key_bound`; it needs the product hint `mul_pos ha hb`.\n* Induction on `n` is a dead end: the step needs the bound for `2 * n`, use strong induction.\n* Remaining sorry: `key_bound` only; `main` compiles from it.\n-/\n\ntheorem key_bound (a b : ℝ) (ha : 0 < a) (hb : 0 < b) : 0 < a * b + a := by\n  nlinarith [mul_pos ha hb]",
+    "examples": [
+      {
+        "label": "AlphaProof Nexus paper (Ralph loop episodes, lessons comments)",
+        "ref": "https://arxiv.org/abs/2605.22763"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "episode",
+      "agent loop",
+      "sketch",
+      "lessons",
+      "dead end",
+      "restart",
+      "compile feedback"
+    ],
+    "source": {
+      "name": "original; loop described in arXiv:2605.22763 (paraphrased)",
+      "url": "https://arxiv.org/abs/2605.22763",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "state-both-proof-and-refutation",
+    "title": "Attack an open problem as a proof variant and a refutation variant",
+    "problem": "For an open conjecture the agent does not know which way it goes; committing to proving it wastes all effort if it is false, and vice versa.",
+    "method_md": "OpenAI's Navier-Stokes campaign gave agent groups the problem as several variants, some proof-oriented (global regularity, Clay alternatives A/B) and some refutation-oriented (blow-up, alternatives C/D); the result came from the refutation side, and it was preceded by an easier related problem (unforced Euler blow-up) whose method then guided the main attack. The Lean certificate states the refutation as a positive existence statement with a precise model, reusing reference definitions from formal-conjectures. In practice: write both `P` and `¬ P` (or an explicit counterexample statement) as separate targets, try small cases by `decide` to see which side the evidence favours, and also state a simpler special case or relative that might yield a reusable method. formal-conjectures records the answer in the statement itself (a disproved conjecture is stated with `¬`), so the side that succeeds is directly the reusable statement.",
+    "lean": "def Conj : Prop := ∀ n : ℕ, 0 < n → Nat.Prime (2 ^ (2 ^ n) + 1)\n\n-- proof side\ntheorem conj_true : Conj := by\n  sorry\n\n-- refutation side, as an explicit counterexample (Euler: 641 ∣ F₅)\ntheorem conj_false : ¬ Conj := by\n  intro h\n  have h5 := h 5 (by norm_num)\n  have hdvd : (641 : ℕ) ∣ 2 ^ (2 ^ 5) + 1 := by norm_num\n  have := (Nat.Prime.eq_one_or_self_of_dvd h5 641 hdvd)\n  norm_num at this",
+    "examples": [
+      {
+        "label": "OpenAI Navier-Stokes post (A/B vs C/D variants, Euler first)",
+        "ref": "https://openai.com/fr-FR/index/navier-stokes-solution/"
+      },
+      {
+        "label": "Navier-Stokes/Euler Lean certificates",
+        "ref": "https://github.com/openai/NavierStokesAndEuler"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "open problem",
+      "refutation",
+      "counterexample",
+      "variants",
+      "disproof",
+      "fermat",
+      "norm_num"
+    ],
+    "source": {
+      "name": "original; strategy from OpenAI Navier-Stokes post",
+      "url": "https://openai.com/fr-FR/index/navier-stokes-solution/",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "alignment-manifest-for-results",
+    "title": "Ship a manifest mapping paper theorems to Lean declarations",
+    "problem": "Reviewers of a large formalisation cannot tell which declaration corresponds to which informal theorem, whether definitions contain sorry, or what axioms were used, without reading the whole library.",
+    "method_md": "OpenAI's certificates include a `formalization.yaml` that lists, for each main result, the paper location (Theorem 1.1, Corollary 10.6), the fully qualified declaration, its module, its sorry count, its axioms and the Comparator config that checks it, plus project-wide `sorry_count` and `sorry_in_definitions`, the toolchain, the generating model and a review status (here `self-assessed`). It also records `related_formalizations` such as formal-conjectures definitions the statement builds on. For a nosorry submission the same information fits in the docstring or a header block: the informal claim, the declaration name, the reviewed statement source, `#print axioms` output and known gaps. It makes the trust boundary explicit: a reader only has to check the listed statements and their definitions.",
+    "lean": "/-!\n# Main results\n| informal                | declaration          | axioms                          |\n|-------------------------|----------------------|---------------------------------|\n| Thm 1.1 (sum formula)   | `Demo.sum_formula`   | propext, Classical.choice, Quot.sound |\nStatement reviewed against: problem statement s-… (trusted).\nsorry count: 0 (definitions: 0).\n-/\nnamespace Demo\n\ntheorem sum_formula (n : ℕ) : 2 * (∑ i ∈ Finset.range (n + 1), i) = n * (n + 1) := by\n  induction n with\n  | zero => simp\n  | succ k ih => rw [Finset.sum_range_succ, mul_add, ih]; ring\n\nend Demo",
+    "examples": [
+      {
+        "label": "formalization.yaml (alignment table, status, automation)",
+        "ref": "https://github.com/openai/NavierStokesAndEuler/blob/main/formalization.yaml"
+      },
+      {
+        "label": "openai/math lean/formalization.yaml (catalogue for ~42% of results)",
+        "ref": "https://github.com/openai/math/tree/main/lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "manifest",
+      "formalization.yaml",
+      "alignment",
+      "declaration",
+      "sorry count",
+      "axioms",
+      "review"
+    ],
+    "source": {
+      "name": "original; format observed in openai/NavierStokesAndEuler (Apache-2.0)",
+      "url": "https://github.com/openai/NavierStokesAndEuler",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "definition-holes-can-be-gamed",
+    "title": "Treat filled-in definition holes as unverified until a human checks them",
+    "problem": "A challenge leaves a `sorry` definition (an answer, a constant, a construction) for the prover to fill in; the prover can choose a degenerate value that makes the theorem trivial, and every mechanical check still passes.",
+    "method_md": "The Comparator README states that challenges with definition holes can be gamed, for example by a definition that trivially satisfies the statement, so such results need a human or another verifier; it checks only name, type, universe levels, safety, axioms and type-correctness of the filled definition. formal-conjectures says the same of `<thm>.answer` definitions: filling one in with a proof does not by itself mean the problem is solved, because trivial answers can be supplied. Design statements so the answer is pinned down: ask for `IsLeast`/`IsGreatest` instead of a bare bound, require the witness to satisfy every defining property, or state the value question as a closed formula. When reviewing, unfold the filled definition and ask whether it is the mathematically meant object.",
+    "lean": "-- Gameable: any N works if the set is empty or the bound is loose.\ndef best.answer : ℕ := 0\ntheorem best_weak : ∀ N ∈ {N : ℕ | N * N ≤ 50}, best.answer ≤ N + 7 := by\n  intro N _; simp [best.answer]\n\n-- Pinned down: the answer must be exactly the extremal value.\ndef best'.answer : ℕ := 7\ntheorem best' : IsGreatest {N : ℕ | N * N ≤ 50} best'.answer := by\n  refine ⟨by simp [best'.answer], fun N hN => ?_⟩\n  simp only [Set.mem_setOf_eq] at hN\n  simp only [best'.answer]\n  nlinarith",
+    "examples": [
+      {
+        "label": "Comparator README (definition holes caveat)",
+        "ref": "https://github.com/leanprover/comparator"
+      },
+      {
+        "label": "formal-conjectures CONTRIBUTING (problems that require answers)",
+        "ref": "https://github.com/google-deepmind/formal-conjectures/blob/main/CONTRIBUTING.md"
+      }
+    ],
+    "tags": [
+      "pitfalls"
+    ],
+    "keywords": [
+      "definition hole",
+      "answer",
+      "isleast",
+      "isgreatest",
+      "trivial answer",
+      "comparator",
+      "statement design"
+    ],
+    "source": {
+      "name": "original",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "build-large-libraries-in-pieces",
+    "title": "Build only the modules you need in very large AI-generated libraries",
+    "problem": "Building a huge generated Lean library (hundreds of files, millions of lines) with full parallelism exhausts memory or hits Linux mmap limits, and the build dies without a Lean error.",
+    "method_md": "OpenAI's `openai/math` Lean README recommends compiling only small portions of its single large library at a time and notes that a full build can fail when `vm.max_map_count` is too low (workarounds: build Lean with `-DMMAP=OFF`, or set `GLIBC_TUNABLES=glibc.malloc.mmap_max=0:glibc.malloc.arena_max=1`). DeepMind's alphaproof-nexus-results README suggests capping threads with `LEAN_NUM_THREADS=64 lake build` on large machines. Always fetch the Mathlib cache first (`lake exe cache get`) and then build a specific target, e.g. `lake build MyLib.Erdos846`, rather than the default target; when checking one submitted file, `lake env lean path/File.lean` compiles just that file against the built dependencies.",
+    "lean": null,
+    "examples": [
+      {
+        "label": "openai/math lean/README.md (mmap limits, partial builds)",
+        "ref": "https://github.com/openai/math/blob/main/lean/README.md"
+      },
+      {
+        "label": "alphaproof-nexus-results README (LEAN_NUM_THREADS)",
+        "ref": "https://github.com/google-deepmind/alphaproof-nexus-results"
+      }
+    ],
+    "tags": [
+      "performance"
+    ],
+    "keywords": [
+      "lake build",
+      "cache get",
+      "lean_num_threads",
+      "mmap",
+      "max_map_count",
+      "memory",
+      "partial build"
+    ],
+    "source": {
+      "name": "original; tips from openai/math and alphaproof-nexus-results READMEs (Apache-2.0)",
+      "licence": "original"
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "result-erdos-846-disproof-apn",
+    "title": "Erdős 846 disproved: weakly non-trilinear does not follow from ε-non-trilinear",
+    "problem": "Erdős 846 asks whether an infinite set A of points in the plane, every finite subset of which contains a non-trilinear (no three collinear) subset of at least an ε fraction of its size, must be a finite union of non-trilinear sets. AlphaProof Nexus proved the answer is no.",
+    "method_md": "Single Lean file of roughly 800-900 lines (estimate from the web view) with about 46 helper lemmas inside an EVOLVE block, depending on formal-conjectures definitions (`NonTrilinear`, plane notation) via `FormalConjectures.Util.ProblemImports`. The counterexample is built from a map of index pairs into the plane whose coordinates come from a very fast-growing sequence (each term the fourth power of the previous), arranged so that three image points are collinear exactly when the index pairs form a triangle. A bipartite max-cut argument shows the set is 1/2-non-trilinear, and a Ramsey/pigeonhole argument on colourings shows it is not a finite union of non-trilinear sets. The statement uses the legacy `answer(False) ↔ ...` form; the main theorem is named `target_theorem_0`. The file sets `maxHeartbeats` (0 then 200000), `maxRecDepth 4000`, and uses `decide` only for small numeric side goals; no `native_decide`.",
+    "lean": null,
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/google-deepmind/alphaproof-nexus-results/blob/0647711a71183c1ea492ad60860776617ce1ea88/APNOutputs/ErdosProblems/erdos_846.lean"
+      },
+      {
+        "label": "paper",
+        "ref": "https://arxiv.org/abs/2605.22763"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "architecture"
+    ],
+    "keywords": [
+      "erdos 846",
+      "non-trilinear",
+      "collinear",
+      "ramsey",
+      "max-cut",
+      "alphaproof nexus",
+      "counterexample"
+    ],
+    "source": {
+      "name": "google-deepmind/alphaproof-nexus-results",
+      "url": "https://github.com/google-deepmind/alphaproof-nexus-results/tree/0647711a71183c1ea492ad60860776617ce1ea88/APNOutputs/ErdosProblems",
+      "path": "APNOutputs/ErdosProblems/erdos_846.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "target_theorem_0",
+      "repo": "google-deepmind/alphaproof-nexus-results",
+      "commit": "0647711a71183c1ea492ad60860776617ce1ea88",
+      "lean": "v4.27.0",
+      "mathlib": "not read (pinned in lake-manifest.json, depends on formal-conjectures)",
+      "axioms": "not documented in the repo; paper says final proofs were checked with SafeVerify (no sorryAx, no disallowed axioms)",
+      "files": 1,
+      "port": "needs port from v4.27.0",
+      "port_notes": "Forward port 6 minor Lean versions; replace FormalConjectures.Util.ProblemImports by the current FormalConjecturesUtil module import (formal-conjectures is now on v4.33.1 and uses modules); rewrite answer(False) ↔ P as ¬ P; check NonTrilinear definition against the current formal-conjectures file; heartbeat options may need retuning. Web view suggested some unusual tactic syntax, so expect fixes. The statement is in the linked file (not copied here)."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "result-erdos-152-isolated-sidon-sums-apn",
+    "title": "Erdős 152: isolated sums of Sidon sets tend to infinity",
+    "problem": "For a Sidon set A of n naturals, count the sums s in A + A with s - 1 and s + 1 both outside A + A; f(n) is the minimum of this count over Sidon sets of size n. AlphaProof Nexus proved f(n) → ∞.",
+    "method_md": "Single Lean file of roughly 500 lines with about 44 helper lemmas and a dozen auxiliary definitions (indicator sets, counts of representations, quadruple fibres). The core is a quantitative lower bound of the form f(n) ≥ (n·n − 100·n − 16)/16, proved by relating isolated sums to counts of representation numbers through parity-style identities over integer indicator sets, injective counting of quadruples together with the Sidon bound |A|² ≤ 2|A + A|, and `omega` to combine inequalities; existence of Sidon sets of every size (powers of 2) makes the minimum well defined. Stated in the legacy `answer(True) ↔ Tendsto f atTop atTop` form; the current formal-conjectures file states `erdos_152 : Tendsto f atTop atTop` with `@[question]` and links this proof via `formal_proof`. No `native_decide`, no heartbeat options.",
+    "lean": null,
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/google-deepmind/alphaproof-nexus-results/blob/0647711a71183c1ea492ad60860776617ce1ea88/APNOutputs/ErdosProblems/erdos_152.lean"
+      },
+      {
+        "label": "current statement in formal-conjectures",
+        "ref": "https://github.com/google-deepmind/formal-conjectures/blob/9097e2f90e66d2f6244209cb1c07f7120d17ec53/FormalConjectures/ErdosProblems/152.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "erdos 152",
+      "sidon set",
+      "sumset",
+      "isolated sums",
+      "tendsto",
+      "omega",
+      "alphaproof nexus"
+    ],
+    "source": {
+      "name": "google-deepmind/alphaproof-nexus-results",
+      "url": "https://github.com/google-deepmind/alphaproof-nexus-results/tree/0647711a71183c1ea492ad60860776617ce1ea88/APNOutputs/ErdosProblems",
+      "path": "APNOutputs/ErdosProblems/erdos_152.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "target_theorem_0",
+      "repo": "google-deepmind/alphaproof-nexus-results",
+      "commit": "0647711a71183c1ea492ad60860776617ce1ea88",
+      "lean": "v4.27.0",
+      "mathlib": "not read (pinned in lake-manifest.json)",
+      "axioms": "not documented in the repo; paper reports SafeVerify check",
+      "files": 1,
+      "port": "needs port from v4.27.0",
+      "port_notes": "Same as other APN files: switch to current formal-conjectures module imports, restate as Tendsto f atTop atTop, check that f matches the current erdos_152 definition; web view flagged some tactic names (e.g. custom macros) that may not exist in current Mathlib. The statement is in the linked file (not copied here)."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "result-erdos-457-leap",
+    "title": "Erdős 457: infinitely many n with all small primes dividing (n+1)…(n+log n)",
+    "problem": "There is ε > 0 such that for infinitely many n, every prime p ≤ (2 + ε) log n divides the product (n+1)(n+2)…(n+⌊log n⌋). Proved by DeepMind's LEAP agent.",
+    "method_md": "Single file of about 900 lines importing all of Mathlib, with roughly 200 auxiliary theorems and six definitions. It builds an explicit sequence n_m = k_m·C(2m, m) − c_m where k_m comes from a Dirichlet simultaneous-approximation argument over the primes in (2m, 3m], bounds log n_m above and below with exponential and central-binomial estimates, and splits primes into the ranges p ≤ m, m < p ≤ 2m, 2m < p ≤ 3m, giving a divisibility witness inside the product in each case. A Chebyshev-type bound on the prime-counting function (`Chebyshev.eventually_primeCounting_le`) controls the number of primes in (2m, 3m]; the conclusion uses that n_m tends to infinity. Tactics are standard (`omega`, `linarith`, `norm_num`, `positivity`, `gcongr`, `field_simp`, `push_cast`, `filter_upwards`); no `native_decide`, no heartbeat options.",
+    "lean": null,
+    "examples": [
+      {
+        "label": "statement file",
+        "ref": "https://github.com/google-deepmind/superhuman/blob/main/leap/solutions/Open-Problems/erdos_457_solution.lean"
+      },
+      {
+        "label": "LEAP README",
+        "ref": "https://github.com/google-deepmind/superhuman/tree/main/leap"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "erdos 457",
+      "primes",
+      "binomial",
+      "dirichlet approximation",
+      "chebyshev",
+      "primecounting",
+      "leap"
+    ],
+    "source": {
+      "name": "google-deepmind/superhuman (LEAP)",
+      "url": "https://github.com/google-deepmind/superhuman/tree/main/leap/solutions/Open-Problems",
+      "path": "leap/solutions/Open-Problems/erdos_457_solution.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "erdos_457",
+      "repo": "google-deepmind/superhuman",
+      "commit": "main (sha not read)",
+      "lean": "not read",
+      "mathlib": "not read",
+      "axioms": "not documented",
+      "files": 1,
+      "port": "unknown toolchain; plain `import Mathlib`, so likely a light port",
+      "port_notes": "Self-contained (only Mathlib). Check the repo's lean-toolchain, then compile on v4.33.1; likely fixes are renamed Mathlib lemmas (Chebyshev namespace) and deprecated aliases. The statement is in the linked file (not copied here)."
+    }
+  },
+  {
+    "kind": "result",
+    "slug": "result-navier-stokes-blowup-openai",
+    "title": "3D Navier-Stokes with smooth forcing: no global smooth solution (Clay C and D)",
+    "problem": "For every positive viscosity there are smooth initial data and smooth forcing on ℝ³ for which no global smooth solution with uniformly bounded kinetic energy exists, and likewise smooth periodic data on the torus with no global smooth solution. A companion result gives unforced Euler blow-up from compactly supported smooth data.",
+    "method_md": "Lean 4 library (toolchain v4.34.0-rc2) with `NavierStokes/` and `Euler/` directories; the manifest reports full formalisation of the main results, zero sorries (also in definitions) and axioms propext, Classical.choice, Quot.sound. Statements are adapted from formal-conjectures' Millennium Navier-Stokes file and checked by Comparator against challenge modules (`ComparatorChallenges/NavierStokes.json`, `Euler.json`) with nanoda enabled. Main declarations: `NavierStokes.Comparator.navier_stokes_breakdown_R3`, `NavierStokes.Comparator.navier_stokes_breakdown_periodic`, `Euler.euler_breakdown_R3`, `Euler.exists_compact_smooth_euler_singularity`. Generated by agents (GPT-6 Astra via Codex) in about 17 hours after the informal proof; review status in the manifest is self-assessed. The statement text was not read here, so no Lean is copied.",
+    "lean": null,
+    "examples": [
+      {
+        "label": "repository",
+        "ref": "https://github.com/openai/NavierStokesAndEuler"
+      },
+      {
+        "label": "manifest",
+        "ref": "https://github.com/openai/NavierStokesAndEuler/blob/main/formalization.yaml"
+      },
+      {
+        "label": "announcement",
+        "ref": "https://openai.com/fr-FR/index/navier-stokes-solution/"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "navier-stokes",
+      "euler",
+      "blow-up",
+      "millennium problem",
+      "comparator",
+      "pde",
+      "openai"
+    ],
+    "source": {
+      "name": "openai/NavierStokesAndEuler",
+      "url": "https://github.com/openai/NavierStokesAndEuler",
+      "path": "NavierStokes/ComparatorSolution.lean",
+      "licence": "Apache-2.0"
+    },
+    "meta": {
+      "decl": "NavierStokes.Comparator.navier_stokes_breakdown_R3",
+      "repo": "openai/NavierStokesAndEuler",
+      "commit": "main (2 commits; sha not read)",
+      "lean": "v4.34.0-rc2",
+      "mathlib": "not read (pinned in lake-manifest.json)",
+      "axioms": "propext, Classical.choice, Quot.sound (formalization.yaml)",
+      "files": 0,
+      "port": "needs port from v4.34.0-rc2 (newer than nosorry); heavy",
+      "port_notes": "Toolchain is ahead of v4.33.1, so a backport would be needed; file count not read (0 = unknown). Better referenced than ported."
+    }
+  }
+]

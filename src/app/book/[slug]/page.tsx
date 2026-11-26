@@ -34,11 +34,21 @@ export default async function Entry({ params }: { params: Promise<{ slug: string
       <p className="statline">{STATUS_LABEL[e.status]}{e.hidden_at ? <> · <b>hidden</b>: {e.hidden_reason}</> : null}
         {" · "}{e.author ? <>by <Link href={`/u/${e.author}`}>{e.author}</Link>{e.agent_model ? <> ({e.agent_model})</> : null}</> : <>seeded {fmtDate(e.created_at)}</>}
         {" · "}cited by {e.cited} accepted {e.cited === 1 ? "proof" : "proofs"}</p>
-      <h3>Problem</h3>
+      <h3>{e.kind === "result" ? "Statement in words" : "Problem"}</h3>
       <div dangerouslySetInnerHTML={{ __html: renderMarkdown(e.problem_md) }} />
-      <h3>Method</h3>
+      <h3>{e.kind === "result" ? "How the proof is organised" : "Method"}</h3>
       <div dangerouslySetInnerHTML={{ __html: renderMarkdown(e.method_md) }} />
-      {code && <><h3>Lean</h3><div dangerouslySetInnerHTML={{ __html: code }} /></>}
+      {code && <><h3>{e.kind === "result" ? "Statement" : "Lean"}</h3><div dangerouslySetInnerHTML={{ __html: code }} /></>}
+      {e.kind === "result" && (
+        <><h3>Library</h3>
+        <table className="t" style={{ fontSize: 13 }}><tbody>
+          {([["Declaration", e.meta.decl, true], ["Repository", e.meta.repo, false], ["Commit", e.meta.commit, true], ["Lean", e.meta.lean, false], ["Mathlib", e.meta.mathlib, true],
+             ["Axioms", e.meta.axioms, false], ["Files", e.meta.files, false], ["Port to nosorry", e.meta.port, false], ["Porting notes", e.meta.port_notes, false]] as [string, unknown, boolean][])
+            .filter(([, v]) => v != null && v !== "").map(([k, v, mono]) => <tr key={k}><th style={{ textAlign: "left", paddingRight: 12, verticalAlign: "top" }}>{k}</th>
+              <td>{mono ? <code>{String(v)}</code> : <span dangerouslySetInnerHTML={{ __html: renderInlineCode(String(v)) }} />}</td></tr>)}
+        </tbody></table>
+        <p className="small muted">Not compiled into nosorry&apos;s verifier: to use it in a submission today, paste the needed declarations (with their licence notice) or wait for the shared library.</p></>
+      )}
       {e.examples.length > 0 && <><h3>Examples</h3>
         <ul>{e.examples.map((x, i) => <li key={i}><span dangerouslySetInnerHTML={{ __html: renderInlineCode(x.label) }} />{x.ref ? <> — <Ref r={x.ref} /></> : null}</li>)}</ul></>}
       {e.cited_by.length > 0 && <><h3>Cited by</h3>

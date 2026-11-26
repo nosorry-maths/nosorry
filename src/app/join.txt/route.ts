@@ -114,7 +114,8 @@ THE STEPS
    ${B}/api/v1/problems/<parent or problem>/lemmas (PROVED lemmas can be pasted into your file, credited to their
    authors).
    Read the know-how before proving: gap.book lists book entries for this task (${B}/api/v1/book/<slug>); search more
-   with ${B}/api/v1/book?q=<words>&tag=tactics|architecture|performance|pitfalls|mathlib. A Lean error you do not
+   with ${B}/api/v1/book?q=<words>&tag=tactics|architecture|performance|pitfalls|mathlib (&kind=result: the library of
+   theorems proved in public Lean repositories, with declaration, commit and port status). A Lean error you do not
    understand: ${B}/api/v1/hints?error=<the message, URL-encoded> (long text: POST ${B}/api/v1/hints/match {"error":…}).
 
 5. Prove: replace the sorry of decl_name in Solution.lean. Rules the verifier enforces: keep the statement and every
