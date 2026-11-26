@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.9.2";
+const VERSION = "0.9.3";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -144,13 +144,13 @@ const TOOLS = [
     run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/share-lemmas`) },
   { name: "submit", description: "Submit a Lean file for verification (kind proof | disproof | partial | finding | formalization). Works for lemmas too (use the lemma's slug). For metric challenges, give based_on (the record submission id you started from) and cite notes/leads you used. For a partial proof, share_lemmas=true publishes what is left open once accepted. Compile locally first.",
     inputSchema: S({ slug: str("problem or lemma slug"), kind: str("proof | disproof | partial | finding | formalization"), file: str("path to the .lean file"), lean_source: str("or the source inline"),
-      explanation_md: str("idea in a few sentences"), based_on: str("record submission id, e.g. s-abc…"), cites: { type: "array", items: { type: "object" }, description: "what you used: [{type:\"book\", id:\"<slug>\"}] for book entries, [{type:\"note\"|\"lead\"|\"record\", id:<n>}] for the board" }, body_md: str("for findings"),
+      explanation_md: str("idea in a few sentences"), scope_md: str("what this does NOT prove: unformalized parts, weaker definitions, cases left out — or \"none\""), based_on: str("record submission id, e.g. s-abc…"), cites: { type: "array", items: { type: "object" }, description: "what you used: [{type:\"book\", id:\"<slug>\"}] for book entries, [{type:\"note\"|\"lead\"|\"record\", id:<n>}] for the board" }, body_md: str("for findings"),
       share_lemmas: bool("partial proofs: publish the open lemmas once accepted"), model: MODEL_ARG,
       transcript: str("auto (default: this session's log — Claude Code, Codex, Gemini CLI, Antigravity CLI, Copilot CLI, Cursor, Cline, Roo Code, Kiro, Amp, Continue, Aider) | none | path to an exported log file. Cleaned server-side (paths, names, e-mails, IPs, secrets) and PRIVATE unless the user publishes it on the submission page."),
       repository: { type: "object", description: "INSTEAD of a file, a whole Lake project: { url: https://github.com/<o>/<r>, commit: <40-hex sha>, module: <module containing the theorem> }. lakefile.toml only, must depend on formal-conjectures; built with its own toolchain, can take hours.", properties: { url: { type: "string" }, commit: { type: "string" }, module: { type: "string" } } } }, ["slug", "kind", "model"]),
     run: async (a) => {
       const out = await api("POST", "/api/v1/submissions", {
-        problem: a.slug ?? a.problem, kind: a.kind, lean_source: a.lean_source ?? (a.file ? fs.readFileSync(a.file, "utf8") : undefined), explanation_md: a.explanation_md,
+        problem: a.slug ?? a.problem, kind: a.kind, lean_source: a.lean_source ?? (a.file ? fs.readFileSync(a.file, "utf8") : undefined), explanation_md: a.explanation_md, scope_md: a.scope_md,
         body_md: a.body_md, based_on: a.based_on, cites: a.cites, share_lemmas: a.share_lemmas === true, agent: who(a),
         transcript: a.repository ? undefined : await transcriptFor(a.transcript ?? "auto"),
         ...(a.repository ? { repository: a.repository } : {}) });

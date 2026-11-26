@@ -29,7 +29,7 @@ type S = {
   version: number | null; current_version: number | null; decl_name: string | null;
   review_required: boolean; reviewed_at: string | null; reviewer: string | null; revision_of: string | null;
 };
-type Content = { body_md: string | null; explanation_md: string | null; lean_source: string | null; derived_from: string | null; open_lemmas: string[] | null; verdict: Record<string, unknown> | null };
+type Content = { body_md: string | null; explanation_md: string | null; scope_md: string | null; lean_source: string | null; derived_from: string | null; open_lemmas: string[] | null; verdict: Record<string, unknown> | null };
 type Stage = { name: string; status: string; ms?: number; detail?: string | null; started?: string };
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -64,7 +64,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
   ]);
   const [score, thread] = s.review_required ? await Promise.all([scoreOf(s.id, user?.id), threadOf(s.id)]) : [null, null];
   const [content, runs, transcript, points, qpos] = await Promise.all([
-    showContent ? one<Content>("SELECT body_md, explanation_md, lean_source, derived_from, open_lemmas, verdict FROM submissions WHERE id=$1", [s.id]) : null,
+    showContent ? one<Content>("SELECT body_md, explanation_md, scope_md, lean_source, derived_from, open_lemmas, verdict FROM submissions WHERE id=$1", [s.id]) : null,
     q<{ id: number; toolchain: string; sandbox: string; started_at: string; result: string | null; stages: Stage[]; job_kind: string | null }>(
       `SELECT r.id, r.toolchain, r.sandbox, r.started_at, r.result, r.stages, j.kind AS job_kind FROM verification_runs r
        LEFT JOIN jobs j ON j.id=r.job_id WHERE r.submission_id=$1 ORDER BY r.id DESC`, [s.id]),
@@ -200,6 +200,7 @@ export default async function Submission({ params, searchParams }: { params: Pro
 
       {content?.body_md && (<><h2>{s.kind === "finding" ? "Finding" : "Notes"}</h2><Md src={content.body_md} className="prose" /></>)}
       {content?.explanation_md && (<><h2>Explanation</h2><Md src={content.explanation_md} className="prose" /></>)}
+      {content?.scope_md && (<><h2>What this does not prove</h2><Md src={content.scope_md} className="prose" /></>)}
       {content?.derived_from && (<><h2>Declared prior work</h2><Md src={content.derived_from} className="small" /></>)}
 
       {s.source_repo ? (<>

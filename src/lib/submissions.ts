@@ -17,6 +17,7 @@ export type SubmissionInput = {
   title?: string;
   body_md?: string;
   explanation_md?: string;
+  scope_md?: string;             // what this does NOT prove: limits, mismatches with the informal statement, unformalized parts
   derived_from?: string;
   repo_url?: string;             // optional public repository with the work (GitHub, GitLab, Codeberg)
   based_on?: string;             // metric challenges: the record (submission id) this attempt builds on
@@ -47,7 +48,7 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
   const L = config.limits;
   if ((input.lean_source?.length ?? 0) > L.leanSourceBytes) return { ok: false, error: "lean_source too large" };
   if ((input.transcript?.content?.length ?? 0) > L.transcriptBytes) return { ok: false, error: "transcript too large" };
-  if ((input.body_md?.length ?? 0) + (input.explanation_md?.length ?? 0) > L.bodyBytes) return { ok: false, error: "text too large" };
+  if ((input.body_md?.length ?? 0) + (input.explanation_md?.length ?? 0) + (input.scope_md?.length ?? 0) > L.bodyBytes) return { ok: false, error: "text too large" };
 
   // Idempotency: agents may retry safely. The same key with different content is refused.
   // Repository submissions: validated here, built on the verifier; lean_source becomes a short manifest.
@@ -142,15 +143,16 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
     const { rows: [s] } = await c.query(
       `INSERT INTO submissions(public_id, user_id, problem_id, problem_version_id, kind, title, body_md, explanation_md, lean_source,
          source_hash, agent_name, agent_model, status, idempotency_key, client_ip, derived_from, verdict, request_hash, repo_url, based_on, cites, share_lemmas,
-         source_repo, source_commit, source_module, desk_lease_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+         source_repo, source_commit, source_module, desk_lease_id, scope_md)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
        ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
       [publicId, user.id, problem?.id ?? null, problem?.current_version_id ?? null, input.kind, clip(input.title, 300), input.body_md ?? null,
        input.explanation_md ?? null, input.lean_source ?? null, input.lean_source ? sha256(input.lean_source) : null,
        clip(input.agent?.name, 60), clip(input.agent?.model, 80), needsLean ? "queued" : "needs_review",
        clip(input.idempotency_key, 100) ?? null, ip, clip(input.derived_from, 2000) ?? null,
        input.kind === "formalization" ? JSON.stringify({ decl_name: input.target_decl }) : null, requestHash, repo, basedOn, JSON.stringify(cites),
-       input.share_lemmas === true && input.kind === "partial", source?.url ?? null, source?.commit ?? null, source?.module ?? null, leaseId]);
+       input.share_lemmas === true && input.kind === "partial", source?.url ?? null, source?.commit ?? null, source?.module ?? null, leaseId,
+       input.scope_md?.trim() || null]);
     if (!s) return null; // concurrent request with the same idempotency key won the race
     if (input.transcript?.content) {
       const r = redact(input.transcript.content);
@@ -173,7 +175,10 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
       "SELECT public_id, status FROM submissions WHERE user_id=$1 AND idempotency_key=$2", [user.id, clip(input.idempotency_key, 100)]);
     return prev ? { ok: true, id: prev.public_id, status: prev.status, url: `/s/${prev.public_id}`, duplicate: true } : { ok: false, error: "conflict, retry" };
   }
-  return { ok: true, id: publicId, status: needsLean ? "queued" : "needs_review", url: `/s/${publicId}`, warnings: [...warnings, ...citeWarnings] };
+  // A result says what it does not prove (as the referees of large formal results ask): nudged, not required.
+  const scopeWarning = ["proof", "disproof", "partial"].includes(input.kind) && !input.scope_md?.trim()
+    ? ["no scope_md: say in one or two sentences what this does NOT prove (unformalized parts, weaker or different definitions, cases left out), or \"none\" if it proves the statement exactly"] : [];
+  return { ok: true, id: publicId, status: needsLean ? "queued" : "needs_review", url: `/s/${publicId}`, warnings: [...warnings, ...citeWarnings, ...scopeWarning] };
 }
 
 /** Queue position (1-based) of a queued submission, using the same order as the workers. */

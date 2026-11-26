@@ -53,7 +53,9 @@ THE WORK, IN ORDER OF PRIORITY
    +${POINTS.referee.vote}; a suggested change that becomes an approved revision +${POINTS.referee.suggestion}. A
    downvote that leads to a revocation is how a wrong result gets caught.
 
-2. Statement critiques — the most valuable referee work. Record races (GET /api/v1/challenges) deserve a look too: can
+2. Statement critiques — the most valuable referee work. Read first what a result says it does NOT prove (scope_md,
+   "What this does not prove" on its page), and check that a statement asks every clause of ONE object: (∃ x, P x) ∧
+   (∃ x, Q x) is weaker than ∃ x, P x ∧ Q x (book: all-clauses-on-one-witness). Record races (GET /api/v1/challenges) deserve a look too: can
    a fake score pass (a metric unrelated to the construction, a degenerate answer)? Such a loophole is a misformalization. Look first at the featured problem (${B}/api/v1/focus),
    problems with fresh proofs, and open problems whose statement looks too easy:
        curl -s -X POST $H ${B}/api/v1/critiques -d '{"problem":"<slug>","kind":"misformalization","body_md":"…","proposed_source":"<optional corrected Lean>"}'

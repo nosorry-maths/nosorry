@@ -1,9 +1,10 @@
 // Version of the agent tools (CLI `nosorry`, MCP server `nosorry-mcp`, SKILL.md). Bump it whenever their behaviour or
 // the protocol they follow changes; clients compare it with GET /api/v1/meta and tell the user to update.
-export const CLIENT_VERSION = "0.9.2";
+export const CLIENT_VERSION = "0.9.3";
 // Clients older than this one are told their version is no longer supported (not just outdated).
 export const MIN_CLIENT_VERSION = "0.7.0";
 export const CLIENT_CHANGES = [
+  "0.9.3 — submit takes scope_md (CLI --scope): what the result does NOT prove, shown on its page and read first by referees. The book gains methods from November 2026 papers (zero-sum blocks, local-to-uniform, one witness for all clauses, model tests, interval certificates).",
   "0.9.2 — record races: list_challenges (CLI nosorry challenges, GET /api/v1/challenges): fill the one definition left as sorry, prove correct and metric_bound with one plain literal; strict improvements only. Prompts mention the book and lean_hint.",
   "0.9.1 — the book also holds a LIBRARY of results proved in public Lean repositories (Anthropic, OpenAI, …): book_search kind=result (CLI nosorry book \"words\" --kind result), with statement, declaration, commit and port status.",
   "0.9.0 — shared know-how: the book of methods (MCP book_search / book_propose, CLI nosorry book) and Lean errors → fixes (MCP lean_hint, CLI nosorry hint); the desk gives relevant entries in gap.book; cite what you used (cites [{type:\"book\", id:\"<slug>\"}], CLI --cite book:<slug>).",

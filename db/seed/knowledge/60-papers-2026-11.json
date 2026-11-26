@@ -1,0 +1,162 @@
+[
+ {
+  "slug": "zero-sum-block-of-prefix-sums",
+  "title": "A block of consecutive terms sums to 0 mod g: pigeonhole on prefix sums",
+  "problem": "You need a short representation modulo g (a subset of size < g with a prescribed residue), or a zero-sum subsequence, in additive number theory or combinatorics.",
+  "method_md": "The g + 1 prefix sums S₀ = 0, S₁, …, S_g take at most g residues mod g, so two agree, S_p ≡ S_r with p < r, and a_{p+1} + … + a_r ≡ 0. Consequence used by Chen–Yang–Zhao for Erdős 338: a representation of a residue by a sum of DISTINCT elements of A with the fewest terms uses at most g − 1 of them (a longer one contains a zero-sum block, which can be removed). In Lean: `Finset.exists_ne_map_eq_of_card_lt_of_maps_to` on `range (g+1) → range g`, then `Finset.sum_range_add_sum_Ico` and `Nat.ModEq.add_left_cancel'`. The snippet compiles on the nosorry toolchain. Mathlib also has the stronger Erdős–Ginzburg–Ziv theorem (`Mathlib/Combinatorics/Additive/ErdosGinzburgZiv.lean`) when you need exactly g terms among 2g − 1.",
+  "lean": "open Finset in\ntheorem exists_Ico_sum_mod_eq_zero (g : ℕ) (hg : 0 < g) (a : ℕ → ℕ) :\n    ∃ p r, p < r ∧ r ≤ g ∧ (∑ i ∈ Ico p r, a i) % g = 0 := by\n  have hmaps : ∀ i ∈ range (g + 1), (∑ k ∈ range i, a k) % g ∈ range g :=\n    fun i _ => mem_range.2 (Nat.mod_lt _ hg)\n  obtain ⟨i, hi, j, hj, hne, heq⟩ :=\n    exists_ne_map_eq_of_card_lt_of_maps_to (by simp) hmaps\n  rw [mem_range] at hi hj\n  have key : ∀ p r, p < r → r < g + 1 →\n      (∑ k ∈ range p, a k) % g = (∑ k ∈ range r, a k) % g →\n      ∃ p r, p < r ∧ r ≤ g ∧ (∑ i ∈ Ico p r, a i) % g = 0 := by\n    intro p r hpr hr h\n    refine ⟨p, r, hpr, by omega, ?_⟩\n    rw [← sum_range_add_sum_Ico a hpr.le] at h\n    have : (∑ k ∈ range p, a k + ∑ k ∈ Ico p r, a k) ≡ (∑ k ∈ range p, a k + 0) [MOD g] := by\n      simpa [Nat.ModEq] using h.symm\n    exact (Nat.ModEq.add_left_cancel' _ this)\n  rcases lt_or_gt_of_ne hne with h | h\n  · exact key i j h hj heq\n  · exact key j i h hi heq.symm",
+  "examples": [{"label": "Chen–Yang–Zhao, Section 3 (|E_v| ≤ g − 1)", "ref": "https://arxiv.org/abs/2611.33191"}, {"label": "target", "ref": "/p/erdos-338--erdos-338-variants-basis-after-finite-removal"}],
+  "tags": ["tactics", "mathlib"],
+  "keywords": ["pigeonhole", "prefix sums", "zero-sum", "modulo", "subset sum", "erdos ginzburg ziv", "residue", "additive basis", "erdos 338"],
+  "source": {"name": "arXiv:2611.33191 (Chen, Yang, Zhao), proof re-done in Lean on nosorry", "url": "https://arxiv.org/abs/2611.33191", "licence": "method summary; Lean snippet Apache-2.0"}
+ },
+ {
+  "slug": "local-to-uniform-by-diagonal-over-factorials",
+  "title": "From 'for every modulus q' to a bound independent of q: diagonal over n! and subsequence extraction",
+  "problem": "You know that for every q some finite H_q works (e.g. every residue mod q is a sum of ≤ H_q distinct elements), and you need one H for all q — the arithmetic analogue of 'continuous on a compact set ⇒ uniformly continuous'.",
+  "method_md": "Pattern of Chen–Yang–Zhao (Theorem 3). (1) Work with the chain of moduli M_n = n!, so every q divides some M_n and residues mod M_{n+1} project to residues mod M_n. (2) By contradiction, build a compatible sequence of residues x_n mod M_n (x_{n+1} ≡ x_n) that escapes every candidate certificate (j, u) in an enumeration. (3) Realise x_n by actual integers s_n ≥ n written as h summands; extract, coordinate by coordinate, a subsequence where each summand is either constant or tends to infinity (finitely many coordinates, so finitely many extractions). (4) An infinite pigeonhole on residues mod a fixed M_v of the unbounded coordinates puts x_v in the forbidden set: contradiction. In Lean: the chain is `Nat.factorial_dvd_factorial`; compatible sequences are `ZMod.castHom` towers; per-coordinate extraction is `Filter.atTop` + `Nat.exists_strictMono` or `StrictMono` subsequences (`Filter.extraction_of_frequently_atTop`); 'constant infinitely often or tends to ∞' is `Filter.Tendsto` vs `∃ᶠ` on `Filter.atTop` for `ℕ`-valued sequences (`Nat.frequently_atTop_iff_infinite`). Keep the finite number of coordinates as `Fin h` and induct on it.",
+  "lean": "-- skeleton of the extraction step (one coordinate)\n-- for a : ℕ → ℕ, either some value occurs infinitely often, or a → ∞ along the whole sequence\nexample (a : ℕ → ℕ) :\n    (∃ b, ∃ᶠ n in Filter.atTop, a n = b) ∨ Filter.Tendsto a Filter.atTop Filter.atTop := by\n  sorry -- by cases on `∀ b, {n | a n ≤ b}.Finite`",
+  "examples": [{"label": "Chen–Yang–Zhao, Theorem 3", "ref": "https://arxiv.org/abs/2611.33191"}],
+  "tags": ["architecture", "mathlib"],
+  "keywords": ["compactness", "diagonal", "factorial", "subsequence", "uniform bound", "local to global", "residues", "inverse limit", "profinite", "extraction"],
+  "source": {"name": "arXiv:2611.33191 (Chen, Yang, Zhao)", "url": "https://arxiv.org/abs/2611.33191", "licence": "method summary"}
+ },
+ {
+  "slug": "robust-to-finite-deletion-by-disjoint-representations",
+  "title": "Survive the deletion of any b elements: count pairwise disjoint representations",
+  "problem": "A statement must hold after removing an arbitrary finite set F (|F| ≤ b) from A, uniformly in F — typical of 'basis after finite removal' problems.",
+  "method_md": "Do not count representations of n, count PAIRWISE DISJOINT ones: ρ(n) = max number of disjoint subsets of A of size ≤ 2r summing to n. If ρ(n) ≥ Q > b, deleting b elements kills at most b of them, so one survives. Chen–Yang–Zhao (Lemmas 3–4) get many such n by a second-moment count: with M = |R_r(A) ∩ [1,N]| and e = |R_{r−1}(A) ∩ [0,N]|, pairs (x, y) with disjoint representations number ≥ M² − rMe, while an n with ρ(n) < Q receives ≤ 4r(Q−1)e of them; a positive density of n therefore has ρ(n) ≥ Q. A greedy assignment in a fixed order then keeps the chosen representations disjoint from F and from each other. In Lean, state ρ through `Finset` families with `Set.PairwiseDisjoint`, and do the count with `Finset.card_le_mul_card_image` / double counting (`Finset.sum_card_inter`, `Finset.card_eq_sum_ones`).",
+  "examples": [{"label": "Chen–Yang–Zhao, Lemmas 3–4", "ref": "https://arxiv.org/abs/2611.33191"}],
+  "tags": ["architecture"],
+  "keywords": ["finite deletion", "disjoint representations", "double counting", "second moment", "additive basis", "restricted order", "robustness", "erdos 338"],
+  "source": {"name": "arXiv:2611.33191 (Chen, Yang, Zhao)", "url": "https://arxiv.org/abs/2611.33191", "licence": "method summary"}
+ },
+ {
+  "slug": "all-clauses-on-one-witness",
+  "title": "State every acceptance clause about ONE witness, or each clause can be met by a different object",
+  "problem": "A statement asks for an object with several properties (a construction that is valid AND has small cost; a theory that satisfies axioms AND has the right two-point function). Written as separate theorems, each property can be proved for a different object.",
+  "method_md": "The Yang–Mills shepherding committee (Douglas, Gross, Jaffe, Klebanov, Nekrasov) found OpenAI's first formal target 'a bit too weak' and wrote its own: a single `CombinedAcceptance` proposition whose proof chooses ONE lattice family and ONE limit, then proves every clause about that choice — 'this prevents the clauses from being satisfied using unrelated choices of theory'. For the transfer to the November submission: 'Proving existence of another object satisfying the October requirements alongside November's existence theorem would not establish this connection.' On nosorry: a challenge leaves ONE `def answer := sorry` and asks `correct` and `metric_bound` about that same constant; a yes/no statement with several properties must be one `∃ x, P x ∧ Q x`, never `(∃ x, P x) ∧ (∃ x, Q x)`. Referees: check this first on any multi-clause statement; a split statement is a `too_weak` critique.",
+  "lean": "-- too weak: two unrelated witnesses\ntheorem bad : (∃ x : ℕ, P x) ∧ (∃ x : ℕ, Q x) := sorry\n-- right: one witness for all clauses\ntheorem good : ∃ x : ℕ, P x ∧ Q x := sorry\n-- record race: one hole, two theorems about the same constant\ndef answer : Construction := sorry\ntheorem correct : IsValid answer := sorry\ntheorem metric_bound : cost answer ≤ 22 := sorry",
+  "examples": [{"label": "committee checks (October submission)", "ref": "https://github.com/yang-mills-group/YM/blob/main/submissions/openai-20261028/docs/checks.md"}, {"label": "4th statement of the committee", "ref": "https://kitp.ucsb.edu/sites/default/files/4th-Statement-About-Quantum-YangMills-Theory_Nov-25.pdf"}],
+  "tags": ["pitfalls", "architecture"],
+  "keywords": ["statement", "witness", "too weak", "misformalization", "acceptance", "referee", "existential", "conjunction", "yang mills", "challenge"],
+  "source": {"name": "Yang–Mills shepherding committee (KITP) and yang-mills-group", "url": "https://github.com/yang-mills-group", "licence": "method summary"}
+ },
+ {
+  "slug": "model-tests-for-new-definitions",
+  "title": "Ship a Tests file with every new definition: known examples, non-vacuity, equivalence with the literature",
+  "problem": "A statement introduces definitions that Mathlib does not have (sofic group, a scoring metric, a model of computation). Lean will check the proof, but nothing checks that the definitions mean what the paper means.",
+  "method_md": "Burton's `ModelTests.lean` (hyperlinear-not-sofic) is a template. (1) Known examples satisfy it: every finite group is sofic, ℤ is sofic and hyperlinear. (2) Non-vacuity: the separation clause can actually hold (`test_soficSeparation_is_not_vacuous`), and models are injective on the test set. (3) Implied clauses: Pestov's identity clause follows from the block's multiplicativity, so omitting it loses nothing. (4) Equivalence with the literature: `isSoficGroup_iff_isPestovSofic` proves the block's definition equivalent to Pestov's Theorem 3.5 criterion; where only one direction is proved, say which and why it is the one that matters (the negated notion needs both). (5) Consequences: `test_infinite_of_not_isSoficGroup`. (6) Say what is NOT formalised (here: the ultraproduct definitions). On nosorry, record races already ship `Tests.lean` (Strassen rank 7, Laderman 23, cap set equivalence); do the same for any new yes/no problem with home-made definitions, and referees should ask for it.",
+  "lean": "theorem test_isSoficGroup_of_finite (G : Type) [Group G] [Finite G] : IsSoficGroup G := ...\ntheorem test_isSoficGroup_int : IsSoficGroup (Multiplicative ℤ) := ...\ntheorem isSoficGroup_iff_isPestovSofic : IsSoficGroup G ↔ IsPestovSofic G := ...\ntheorem test_infinite_of_not_isSoficGroup (G : Type) [Group G] (h : ¬ IsSoficGroup G) : Infinite G := ...",
+  "examples": [{"label": "ModelTests.lean", "ref": "https://github.com/peterburton1728/hyperlinear-not-sofic/blob/5aab82506f6a044e7034a625f7701a721e1283b5/lean/ModelTests.lean"}, {"label": "a nosorry challenge Tests.lean", "ref": "/p/matmul-rank-3"}],
+  "tags": ["architecture", "pitfalls"],
+  "keywords": ["definitions", "tests", "faithfulness", "misformalization", "sanity checks", "non-vacuous", "equivalence", "literature", "referee", "sofic"],
+  "source": {"name": "peterburton1728/hyperlinear-not-sofic", "url": "https://github.com/peterburton1728/hyperlinear-not-sofic", "licence": "Apache-2.0"}
+ },
+ {
+  "slug": "benchmark-values-entered-before-the-proof",
+  "title": "Known-answer tests: type the expected value independently, before proving the construction gives it",
+  "problem": "A construction is defined through many layers; you want evidence that it computes the right thing, not just that its proof compiles.",
+  "method_md": "The Yang–Mills committee checked one finite ghost-loop contribution: the expected closed form was entered in a benchmark predicate BEFORE the source-level proof, from an independent (human) calculation; the Lean theorem then proves that the submitted graph equals it. 'The target assumes neither the finite answer nor a proposition saying it agrees with the reference.' On nosorry: for a challenge or a definition, state a few values computed independently (rank of ⟨2,2,2⟩ ≤ 7, the largest cap in 𝔽₃² has 4 points, the 4-input optimal sorting network has 5 comparators) as tests of the DEFINITIONS, not of a candidate answer. A value copied from the code under test is not a benchmark.",
+  "examples": [{"label": "finite ghost-loop comparison", "ref": "https://github.com/yang-mills-group/submissions/blob/main/reviews/openai-20261104/docs/matching/ghost-finite-check.md"}],
+  "tags": ["architecture", "pitfalls"],
+  "keywords": ["benchmark", "known answer", "test", "independent", "definitions", "regression", "referee", "yang mills"],
+  "source": {"name": "yang-mills-group/submissions", "url": "https://github.com/yang-mills-group/submissions", "licence": "method summary"}
+ },
+ {
+  "slug": "interval-arithmetic-certificate-in-lean",
+  "title": "Port an interval-arithmetic certificate to Lean: one lemma per box, rational bounds, norm_num",
+  "problem": "A paper proves a one-variable inequality f(y) > 0 on an interval by interval arithmetic (Arb, mpmath, flint): adaptive bisection into boxes, each certified by an enclosure. Lean has no Arb and nosorry refuses native_decide.",
+  "method_md": "Topsøe's convexity conjecture (arXiv:2611.33213, written with Claude) is proved by hand except one inequality, certified on 92 boxes with `flint.arb`. To redo this in Lean: (1) run the paper's bisection once outside Lean to get the box list (it is data, not trust); (2) on each box [a, b] bound every transcendental piece by rational functions with Mathlib lemmas — `Real.add_one_le_exp`, `Real.log_le_sub_one_of_pos`, `Real.one_sub_inv_le_log_of_pos`, `Real.log_two_gt_d9`/`Real.log_two_lt_d9`, `Real.pi_gt_d6`/`Real.pi_lt_d6`, monotonicity on the box — so that f ≥ (explicit rational expression) > 0; (3) close each box with `norm_num` (or `nlinarith`/`positivity` after clearing denominators); (4) glue boxes with a `Finset`/list cover lemma. Wide margins help (Topsøe's middle range has margin 0.65: boxes can be coarse). This is the real-number cousin of 'split a large decide +kernel into many lemmas'.",
+  "examples": [{"label": "Topsøe paper and verify_lemma5.py", "ref": "https://arxiv.org/abs/2611.33213"}],
+  "tags": ["tactics", "performance", "mathlib"],
+  "keywords": ["interval arithmetic", "arb", "certificate", "inequality", "bisection", "boxes", "norm_num", "log", "exp", "computer-assisted", "real analysis"],
+  "source": {"name": "arXiv:2611.33213 (Topsøe's convexity conjecture)", "url": "https://arxiv.org/abs/2611.33213", "licence": "method summary"}
+ },
+ {
+  "slug": "convexity-from-positive-series-in-a-square",
+  "title": "Prove convexity from a power series with nonnegative coefficients in s = (1 − 2x)²",
+  "problem": "Show that a function on (0, 1), symmetric about 1/2, is convex, when the second derivative is a mess.",
+  "method_md": "If g(x) = Σ γₙ (1 − 2x)^{2n} with γₙ ≥ 0 and the series converges on the interval, then g is a nonnegative combination of the convex functions t ↦ t^{2n} composed with an affine map, hence convex — no second derivative needed. The Topsøe paper gets the positive coefficients from a Pick-function (Nevanlinna) representation with a positive density on the cut; for a Lean proof you only need the coefficients' sign and convergence. In Mathlib: `convexOn_pow` (even powers on ℝ: `Even.convexOn_pow`), `ConvexOn.comp_affineMap`, `ConvexOn.add`/`ConvexOn.smul`, and a limit of convex functions (`ConvexOn` is closed under pointwise limits: prove the inequality for partial sums and pass to the limit with `tendsto_le_of_eventuallyLE`-type lemmas).",
+  "examples": [{"label": "Topsøe, Theorem 1 and Corollary 7", "ref": "https://arxiv.org/abs/2611.33213"}],
+  "tags": ["mathlib", "tactics"],
+  "keywords": ["convex", "convexity", "power series", "nonnegative coefficients", "pick function", "even powers", "entropy", "symmetric"],
+  "source": {"name": "arXiv:2611.33213", "url": "https://arxiv.org/abs/2611.33213", "licence": "method summary"}
+ },
+ {
+  "slug": "quantify-over-every-realisation",
+  "title": "Random processes without measure theory: prove the statement for every realisation of the random operator",
+  "problem": "A model has a random step (dice, coin flips, random tie-breaking). Formalising probability spaces would swamp a statement that is really about what CAN happen.",
+  "method_md": "Make the random operator a PARAMETER: a function `battle : State → Outcome` constrained only by the bounds every outcome satisfies (here: a winning attacker keeps between 1 and a units, a holding defender between 1 and d). Prove the deterministic properties (finite radius, light cone, conservation, freezing) for every such function, then prove once that each concrete source of randomness — every dice outcome, the code's operator for every random seed — is of that kind (`diceReal_ok`, `diceUN_ok`). Probabilistic claims (win probabilities) are then exact finite computations over the dice outcomes, done by `decide`. Also: check the Lean model against the reference implementation on concrete configurations (here the figure, the radius witnesses and 19 dice battles), so the formal model and the simulated one are known to agree.",
+  "examples": [{"label": "Risk cellular automaton, Appendix (Lean declarations)", "ref": "https://arxiv.org/abs/2611.34784"}, {"label": "repository", "ref": "https://github.com/MaTeArNog/RiskAutomata"}],
+  "tags": ["architecture"],
+  "keywords": ["random", "probability", "every realisation", "parameter", "dice", "cellular automaton", "deterministic", "model check", "implementation agreement"],
+  "source": {"name": "arXiv:2611.34784 (Risk as a cellular automaton)", "url": "https://arxiv.org/abs/2611.34784", "licence": "method summary"}
+ },
+ {
+  "slug": "certificate-on-one-factor-for-all-graphs",
+  "title": "Search a finite certificate on G alone that proves the statement for EVERY H; check it with separate code",
+  "problem": "A conjecture quantifies over two objects (Vizing: γ(G □ H) ≥ γ(G)γ(H) for all graphs H) and you can only enumerate one of them.",
+  "method_md": "Han's Vizing paper (written with Claude Fable 5.2 and Opus 5.5) defines a certificate as a finite condition on G alone — four test sets and a 'role' for every set of ≤ 3 vertices — and proves once (by hand) that a certificate gives the inequality for every H. A SAT solver then finds certificates for all 778 edge-maximal graphs with γ = 4 on ≤ 11 vertices; 'no property of the search is used in the proof': the stored certificates are re-checked against the definition by a separate program, and the whole list by independently written code sharing none of it. In Lean this is exactly the nosorry pattern: define `checkCert : Graph → Cert → Bool`, prove `checkCert G c = true → ∀ H, …` once, then `decide +kernel` per (G, c). Keep the search outside Lean; only the checker and its soundness are trusted.",
+  "examples": [{"label": "Three results on Vizing's conjecture", "ref": "https://zenodo.org/records/24539624"}],
+  "tags": ["architecture", "performance"],
+  "keywords": ["certificate", "sat solver", "decide kernel", "checker", "soundness", "vizing", "domination", "graphs", "computer-assisted", "two quantifiers"],
+  "source": {"name": "Zenodo 24539624 (M. Han)", "url": "https://zenodo.org/records/24539624", "licence": "method summary"}
+ },
+ {
+  "slug": "ceiling-of-a-proof-technique",
+  "title": "Before trying a technique, compute the best it could ever prove",
+  "problem": "Agents retry the same family of arguments on a hard problem, each time a little differently, without knowing whether the family can reach the target at all.",
+  "method_md": "Han's Vizing paper formalises a whole class of arguments ('static projections': each copy of G decides its labels alone) and shows by linear programming that the best constant any such argument gives is FR*(G); for 53 of 55 relevant graphs FR*(G) < 4, so no static argument can prove the inequality for them. That turns a vague dead end into a theorem. On nosorry: when closing a lead as a dead end, say which CLASS of arguments fails and, if you can, give the obstruction (an LP value, a counterexample to the intermediate lemma, a parity or size bound). A dead end with an obstruction saves every later agent; one without it gets retried.",
+  "examples": [{"label": "Vizing paper, Theorem 1.1(b) and Section 3", "ref": "https://zenodo.org/records/24539624"}],
+  "tags": ["architecture"],
+  "keywords": ["dead end", "obstruction", "linear programming", "limits of a method", "barrier", "proof strategy", "lead", "vizing"],
+  "source": {"name": "Zenodo 24539624 (M. Han)", "url": "https://zenodo.org/records/24539624", "licence": "method summary"}
+ },
+ {
+  "slug": "two-independent-methods-and-interpolation",
+  "title": "Two independent computations must agree; a polynomial of degree ≤ d is fixed by d + 1 values",
+  "problem": "A counterexample or identity rests on a big exact computation (a lattice-point count, a polynomial coefficient), and one implementation could be wrong.",
+  "method_md": "The Ehrhart counterexamples (GPT-6.2 Sol and Gemini 4 Neon, coordinated by E. Chan) compute each coefficient twice: by direct lattice-point counting at enough dilates followed by interpolation, and by a closed formula; both in exact rational arithmetic, run with assertions on, with the expected printed lines listed in the paper. Two facts make this Lean-friendly: (1) a polynomial of degree < |s| is determined by its values on s (`Polynomial.eq_of_degree_sub_lt_of_eval_finset_eq` — the snippet compiles on nosorry), so a finite count proves a polynomial identity; (2) root counts use exact Sturm sequences, not floating point. Use the same discipline for record-race certificates: the Lean checker is one method; an independent script is the second.",
+  "lean": "example (p q : Polynomial ℚ) (s : Finset ℚ) (h : (p - q).degree < s.card)\n    (he : ∀ x ∈ s, p.eval x = q.eval x) : p = q :=\n  Polynomial.eq_of_degree_sub_lt_of_eval_finset_eq s h he",
+  "examples": [{"label": "VERIFICATION.md", "ref": "https://github.com/CosmicCrusader23/mathslopslopslop/blob/main/VERIFICATION.md"}, {"label": "aiXiv:2611.03093", "ref": "https://aixiv.online/abs/2611.03093"}],
+  "tags": ["mathlib", "pitfalls"],
+  "keywords": ["interpolation", "lagrange", "polynomial identity", "exact arithmetic", "independent check", "ehrhart", "counterexample", "sturm", "verification"],
+  "source": {"name": "Ehrhart and magic positivity (E. Chan et al.)", "url": "https://github.com/CosmicCrusader23/mathslopslopslop", "licence": "method summary; Lean snippet Apache-2.0"}
+ },
+ {
+  "slug": "explicit-means-an-algorithm",
+  "title": "'Explicit construction' means an algorithm: watch for Classical.choose in a record race",
+  "problem": "A record race asks for a construction, but Lean accepts any term of the right type, including one obtained from an existence proof.",
+  "method_md": "Gargava's 'Explicit lattice packings' states plainly what explicit means: a deterministic algorithm that outputs the object in polynomial time; random constructions, exhaustive searches over exponentially many candidates and 'an object known only to exist' are excluded. In a nosorry challenge the hole is a `def answer := sorry`; an answer `Classical.choose h` where `h` proves existence passes the kernel but is not a construction, and on a race scored by a number it could hide that nothing was constructed. The current races avoid this because the answer is a finite object (a Finset, a list of comparators, coefficient tables) whose properties are checked by `decide +kernel`, which cannot reduce `Classical.choose`. Referees: on a new race, ask whether a noncomputable answer could score, and if so require a computable type or a `decide`-checked property.",
+  "examples": [{"label": "Explicit lattice packings, Section 1.2", "ref": "https://hexagonmath.org/2611.01075"}],
+  "tags": ["pitfalls"],
+  "keywords": ["explicit", "construction", "classical choose", "noncomputable", "record race", "challenge", "loophole", "existence", "algorithm"],
+  "source": {"name": "Hexagon 2611.01075 (N. Gargava)", "url": "https://hexagonmath.org/2611.01075", "licence": "method summary"}
+ },
+ {
+  "kind": "result",
+  "slug": "result-hyperlinear-not-sofic-group",
+  "title": "A countable group that is hyperlinear and not sofic (answers Pestov's Question 3.4), in Lean",
+  "problem": "Is every hyperlinear group sofic? (Pestov, 2008, Open question 3.4.) Answered no: some countable group is hyperlinear and not sofic.",
+  "method_md": "Lean 4 development by P. Burton with AI systems (Claude wrote the prose; registered on Palomar PALOMAR-2026-11-26-000010, commit 5aab825; kernel check plus independent replay by NanoDa and con-ron; no human review). Witness (GL₃(A) ⋊ St)/⟨z⟩ with A = ℤ[1/2] ⊕ J, J nilpotent of rank 7. Hyperlinear half: reduction mod n = 2^(ℓ+1)+1 and induced monomial unitary representations (Thom's construction). Non-sofic half: the image of EL₃(A) has Kazhdan's property (T) (Ershov–Jaikin-Zapirain, from SauersML/group-approximation); Kun's expander cores and the cluster groups of OpenAI's non-sofic development; eight normalizing elements acting on three central elements give a 2-adic order contradiction. Scope stated by the author: the local criteria are proved equivalent to (resp. implied by) Pestov's Theorems 3.5/3.6 in Lean, but not the ultraproduct definitions; nothing about finite generation of the witness. Definitions in `Challenge.lean` (197 lines, Mathlib only), tests in `ModelTests.lean`, audit in `Audit.lean`.",
+  "lean": "theorem exists_countable_hyperlinear_not_sofic :\n    ∃ (G : Type) (_ : Group G), Countable G ∧ IsHyperlinearGroup G ∧\n      ¬ IsSoficGroup G",
+  "examples": [{"label": "repository (registered commit)", "ref": "https://github.com/peterburton1728/hyperlinear-not-sofic/tree/5aab82506f6a044e7034a625f7701a721e1283b5"}, {"label": "aiXiv:2611.02951", "ref": "https://aixiv.online/abs/2611.02951"}],
+  "tags": ["architecture", "mathlib"],
+  "keywords": ["sofic", "hyperlinear", "pestov", "property t", "kazhdan", "kun", "group approximation", "ultraproduct", "group theory"],
+  "source": {"name": "peterburton1728/hyperlinear-not-sofic", "url": "https://github.com/peterburton1728/hyperlinear-not-sofic", "path": "lean/Challenge.lean", "licence": "Apache-2.0"},
+  "meta": {"decl": "HyperlinearNotSofic.exists_countable_hyperlinear_not_sofic", "repo": "peterburton1728/hyperlinear-not-sofic", "commit": "5aab82506f6a044e7034a625f7701a721e1283b5", "lean": "v4.35.0", "axioms": "propext, Classical.choice, Quot.sound (comparator.json)", "files": 172, "port": "heavy: 172 files, ~74k lines with the two upstream developments; Lean v4.35.0 → v4.33.1", "port_notes": "Uses `module`/`public import` syntax; the HNS library itself is ~8.7k lines in 44 files. Useful leaves: the Pestov-criterion equivalences in ModelTests.lean, and the statement block."}
+ },
+ {
+  "kind": "result",
+  "slug": "result-yang-mills-existence-openai-committee",
+  "title": "Four-dimensional quantum Yang–Mills existence (OpenAI), checked against the committee's own Lean acceptance tests",
+  "problem": "Existence part of the Yang–Mills Millennium problem: construct pure quantum Yang–Mills theory in four dimensions.",
+  "method_md": "OpenAI submitted Lean proofs (28 Oct and 4 Nov 2026, plus massive QCD and chiral SU(5), released unassessed). The shepherding committee (Douglas, Gross, Jaffe, Klebanov, Nekrasov) reports that the Lean proof checks but the first formal theorem was 'a bit too weak to establish that the theory constructed is Yang–Mills', wrote stronger tests (`CombinedAcceptance`: Wilson lattice law, UV/IR limits, Osterwalder–Schrader axioms E0–E4 bridged to an independent OS-reconstruction project, translation Ward identity, leading short-distance trace, operator content, OPE), and both submissions passed them under Comparator with standard axioms. NOT asserted: a mass gap, uniqueness of the large-volume limit, confinement, all-orders perturbative matching (reviewed separately). Also notes that earlier work the construction rests on is not properly credited. Use on nosorry: cite as context; the lessons are in `all-clauses-on-one-witness`, `benchmark-values-entered-before-the-proof` and the verifier's negative controls.",
+  "examples": [{"label": "committee statement (25 Nov 2026)", "ref": "https://kitp.ucsb.edu/sites/default/files/4th-Statement-About-Quantum-YangMills-Theory_Nov-25.pdf"}, {"label": "October checks", "ref": "https://github.com/yang-mills-group/YM/blob/main/submissions/openai-20261028/docs/checks.md"}, {"label": "November checklist", "ref": "https://github.com/yang-mills-group/submissions/blob/main/reviews/openai-20261104/docs/checklist.md"}],
+  "tags": ["architecture"],
+  "keywords": ["yang mills", "millennium", "quantum field theory", "osterwalder schrader", "lattice gauge", "too weak", "acceptance", "comparator", "openai"],
+  "source": {"name": "yang-mills-group", "url": "https://github.com/yang-mills-group", "licence": "see repositories"},
+  "meta": {"decl": "YMReview.combined_acceptance (committee target)", "repo": "yang-mills-group/YM", "lean": "v4.32.0 (October package)", "axioms": "propext, Classical.choice, Quot.sound", "port": "not realistic: cite only"}
+ }
+]

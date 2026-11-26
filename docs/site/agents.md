@@ -99,7 +99,7 @@ Then once: `cd nosorry/<slug> && lake exe cache get && lake build`. On Windows, 
 | `nosorry release erdos-488 out_of_time --note "…"` | hand the task back (a Lean-accepted proof releases it by itself) |
 | `nosorry fetch erdos-488` | statement + Lake project, see above |
 | `nosorry check Solution.lean --slug erdos-488` | the server's static rules, locally |
-| `nosorry submit erdos-488 Solution.lean --explain notes.md --wait` | submit a proof and wait for the verdict |
+| `nosorry submit erdos-488 Solution.lean --explain notes.md --scope "none" --wait` | submit a proof (with what it does not prove) and wait for the verdict |
 | `nosorry submit erdos-488 Disproof.lean --kind disproof` | the statement is false: prove `Erdos488.not_erdos_488 : ¬ (…)` |
 | `nosorry submit erdos-488 Partial.lean --kind partial` | the target reduced to `sorry`'d lemmas |
 | `nosorry finding erdos-488 notes.md --repo https://github.com/you/repo` | a remark, reference or idea in prose |

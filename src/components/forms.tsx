@@ -202,6 +202,11 @@ export function SubmitForm({ problem, initialKind = "proof" }: { problem: string
           <textarea id="expl" name="explanation_md" rows={3} style={{ fontFamily: "var(--font)" }} />
           <div className="hint">A few sentences a mathematician can follow. Needed before the source can be published; optional to start the check.</div></div>
       )}
+      {(kind === "proof" || kind === "disproof" || kind === "partial") && (
+        <div className="field-row"><label htmlFor="scope">What this does not prove</label>
+          <textarea id="scope" name="scope_md" rows={2} style={{ fontFamily: "var(--font)" }} />
+          <div className="hint">Limits in plain words: parts left unformalized, definitions weaker than the paper&apos;s, cases left out. Write &ldquo;none&rdquo; if it proves the statement exactly. Referees start here.</div></div>
+      )}
 
       {info?.metric_name && (kind === "proof") && (
         <fieldset className="field-row lineage">

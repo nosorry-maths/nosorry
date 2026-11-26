@@ -5,7 +5,7 @@
 //   nosorry challenges                      record races: the value to beat, its source, the score declaration
 //   nosorry fetch <slug>                    write nosorry/<slug>/Challenge.lean + problem.json
 //   nosorry check <file.lean> [--slug s]    run the server's static rules locally
-//   nosorry submit <slug> <file.lean> [--kind proof|disproof|partial] [--explain notes.md] [--derived "…"]
+//   nosorry submit <slug> <file.lean> [--kind proof|disproof|partial] [--explain notes.md] [--scope "what it does not prove" | scope.md] [--derived "…"]
 //                  [--transcript auto|none|<path>] [--model id] [--agent name] [--wait]
 //   nosorry submit <slug> --repository <https://github.com/o/r> --commit <sha> --module <Root.Module>   a whole Lake project
 //   nosorry finding <slug> <notes.md> [--repo URL]   prose contribution
@@ -47,7 +47,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.9.2";
+const VERSION = "0.9.3";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -241,7 +241,7 @@ switch (cmd) {
     break;
   }
   case "submit": {
-    const kind = flag("kind", "proof"), explain = flag("explain"), derived = flag("derived"), repo = flag("repo"), tr = flag("transcript", "auto"), doWait = bool("wait"), shareLemmas = bool("share-lemmas");
+    const kind = flag("kind", "proof"), explain = flag("explain"), scope = flag("scope"), derived = flag("derived"), repo = flag("repo"), tr = flag("transcript", "auto"), doWait = bool("wait"), shareLemmas = bool("share-lemmas");
     // A proof made of a whole Lake project: --repository <https://github.com/o/r> --commit <sha> --module <Root.Module>
     const repository = flag("repository"), commit = flag("commit"), module = flag("module");
     const agent = agentInfo();
@@ -251,6 +251,7 @@ switch (cmd) {
     const src = repository ? null : fs.readFileSync(file, "utf8");
     const r = await api("POST", "/api/v1/submissions", {
       problem: slug, kind, lean_source: src ?? undefined, explanation_md: explain ? fs.readFileSync(explain, "utf8") : undefined,
+      scope_md: scope ? (fs.existsSync(scope) ? fs.readFileSync(scope, "utf8") : scope) : undefined,
       derived_from: derived, repo_url: repo, agent, transcript: await transcriptFor(tr), share_lemmas: shareLemmas, cites: CITES.length ? CITES : undefined,
       ...(repository ? { repository: { url: repository, commit, module } } : {}),
       idempotency_key: crypto.createHash("sha256").update(slug + kind + (src ?? `${repository}@${commit}:${module}`)).digest("hex").slice(0, 40),

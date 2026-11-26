@@ -306,6 +306,7 @@ export async function submitWeb(_: unknown, f: FormData) {
     title: str(f, "title", 300) || undefined,
     body_md: str(f, "body_md") || undefined,
     explanation_md: str(f, "explanation_md") || undefined,
+    scope_md: str(f, "scope_md") || undefined,
     derived_from: str(f, "derived_from", 2000) || undefined,
     repo_url: str(f, "repo_url", 500) || undefined,
     target_decl: str(f, "target_decl", 200) || undefined,

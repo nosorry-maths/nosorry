@@ -19,6 +19,7 @@ import { creditBookCites } from "../shared/knowledge.mjs";
 import { acceptLemmaStatement, rejectLemmaStatement, onLemmaProved, creditLemmaUses, shareOpenLemmas } from "../shared/lemmas.mjs";
 import { maybeSyncAixiv } from "../shared/aixiv.mjs";
 import { runRemote, githubBackendName } from "./github-backend.mjs";
+import { compareProblems, judgeMetric } from "../shared/judge.mjs";
 import { maybeCheckUpstream } from "../shared/fc-upstream.mjs";
 import { run as runStage, sandboxName } from "./sandbox.mjs";
 
@@ -282,16 +283,7 @@ async function verifyOne(job, sub, isRepo) {
           ? `${j.error}. A disproof must declare \`theorem ${expected} : ¬ (<the reference statement>)\` — the reference name with its last part prefixed by not_.`
           : j.error);
       }
-      const problems = [];
-      if (!j.is_theorem) problems.push("target is not a theorem");
-      if (!j.type_matches || !j.levels_match) problems.push(sub.kind === "disproof"
-        ? `${j.target} must have type ¬ (reference statement)` : "statement differs from the reference");
-      if (j.has_sorry && sub.kind !== "partial") problems.push(
-        j.open_lemmas.length === 1 && j.open_lemmas[0] === j.target ? "the target theorem itself still uses sorry"
-          : `the proof still depends on sorry (${j.open_lemmas.join(", ")}) — submit it as a partial proof instead`);
-      if (j.definition_mismatches.length) problems.push(`declarations the statement depends on were changed or are missing: ${j.definition_mismatches.slice(0, 20).join(", ")}`);
-      if (j.answer_filled && !sub.needs_answer) problems.push("the reference type contains sorry outside an answer(...) slot; report it as a critique");
-      if (j.forbidden_axioms.length) problems.push(`non-standard axioms: ${j.forbidden_axioms.join(", ")}`);
+      const problems = compareProblems(j, { kind: sub.kind, needsAnswer: !!sub.needs_answer });
       const detail = `axioms: [${j.axioms.join(", ")}]` + (j.open_lemmas.length ? `\nopen lemmas: ${j.open_lemmas.join(", ")}` : "");
       if (problems.length) throw new Reject("rejected", problems.join("; ") + "\n" + detail);
       return { detail, j };
@@ -310,11 +302,9 @@ async function verifyOne(job, sub, isRepo) {
         const r = await exec("metric", chkDir, "lean", ["--run", "src/Compare.lean", "Challenge", "Solution", sub.metric_decl], { timeoutMs: 10 * 60_000, readOnly: true });
         let j;
         try { j = JSON.parse(r.out.trim().split("\n").pop()); } catch { throw new Error(`checker output unreadable:\n${tail(r.out, 2000)}`); }
-        if (j.error) throw new Reject("rejected", j.error);
-        if (!j.type_matches || j.definition_mismatches.length) throw new Reject("rejected", `${sub.metric_decl} must keep the reference statement, with your value in place of the hole`);
-        if (j.forbidden_axioms.length || j.has_sorry) throw new Reject("rejected", `${sub.metric_decl} is not fully proved (sorry or extra axioms)`);
-        if (j.answer_nats.length !== 1) throw new Reject("rejected", `${sub.metric_decl}: expected exactly one natural-number literal in place of the hole, got ${JSON.stringify(j.answers)}`);
-        return { detail: `${sub.metric_name} = ${j.answer_nats[0]} (proved)`, value: j.answer_nats[0] };
+        const v = judgeMetric(j, sub.metric_decl);
+        if (!v.ok) throw new Reject("rejected", v.error);
+        return { detail: `${sub.metric_name} = ${v.value} (proved)`, value: v.value };
       });
       verdict = { ...verdict, metric_value: m.value };
       await pool.query("UPDATE submissions SET metric_value=$2 WHERE id=$1", [sub.id, m.value]);
