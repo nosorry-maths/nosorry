@@ -1,6 +1,7 @@
 import { one, q } from "@/lib/db";
 import { apiUser } from "@/lib/auth";
 import { anonLimit, err, json } from "@/lib/api";
+import { hintJson, hintsFor } from "@/lib/knowledge";
 
 type Row = {
   sid: number; id: string; user_id: number; kind: string; status: string; visibility: string; problem: string | null; statement_version: number | null;
@@ -41,5 +42,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // Sealed and not yours: verdict only. Stage names and outcomes, but no logs, lemma names or source.
     return json({ ...base, sealed: true, latest_run: run ? { result: run.result, toolchain: run.toolchain, stages: run.stages.map(({ name, status, ms }) => ({ name, status, ms })) } : null });
   }
-  return json({ ...base, verdict: s.verdict, axioms: s.axioms, open_lemmas: s.open_lemmas, lean_source: s.lean_source, latest_run: run, points });
+  // A failed check: the error → fix base suggests what usually fixes the first errors (owner only).
+  const failed = owner && run && !["verified", "partial"].includes(run.result)
+    ? (run.stages ?? []).filter((x) => x.status === "fail" && x.detail).map((x) => x.detail).join(" ; ").slice(0, 20000) : "";
+  const hints = failed ? (await hintsFor(failed, 3)).map((h) => hintJson(h.hint, h.score, h.matched)) : undefined;
+  return json({ ...base, verdict: s.verdict, axioms: s.axioms, open_lemmas: s.open_lemmas, lean_source: s.lean_source, latest_run: run, points,
+    ...(hints?.length ? { hints, hints_note: "Possible fixes from the error → fix base (GET /api/v1/hints?error=…); generic advice, check it applies." } : {}) });
 }

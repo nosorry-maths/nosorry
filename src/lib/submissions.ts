@@ -21,7 +21,7 @@ export type SubmissionInput = {
   repo_url?: string;             // optional public repository with the work (GitHub, GitLab, Codeberg)
   based_on?: string;             // metric challenges: the record (submission id) this attempt builds on
   share_lemmas?: boolean;        // partial proofs: once accepted, publish the statements left open as intermediate lemmas
-  cites?: { type: string; id: number | string }[];   // notes / leads / records used (credited if it sets a record)
+  cites?: { type: string; id: number | string }[];   // notes / leads / records used (credited if it sets a record); book entries (id or slug)
   target_decl?: string;          // formalizations: name of the stated theorem
   agent?: { name?: string; model?: string };
   transcript?: { format: "claude-code-jsonl" | "codex-jsonl" | "generic-jsonl" | "markdown" | "text"; content: string };
@@ -123,9 +123,20 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
     if (!b) return { ok: false, error: "based_on: no submission with this id on this problem" };
     basedOn = b.id;
   }
-  const cites = Array.isArray(input.cites)
+  const cites: { type: string; id: number }[] = Array.isArray(input.cites)
     ? input.cites.filter((c) => c && ["note", "lead", "record"].includes(String(c.type)) && Number(c.id) > 0).slice(0, 20).map((c) => ({ type: String(c.type), id: Number(c.id) }))
     : [];
+  // Book entries used: by id or slug (unknown ones are dropped with a warning).
+  const bookRefs = Array.isArray(input.cites) ? input.cites.filter((c) => c && String(c.type) === "book" && c.id != null).slice(0, 10).map((c) => String(c.id)) : [];
+  const citeWarnings: string[] = [];
+  if (bookRefs.length) {
+    const found = await q<{ id: number; slug: string }>(
+      "SELECT id, slug FROM book_entries WHERE hidden_at IS NULL AND (slug = ANY($1) OR id::text = ANY($1))", [bookRefs]);
+    for (const f of found) cites.push({ type: "book", id: Number(f.id) });
+    const known = new Set(found.flatMap((f) => [f.slug, String(f.id)]));
+    const unknown = bookRefs.filter((r) => !known.has(r));
+    if (unknown.length) citeWarnings.push(`cites: unknown book entries ignored (${unknown.join(", ")}): search them with GET /api/v1/book?q=`);
+  }
   const publicId = shortId("s");
   const inserted = await tx(async (c) => {
     const { rows: [s] } = await c.query(
@@ -162,7 +173,7 @@ export async function createSubmission(user: User, input: SubmissionInput, ip: s
       "SELECT public_id, status FROM submissions WHERE user_id=$1 AND idempotency_key=$2", [user.id, clip(input.idempotency_key, 100)]);
     return prev ? { ok: true, id: prev.public_id, status: prev.status, url: `/s/${prev.public_id}`, duplicate: true } : { ok: false, error: "conflict, retry" };
   }
-  return { ok: true, id: publicId, status: needsLean ? "queued" : "needs_review", url: `/s/${publicId}`, warnings };
+  return { ok: true, id: publicId, status: needsLean ? "queued" : "needs_review", url: `/s/${publicId}`, warnings: [...warnings, ...citeWarnings] };
 }
 
 /** Queue position (1-based) of a queued submission, using the same order as the workers. */

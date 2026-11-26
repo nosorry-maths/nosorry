@@ -1,0 +1,1109 @@
+[
+  {
+    "slug": "disproof-must-have-negated-type",
+    "pattern": "must have type ¬ \\(reference statement\\)",
+    "title": "Disproof type is not ¬ (reference statement)",
+    "explanation": "The `not_…` theorem was found, but its type is not syntactically `¬ S` for the reference type `S`. In the logs the usual cause was a universe mismatch: the reference uses `Type*` (elaborated as `Type u_1`), while the disproof wrote `Type u` or a fresh `Type*` inside the negation.",
+    "fixes": [
+      "Copy the reference statement verbatim inside `¬ ( … )`, turning the theorem's binders into `∀` binders, in the same order and with the same implicitness and instance arguments.",
+      "Match universe names: write `Type u_1` (declare `universe u_1`) where the reference has `Type*`, and instantiate the counterexample at that level, e.g. `G.{u_1}` or `ULift.{u_1} (Fin n)`. This fixed the rejected submissions in the logs.",
+      "Keep inline proof terms such as `(by simp)` inside the statement exactly as in the reference."
+    ],
+    "example": "X.not_conj must have type ¬ (reference statement)",
+    "tags": [
+      "nosorry",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "statement-dependency-changed",
+    "pattern": "declarations the statement depends on were changed or are missing",
+    "title": "Definitions or auxiliary proofs of the statement differ",
+    "explanation": "The checker compares every constant the target's statement uses. A name ending in `._proof_1` is the auxiliary proof Lean extracts from a `by …` term inside the statement (e.g. `Finset.max' (by simp)`). It changes when the surrounding statement text, universes or instances change.",
+    "fixes": [
+      "Do not redefine or copy the challenge's definitions; use the ones in the challenge file unchanged.",
+      "If the listed name ends in `_proof_N`, the statement around an inline `by` differs from the reference (often the universe level). Restore the exact reference text.",
+      "Never edit the statement to make the proof easier; prove a helper lemma instead and apply it."
+    ],
+    "example": "declarations the statement depends on were changed or are missing: Ns.thm._proof_1",
+    "tags": [
+      "nosorry",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "disproof-name-not-found",
+    "pattern": "not found in the submission",
+    "title": "Target (or not_ target) missing",
+    "explanation": "The checker did not find the expected declaration name. For a disproof the name is the reference name with its last component prefixed by `not_`, in the same namespace (for `A.b.parts.i` it is `A.b.parts.not_i`).",
+    "fixes": [
+      "Rename the theorem to the exact expected name. The rejection message spells it out.",
+      "Check that it is not inside an extra `namespace`/`section` with a name, and that it is not `private`.",
+      "For a proof, keep the reference theorem's name and replace only its `sorry`."
+    ],
+    "example": "Ns.thm.parts.not_i not found in the submission",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "statement-differs-from-reference",
+    "pattern": "statement differs from the reference",
+    "title": "Statement differs from the reference",
+    "explanation": "The type of your target theorem is not identical (after elaboration) to the reference type. Harmless-looking edits such as renaming a bound variable are fine, but changing binders, coercions, `≤` vs `<`, instance arguments or universes is not.",
+    "fixes": [
+      "Start from the challenge file and replace only the `sorry` of the target.",
+      "If you need a different but equivalent form, prove it as a separate lemma and close the target with `exact (my_lemma …)` or `simpa using …`.",
+      "Partial proofs are checked the same way: open lemmas may change, the target statement may not."
+    ],
+    "example": "statement differs from the reference",
+    "tags": [
+      "nosorry",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "finset-insert-needs-decidableeq",
+    "pattern": "failed to synthesize(?: instance of type class)?\\s+(?:Insert|Singleton|Union|Inter|SDiff|DecidableEq)\\b",
+    "title": "Finset literal or operation needs DecidableEq",
+    "explanation": "`{u, v} : Finset α`, `insert`, `∪`, `∩` and `\\` on finsets need `DecidableEq α`. Without it Lean cannot build the `Insert` instance, and `{u, v}` may also be tried as structure-instance notation (\"`u` is not a field of structure `Finset`\"). The failure then shows up later as goals mentioning `sorry`.",
+    "fixes": [
+      "Add `classical` at the start of the proof, or add `[DecidableEq α]` to the lemma's binders, if the statement allows it.",
+      "Annotate the literal: `({u, v} : Finset α)`. Or use a `Set` (`({u, v} : Set α)`) when decidability is not needed.",
+      "Fix this first: the later errors with goals that mention `sorry` follow from it."
+    ],
+    "example": "failed to synthesize instance of type class Insert α (Finset α)",
+    "tags": [
+      "typeclass",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "import-not-allowed",
+    "pattern": "import not allowed|import \\S+ refused",
+    "title": "Import not allowed",
+    "explanation": "nosorry accepts imports only from Mathlib, Batteries, Aesop, Qq, Plausible, ProofWidgets, Init, Std, FormalConjectures*, Physlib and QuantumInfo. SciLean and PhyslibAlpha are refused on purpose. A module name that is malformed or truncated is also reported this way.",
+    "fixes": [
+      "Remove the import and inline the definitions or lemmas you need into the solution file.",
+      "To import another numbered formal-conjectures problem, quote the numeric component: `import FormalConjectures.ErdosProblems.«28»`.",
+      "Use `import Mathlib` (or the specific Mathlib modules) rather than a third-party package."
+    ],
+    "example": "import not allowed: Foo.Bar",
+    "tags": [
+      "nosorry",
+      "import"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "native-decide-refused",
+    "pattern": "native_decide.{0,3} trusts the compiler|Lean\\.ofReduce(Bool|Nat)",
+    "title": "native_decide is not accepted",
+    "explanation": "`native_decide`, `decide +native` and `Lean.ofReduceBool` trust compiled code, and nosorry accepts only `propext`, `Quot.sound` and `Classical.choice`. This was the most frequent preflight rejection in the logs. A `native_decide` that is literally present in the reference statement is tolerated as long as your target does not depend on it.",
+    "fixes": [
+      "Replace it by `decide +kernel` (kernel evaluation, no compiler), or by `decide` on smaller pieces.",
+      "Split a big computation into named lemmas over small ranges, each closed by `decide +kernel` or `norm_num`, and combine them with `rw`/`simp`.",
+      "For number theory, prove facts structurally (multiplicativity, `norm_num` primality) instead of evaluating huge numbers."
+    ],
+    "example": "`native_decide` trusts the compiler and is not accepted",
+    "tags": [
+      "nosorry",
+      "kernel"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "rfl-not-defeq",
+    "pattern": "The rfl tactic failed|Tactic .rfl. failed|is not definitionally equal to the right-hand side",
+    "title": "rfl failed: sides are not definitionally equal",
+    "explanation": "`rfl` needs the two sides to be equal by unfolding definitions. Linear maps and equivalences built by tactics (`LinearEquiv.ofFinrankEq`, `Classical.choice`-based constructions), well-founded recursion and `irreducible` definitions do not unfold to the value you expect.",
+    "fixes": [
+      "Prove the equation by its defining lemma: `simp [myFun]`, `rw [myFun_apply]`, or `ext` followed by `simp`.",
+      "If the map comes from an existence theorem, keep the property you need (`hE : ∀ x, E x = …`) when you construct it, instead of hoping it unfolds.",
+      "Try `decide` for decidable closed goals, `norm_num` for numerals, `ring` for commutative-ring identities."
+    ],
+    "example": "Tactic `rfl` failed: The left-hand side f (z, h) is not definitionally equal to the right-hand side ((0, z), h)",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "reference-does-not-compile",
+    "pattern": "reference does not compile|unknown module prefix",
+    "title": "Reference statement does not compile (infrastructure)",
+    "explanation": "The challenge file itself failed to build on the verifier, for example \"unknown module prefix 'FormalConjecturesUtil'\" when the build environment lacked a library. This is not a fault in your proof.",
+    "fixes": [
+      "Resubmit later or report it to the maintainers. Do not change the imports of the challenge file to work around it.",
+      "If you are submitting a formalization, check that the file compiles locally with the same toolchain (Lean v4.33.1) and imports only allowed modules."
+    ],
+    "example": "reference does not compile: error: unknown module prefix 'Foo'",
+    "tags": [
+      "nosorry",
+      "import"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "checker-output-unreadable",
+    "pattern": "checker output unreadable",
+    "title": "Statement checker crashed (infrastructure)",
+    "explanation": "The statement/axiom checker produced no readable verdict, usually because it ran out of time or memory on a very large environment. It is a verifier-side error, not a rejection of the proof.",
+    "fixes": [
+      "Resubmit. If it repeats, report it, mentioning the submission size.",
+      "Very large files (hundreds of thousands of characters) are more likely to hit this. Removing unused helper code helps."
+    ],
+    "example": "checker output unreadable:",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "verifier-run-failed",
+    "pattern": "verifier run failed|the run stopped before producing a result|HTTP 401",
+    "title": "Remote verifier run failed (infrastructure)",
+    "explanation": "Large or repository submissions are checked on a remote runner. The run was interrupted or could not be read, so there is no verdict yet.",
+    "fixes": [
+      "Resubmit later. The submission was not rejected on its merits.",
+      "Report it if it repeats for the same submission."
+    ],
+    "example": "verifier run failed: the run stopped before producing a result",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "lint-let-preferred-over-leti",
+    "pattern": ".let. is preferred over .letI.|linter\\.style\\.haveILetI",
+    "title": "Linter: let preferred over letI (warning)",
+    "explanation": "A style warning, not an error: in a proof (a Prop goal) `letI`/`haveI` are unnecessary. It can flood the compiler output and hide the real error.",
+    "fixes": [
+      "Ignore it while hunting the error: search the output for `error:`.",
+      "Replace `letI`/`haveI` by `let`/`have` inside proofs, or add `set_option linter.style.haveILetI false` (allowed by nosorry)."
+    ],
+    "example": "warning: The goal is a proposition, so `let` is preferred over `letI`.",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "lint-unused-simp-argument",
+    "pattern": "This simp argument is unused|linter\\.unusedSimpArgs",
+    "title": "Linter: unused simp argument (warning)",
+    "explanation": "A warning that a lemma passed to `simp`/`simp only` was not used. Harmless, but the noise can bury real errors.",
+    "fixes": [
+      "Remove the listed argument, or silence the linter with `set_option linter.unusedSimpArgs false`.",
+      "Look for lines with `error:` to find what actually failed."
+    ],
+    "example": "warning: This simp argument is unused: Foo.bar",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "declaration-uses-sorry",
+    "pattern": "declaration uses .sorry.",
+    "title": "Declaration uses sorry",
+    "explanation": "A warning that a declaration still contains `sorry` (or `admit`). nosorry accepts it only in declarations the target does not depend on, or in a partial proof whose open lemmas are shared.",
+    "fixes": [
+      "Find which `sorry` your target depends on. The verdict lists them as open lemmas.",
+      "For a complete proof, remove every `sorry` on which the target depends. Otherwise submit as `partial` with shared lemmas.",
+      "Other theorems of the challenge file may keep their `sorry`."
+    ],
+    "example": "warning: declaration uses `sorry`",
+    "tags": [
+      "nosorry",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry verifier logs (anonymised)",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "target-still-uses-sorry",
+    "pattern": "the target theorem itself still uses sorry",
+    "title": "Target theorem still uses sorry",
+    "explanation": "The theorem you are proving still contains `sorry` directly, so this is neither a proof nor a partial proof.",
+    "fixes": [
+      "Replace the target's `sorry` by a proof. If you can only reduce it to lemmas, state them as separate theorems with `sorry` and submit as `partial`."
+    ],
+    "example": "the target theorem itself still uses sorry",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "proof-depends-on-sorry",
+    "pattern": "the proof still depends on sorry",
+    "title": "Proof depends on sorry: submit as partial",
+    "explanation": "Your target is sorry-free, but some lemma it uses (listed) still has `sorry`. Proofs and disproofs must be complete.",
+    "fixes": [
+      "Prove the listed lemmas, or resubmit with kind `partial` (ideally with shared lemmas so others can prove them).",
+      "Check for a forgotten `sorry` in a helper's `have` or in a `decreasing_by` block."
+    ],
+    "example": "the proof still depends on sorry (Ns.helper) — submit it as a partial proof instead",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "non-standard-axioms",
+    "pattern": "non-standard axioms",
+    "title": "Non-standard axioms",
+    "explanation": "`#print axioms` of the target shows something beyond `propext`, `Quot.sound` and `Classical.choice`, typically `Lean.ofReduceBool` (from `native_decide`), or an axiom declared in a dependency.",
+    "fixes": [
+      "Remove `native_decide`/`decide +native` and use `decide +kernel` or a structural proof.",
+      "Do not declare `axiom`s. State the fact as a theorem (with `sorry`, as a partial proof) instead."
+    ],
+    "example": "non-standard axioms: Lean.ofReduceBool",
+    "tags": [
+      "nosorry",
+      "kernel"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "new-axioms-not-allowed",
+    "pattern": "new axioms are not allowed",
+    "title": "axiom declarations refused",
+    "explanation": "The preflight found an `axiom` command. Axioms would let anything be proved.",
+    "fixes": [
+      "Turn the axiom into a `theorem … := by sorry` and submit as `partial` with shared lemmas, so the step becomes a lemma problem."
+    ],
+    "example": "new axioms are not allowed",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "unsafe-ffi-opaque-refused",
+    "pattern": "(unsafe. / .partial. definitions|implemented_by. / .extern|.opaque. declarations|initializers) are not allowed|meta-level attributes are not allowed",
+    "title": "unsafe / partial / extern / opaque refused",
+    "explanation": "Constructs that bypass the kernel or hide definitions (`unsafe`, `partial def`, `implemented_by`, `extern`, `opaque`, `initialize`, `@[csimp]` and similar attributes) are refused.",
+    "fixes": [
+      "Write a total definition: structural recursion, or `termination_by` with a `decreasing_by` proof, or `Nat.rec`/`Nat.iterate`.",
+      "Use `def` (or `noncomputable def`) instead of `opaque`; `irreducible_def` is fine if you need opacity for performance."
+    ],
+    "example": "`unsafe` / `partial` definitions are not allowed",
+    "tags": [
+      "nosorry",
+      "syntax"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "debug-commands-not-allowed",
+    "pattern": "evaluation / debugging commands are not allowed",
+    "title": "#eval / #print / #check refused",
+    "explanation": "`#eval`, `#print`, `#check`, `#reduce`, `#synth`, `#exit`, `run_cmd` and similar commands are refused in submissions, including `#print axioms` lines copied from ported code.",
+    "fixes": [
+      "Delete these lines before submitting. Use them only locally."
+    ],
+    "example": "evaluation / debugging commands are not allowed",
+    "tags": [
+      "nosorry",
+      "syntax"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "search-commands-refused",
+    "pattern": "search commands \\(#leansearch",
+    "title": "exact? / apply? / hint / #loogle refused",
+    "explanation": "Search tactics and commands (`exact?`, `apply?`, `rw?`, `hint`, `#leansearch`, `#loogle`, `#moogle`) must be replaced by what they found. The rule also fires on a hypothesis named `hint` used at the start of a tactic line.",
+    "fixes": [
+      "Run `exact?` locally, then paste the suggested `exact foo …` term.",
+      "Rename hypotheses called `hint` (e.g. to `hInt`)."
+    ],
+    "example": "search commands (#leansearch, #loogle, exact?…) must be replaced by the lemmas they found before submitting",
+    "tags": [
+      "nosorry",
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "custom-syntax-refused",
+    "pattern": "custom syntax / elaborators are not allowed|meta-programming API is not allowed",
+    "title": "Custom syntax / metaprogramming refused",
+    "explanation": "`macro`, `syntax`, `notation`, `elab`, `infix` and `import Lean`/`Lean.Elab`/`Lean.Meta` are refused in solutions. Notation that already appears verbatim in the reference statement is tolerated.",
+    "fixes": [
+      "Replace notation by plain definitions or `abbrev`s, and macros by repeated tactic blocks or `all_goals`/`<;>`.",
+      "If you need a local `open … in`, that is fine; it is not custom syntax."
+    ],
+    "example": "custom syntax / elaborators are not allowed in solutions",
+    "tags": [
+      "nosorry",
+      "syntax"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "set-option-not-allowed",
+    "pattern": "only maxHeartbeats \\(≤",
+    "title": "set_option not allowed",
+    "explanation": "Only `maxHeartbeats` and `synthInstance.maxHeartbeats` up to 9,999,999, `maxRecDepth` up to 99,999, `linter.*`, `autoImplicit`/`relaxedAutoImplicit` and `pp.*` are accepted. Values of 10,000,000 heartbeats or 100,000 recursion depth are refused, as is any other option.",
+    "fixes": [
+      "Lower the value (e.g. `set_option maxRecDepth 99999`), and scope it with `set_option … in` before a single declaration.",
+      "Remove options like `trace.*`, `maxSynthPendingDepth` or `backward.*`; restructure the proof instead."
+    ],
+    "example": "only maxHeartbeats (≤ 9,999,999), maxRecDepth, synthInstance.maxHeartbeats, linter.*, autoImplicit and pp.* options are allowed",
+    "tags": [
+      "nosorry",
+      "performance"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "io-not-allowed",
+    "pattern": "IO is not allowed",
+    "title": "IO refused",
+    "explanation": "Any mention of `IO`, `EIO`, `BaseIO` or `System.*` is refused, even in a definition that is never run.",
+    "fixes": [
+      "Remove the code. Proofs never need IO. If a name merely contains the token `IO`, rename it."
+    ],
+    "example": "IO is not allowed",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "target-must-be-theorem",
+    "pattern": "must be a theorem|target is not a theorem",
+    "title": "Target is not a theorem",
+    "explanation": "The target was declared with `def`, `abbrev` or `instance` (or it is missing and a definition with the same name exists).",
+    "fixes": [
+      "Declare it with `theorem` (or `lemma`) under the exact reference name."
+    ],
+    "example": "target is not a theorem",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "compilation-timed-out",
+    "pattern": "compilation timed out",
+    "title": "Compilation timed out",
+    "explanation": "The whole file took longer than the verifier's wall-clock limit. Heartbeat limits are per declaration; this one is for the whole build.",
+    "fixes": [
+      "Profile locally and speed up the slowest declarations: `simp only [...]` instead of `simp`, `nlinarith only [...]`, smaller `decide` chunks.",
+      "Delete unused helper lemmas, especially heavy computations."
+    ],
+    "example": "compilation timed out",
+    "tags": [
+      "nosorry",
+      "performance"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "kernel-replay-failed",
+    "pattern": "kernel replay failed",
+    "title": "Kernel replay failed",
+    "explanation": "The compiled module was re-checked by `leanchecker` and a declaration failed. Usually this is a kernel-only limit (deep recursion, a definitional unfolding the elaborator accepted lazily), and rarely a genuine soundness issue.",
+    "fixes": [
+      "Look for `decide`/`rfl` proofs on large terms. Replace them with `decide +kernel` on smaller pieces, or with structural lemmas.",
+      "Check that the file compiles locally with `lake env lean` and replays with `leanchecker`."
+    ],
+    "example": "kernel replay failed: (kernel) deep recursion detected",
+    "tags": [
+      "nosorry",
+      "kernel"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "comparator-rejected",
+    "pattern": "comparator rejected",
+    "title": "Comparator rejected",
+    "explanation": "The independent comparator (leanprover/comparator) found a difference in the theorem, its definitions or its axioms relative to the reference.",
+    "fixes": [
+      "Treat it like a statement mismatch: restore the exact reference statement and definitions, and remove non-standard axioms."
+    ],
+    "example": "comparator rejected:",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "duplicate-submission",
+    "pattern": "identical to earlier submission",
+    "title": "Duplicate of an earlier submission",
+    "explanation": "After removing comments, whitespace and declaration names, your source is identical to another user's earlier submission on this problem.",
+    "fixes": [
+      "Do not resubmit someone else's proof. Build on it (cite it) or find a different argument. Another proof of a settled problem earns nothing."
+    ],
+    "example": "identical to earlier submission s-… on this problem",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "sorry-outside-answer-slot",
+    "pattern": "sorry outside an answer\\(\\.\\.\\.\\) slot",
+    "title": "Reference contains sorry outside an answer(...) slot",
+    "explanation": "The reference type itself contains a `sorry` that is not an `answer(...)` hole. The statement is incomplete and cannot be proved as stated.",
+    "fixes": [
+      "Report it as a critique of the statement instead of submitting a proof."
+    ],
+    "example": "the reference type contains sorry outside an answer(...) slot; report it as a critique",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "formalization-must-use-sorry",
+    "pattern": "must be stated with sorry as its proof|the statement introduces axioms",
+    "title": "Formalization must be a sorry'd statement",
+    "explanation": "A formalization submission states a problem: its target must be a theorem whose proof is `sorry`, and it must not add axioms.",
+    "fixes": [
+      "Write `theorem name : statement := by sorry`, and keep auxiliary definitions sorry-free and axiom-free.",
+      "Sanity checks with `native_decide` are not accepted in formalizations either; use `decide` or `decide +kernel`."
+    ],
+    "example": "Ns.thm must be stated with sorry as its proof: a formalization is a problem, not a proof",
+    "tags": [
+      "nosorry"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "unknown-identifier",
+    "pattern": "unknown identifier",
+    "title": "Unknown identifier",
+    "explanation": "The name does not exist in scope. Common causes: a Mathlib rename (lemma names drift between versions), a missing `open`, a Lean 3 name, or a typo in a local hypothesis.",
+    "fixes": [
+      "Search for the current name: try the obvious modern spelling (`Nat.lt_irrefl` → `lt_irrefl`, `_iff` variants, `Finset.card_le_of_subset` → `Finset.card_le_card`), or use `exact?` locally.",
+      "Add the namespace (`Nat.`, `Finset.`, `SimpleGraph.`) or an `open … in`.",
+      "Check `autoImplicit`: with it off, unbound lowercase names in signatures are errors."
+    ],
+    "example": "unknown identifier 'foo_bar'",
+    "tags": [
+      "elaboration",
+      "import"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "unknown-constant",
+    "pattern": "unknown (constant|declaration)",
+    "title": "Unknown constant",
+    "explanation": "A fully qualified name (in `rw`, `simp`, `@foo` or the dot notation) does not exist, typically after a Mathlib rename or deprecation removal.",
+    "fixes": [
+      "Find the replacement: deprecated aliases name their successor in the warning of the previous version, and Mathlib usually keeps the same statement under a new name (`dite_eq_left` → `dif_pos`).",
+      "Add a local shim lemma with the old name proved by the new one when porting large files."
+    ],
+    "example": "unknown constant 'Nat.foo_bar'",
+    "tags": [
+      "elaboration",
+      "import"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "failed-to-synthesize-instance",
+    "pattern": "failed to synthesize",
+    "title": "Failed to synthesize instance",
+    "explanation": "Type class resolution could not find an instance: decidability (`Decidable`, `DecidableEq`, `DecidablePred`), finiteness (`Fintype`, `Finite`), an algebraic structure, or a coercion that does not exist.",
+    "fixes": [
+      "For decidability, add `classical` at the start of the tactic proof, or `open Classical in` before a definition.",
+      "For `Fintype` of a subtype or set, use `Set.toFinite`/`Fintype.ofFinite`, or state the lemma with `[Fintype α] [DecidableEq α]`.",
+      "Check the types: `HAdd ℕ ℝ ?` or `HDiv ℕ ℕ ℝ` means a missing cast; write `(n : ℝ)`."
+    ],
+    "example": "failed to synthesize Fintype ↑s",
+    "tags": [
+      "typeclass"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "failed-to-synthesize-ofnat",
+    "pattern": "failed to synthesize(?: instance of type class)?\\s+OfNat",
+    "title": "Numeral on a type without numerals",
+    "explanation": "A literal such as `2` was elaborated at a type that has no `OfNat` instance (a `Prop`, a `Set`, a function type), usually because of a wrong argument order or missing parentheses.",
+    "fixes": [
+      "Add a type ascription `(2 : ℕ)` and check the expected type of the argument.",
+      "Check operator precedence: `f 2 ^ k` is `(f 2) ^ k`."
+    ],
+    "example": "failed to synthesize OfNat (Set ℕ) 2",
+    "tags": [
+      "typeclass",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "typeclass-stuck",
+    "pattern": "typeclass instance problem is stuck",
+    "title": "Typeclass instance problem is stuck",
+    "explanation": "Lean cannot even start instance search because a type is still a metavariable, typically a numeral or a lambda whose type is not determined.",
+    "fixes": [
+      "Add type ascriptions: `(0 : ℝ)`, `(fun n : ℕ => …)`, or give explicit arguments with `(α := ℕ)`."
+    ],
+    "example": "typeclass instance problem is stuck, it is often due to metavariables",
+    "tags": [
+      "typeclass",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "type-mismatch-coercion",
+    "pattern": "type mismatch",
+    "title": "Type mismatch (often a coercion ℕ → ℤ → ℝ)",
+    "explanation": "The term has a different type than expected. With numbers this is usually a coercion problem: `↑(a + b)` vs `↑a + ↑b`, `((n : ℤ) : ℝ)` vs `(n : ℝ)`, or ℕ subtraction/division that does not commute with casts.",
+    "fixes": [
+      "Normalise casts with `push_cast`, `norm_cast`, `exact_mod_cast h` or `simpa using h`.",
+      "For `↑(n - k)` give `Nat.cast_sub hk` (needs `k ≤ n`); for `↑(n / k)` use `Nat.cast_div` (needs divisibility) or avoid it.",
+      "Use `zify`/`qify`/`rify` with the needed `≤` facts to move a whole goal to ℤ/ℚ/ℝ."
+    ],
+    "example": "type mismatch: h has type ↑(a + b) ≤ ↑c but is expected to have type ↑a + ↑b ≤ ↑c",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "application-type-mismatch",
+    "pattern": "application type mismatch",
+    "title": "Application type mismatch",
+    "explanation": "An argument passed to a function or lemma has the wrong type, often because the arguments are in the wrong order, an implicit argument was made explicit, or a hypothesis is stated with `<` where `≤` is expected.",
+    "fixes": [
+      "Check the lemma's signature (hover, or `#check` locally) and pass named arguments: `foo (n := 3) (h := hk)`.",
+      "Convert the hypothesis first: `hk.le`, `Nat.lt_succ_iff.mp hk`, `by omega`.",
+      "Use `convert foo … using 2` to see exactly which parts differ."
+    ],
+    "example": "application type mismatch: foo h argument h has type a < b but is expected to have type a ≤ b",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "motive-not-type-correct",
+    "pattern": "motive is not type correct",
+    "title": "Motive is not type correct (rw)",
+    "explanation": "`rw` abstracted the term you are rewriting, but some other part of the goal (a proof term, a dependent type such as `Fin n`, or a `Finset.max' s h`) depends on it, so the result does not typecheck.",
+    "fixes": [
+      "Use `simp only [h]` or `simp_rw [h]`, which can rewrite under binders and handle dependencies better.",
+      "Generalise first: `generalize hx : f n = x at *`, or `subst` if `h : x = t` with `x` a variable.",
+      "Use `Fin.cast`/`congr`/`convert` for dependent types, or prove the statement for a general `n` and specialise."
+    ],
+    "example": "motive is not type correct",
+    "tags": [
+      "tactic",
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "maximum-recursion-depth",
+    "pattern": "maximum recursion depth has been reached",
+    "title": "Maximum recursion depth reached",
+    "explanation": "Elaboration recursed too deeply, typically in `decide`, `rfl` or `simp` evaluating a large term, or in `whnf` on big numerals or long lists.",
+    "fixes": [
+      "Replace `decide` by `decide +kernel`, which skips the elaborator's evaluation and lets the kernel check the instance.",
+      "Split the computation into smaller lemmas, or prove it structurally (`norm_num`, `simp` with recursion equations).",
+      "As a last resort `set_option maxRecDepth 99999 in` (nosorry's maximum)."
+    ],
+    "example": "maximum recursion depth has been reached; use `set_option maxRecDepth <num>` to increase limit",
+    "tags": [
+      "performance",
+      "kernel"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "deterministic-timeout-heartbeats",
+    "pattern": "deterministic\\)? timeout|maxHeartbeats",
+    "title": "Deterministic timeout (maxHeartbeats)",
+    "explanation": "A declaration used more than its heartbeat budget (200000 by default). Typical culprits are unrestricted `simp`, `nlinarith`/`polyrith` with many hypotheses, `decide` on large structures and expensive instance search.",
+    "fixes": [
+      "Locate the slow tactic (comment out parts, or use `set_option profiler true` locally).",
+      "Use `simp only [...]`, `nlinarith only [...]`, `norm_num [specific lemmas]`. Split the proof into lemmas.",
+      "If it is just big, `set_option maxHeartbeats 1600000 in` before that declaration (≤ 9,999,999 on nosorry)."
+    ],
+    "example": "(deterministic) timeout at `whnf`, maximum number of heartbeats (200000) has been reached",
+    "tags": [
+      "performance"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "linarith-failed",
+    "pattern": "linarith failed",
+    "title": "linarith / nlinarith failed",
+    "explanation": "`linarith` found no linear combination of the hypotheses that proves the goal. `nlinarith` reports the same message when its products of hypotheses are not enough. Common causes: the needed fact is nonlinear, lives behind a cast, or is not in the context.",
+    "fixes": [
+      "Add the missing facts explicitly: `linarith [h1, sq_nonneg (a - b), mul_pos ha hb]`.",
+      "For nonlinear goals, give `nlinarith` the exact products: `nlinarith [mul_nonneg ha hb, sq_nonneg (x - 1)]`.",
+      "Normalise casts first (`push_cast at *`), and for ℕ goals with subtraction prefer `omega`."
+    ],
+    "example": "linarith failed to find a contradiction",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "omega-failed",
+    "pattern": "omega could not prove the goal",
+    "title": "omega could not prove the goal",
+    "explanation": "`omega` handles linear arithmetic over ℕ and ℤ with `+`, `*` by constants, `/` and `%` by numerals, and truncated subtraction. It fails on products of variables, on `^`, or when the fact it needs is hidden inside a definition.",
+    "fixes": [
+      "Bring the needed facts into the context as hypotheses (`have := Nat.mul_le_mul …`) and name nonlinear subterms (`set m := a * b with hm`).",
+      "Unfold definitions first (`simp only [f] at *` or `unfold f`), since omega does not see through them.",
+      "For real or rational goals use `linarith`; for nonlinear ones `nlinarith` or `positivity`."
+    ],
+    "example": "omega could not prove the goal: a possible counterexample may satisfy the constraints",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "simp-made-no-progress",
+    "pattern": "simp made no progress",
+    "title": "simp made no progress",
+    "explanation": "None of the simp lemmas applied. The term is probably not in the syntactic form the lemmas expect (hidden behind a definition, a coercion, or a different but equal expression).",
+    "fixes": [
+      "Unfold the definition explicitly: `simp [myDef]` or `unfold myDef`.",
+      "Check the goal with the infoview; use `rw` with the exact lemma, or `simp only [...]` with the right lemma names.",
+      "Remove the `simp` if the goal is already in the form you want; `simp at h` failing can also mean `h` is unchanged."
+    ],
+    "example": "simp made no progress",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "unsolved-goals",
+    "pattern": "unsolved goals",
+    "title": "Unsolved goals",
+    "explanation": "The tactic block ended while goals remained. Often a case split (`rcases`, `interval_cases`, `constructor`, `induction`) produced more goals than the following tactics handled, or a `<;>` combinator closed only some of them.",
+    "fixes": [
+      "Read the listed goals: handle each case with `·` bullets, or close them uniformly with `all_goals …` or `<;>`.",
+      "If a goal mentions `sorry` or `?m`, an earlier elaboration error is the real cause; fix that first."
+    ],
+    "example": "unsolved goals\ncase h\n⊢ 0 < n",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "decide-failed",
+    "pattern": "failed to reduce to (true|false)|did not reduce to .?isTrue|decide failed|failed to synthesize\\s+Decidable",
+    "title": "decide failed to reduce",
+    "explanation": "`decide` could not evaluate the `Decidable` instance to `isTrue`. Either the proposition is false, the instance is not computable (classical, `Real`, `Set` membership, `Nat.find`, well-founded recursion), or evaluation got stuck on an opaque definition.",
+    "fixes": [
+      "Check the statement is actually true for the concrete values.",
+      "Try `decide +kernel` when evaluation is merely too slow for the elaborator.",
+      "Make the instance computable: state it over `Finset`/`Fin`/`Bool` data, provide `DecidablePred`/`DecidableRel` instances, or unfold to structural recursion. `native_decide` is not accepted on nosorry."
+    ],
+    "example": "decide failed to reduce to true/false",
+    "tags": [
+      "tactic",
+      "kernel"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "consider-marking-noncomputable",
+    "pattern": "consider marking it as .noncomputable.|failed to compile definition",
+    "title": "Definition must be noncomputable",
+    "explanation": "The definition uses something without executable code (`Classical.choice`, `Real` operations, `sInf`, `Nat.find` on a classical predicate), so it cannot be compiled.",
+    "fixes": [
+      "Mark it `noncomputable def`, or put `noncomputable section` at the top of the file.",
+      "If you need to compute with it (`decide`), redefine it computably and prove it equal to the noncomputable version."
+    ],
+    "example": "failed to compile definition, consider marking it as 'noncomputable' because it depends on 'Real.sqrt'",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "universe-level-issues",
+    "pattern": "universe level|stuck at solving universe constraint|invalid universe",
+    "title": "Universe level problems",
+    "explanation": "Lean cannot reconcile universe levels: a lemma quantified over `Type u` is applied to a type in another universe, or a statement uses `Type*` and your proof introduces a different universe name.",
+    "fixes": [
+      "Name universes explicitly (`universe u_1`, `{α : Type u_1}`) to match the reference, and instantiate constants with `.{u_1}`.",
+      "Lift concrete types to the right universe with `ULift.{u_1} (Fin n)`.",
+      "Avoid `Sort*`/`Type*` in helper lemmas that must line up with a given statement."
+    ],
+    "example": "stuck at solving universe constraint max (u_1+1) ?u =?= u+1",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "cannot-synthesize-placeholder",
+    "pattern": "don't know how to synthesize (placeholder|implicit argument)",
+    "title": "Cannot synthesize placeholder",
+    "explanation": "A `_` or an implicit argument could not be inferred from the context, often because the expected type is unknown at that point (e.g. in a `have` without a type, or `Finset.sum_le_sum _`).",
+    "fixes": [
+      "Give the type: `have h : T := …`, or pass the argument explicitly with `(x := …)` or `@foo _ _ x`.",
+      "Use `refine foo ?_ ?_` to leave real subgoals instead of `_`."
+    ],
+    "example": "don't know how to synthesize placeholder for argument 'f'",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "invalid-field-notation",
+    "pattern": "invalid field( notation)?\\b|is not a field of structure",
+    "title": "Invalid field notation",
+    "explanation": "`h.foo` was used, but no `T.foo` exists for the head type `T` of `h`, typically because `h` is a `Prop` with a different head symbol than you think (`¬`, `↔`, `≤` unfolding), or because the lemma lives in another namespace.",
+    "fixes": [
+      "Call the lemma by its full name: `Nat.le_of_lt_succ h` instead of `h.le_of_lt_succ`.",
+      "Check the head of the type: for `h : a ∈ s` with `s : Finset α`, the namespace is `Finset.Mem`/`Finset`, not `Set`.",
+      "`{u, v}` being read as a structure instance (\"is not a field of structure\") means the `Insert` instance is missing; see the DecidableEq hint."
+    ],
+    "example": "invalid field 'foo', the environment does not contain 'Nat.foo'",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "ambiguous-interpretations",
+    "pattern": "ambiguous, possible interpretations",
+    "title": "Ambiguous notation or name",
+    "explanation": "Two opened namespaces provide the same name or notation (e.g. `Finset.card` and `Set.card` as `#`, `Nat.sub` lemmas in root and `Nat`, `π` from `Real` and `Nat.Prime` counting).",
+    "fixes": [
+      "Use the fully qualified name (`Finset.sum_comm`, `_root_.foo`).",
+      "Narrow the `open`: `open Finset in` only where needed, or remove a conflicting `open`."
+    ],
+    "example": "ambiguous, possible interpretations: _root_.foo, Nat.foo",
+    "tags": [
+      "elaboration",
+      "syntax"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "unexpected-token-lean3",
+    "pattern": "unexpected token|unknown identifier 'begin'|unexpected identifier; expected",
+    "title": "Unexpected token (often Lean 3 syntax)",
+    "explanation": "The parser hit syntax it does not understand. Typical sources are Lean 3 / mathlib3 idioms: `begin … end`, `λ x, e`, `assume`, `from`, `at h ⊢` written oddly, `{ }` blocks for goals, `cases h with x hx`, or `$`.",
+    "fixes": [
+      "Translate to Lean 4: `by` + indentation instead of `begin … end`, `fun x => e` (or `fun x ↦ e`), `intro` instead of `assume`, `obtain ⟨x, hx⟩ := h` instead of `cases h with x hx`, `<|` instead of `$`.",
+      "Use `·` bullets for subgoals and `;`/newline between tactics; check for a missing `:=` or `by`."
+    ],
+    "example": "unexpected token ','; expected '↦', '=>'",
+    "tags": [
+      "syntax"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "kernel-deep-recursion",
+    "pattern": "\\(kernel\\) deep recursion detected|\\(kernel\\) deterministic timeout",
+    "title": "Kernel deep recursion",
+    "explanation": "The kernel ran out of stack while type-checking, usually in a `decide`/`rfl` proof that unfolds a large computation, or in a huge term from `simp` on big numerals.",
+    "fixes": [
+      "Split the computation into many small `decide +kernel` lemmas and combine them with `rw`.",
+      "Use binary-friendly representations and `norm_num` for arithmetic on large numbers instead of unary unfolding.",
+      "Prove recursion equations (`f (n+1) = …`) and rewrite with them instead of evaluating `f 1000` by `rfl`."
+    ],
+    "example": "(kernel) deep recursion detected",
+    "tags": [
+      "kernel",
+      "performance"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "ring-failed",
+    "pattern": "ring failed|ring_nf failed|Try this: ring_nf",
+    "title": "ring failed",
+    "explanation": "The goal is not an identity of commutative (semi)rings as written, often because of ℕ subtraction or division, a hidden definition, or an inequality instead of an equation. `ring` then falls back to `ring_nf` and shows the normal form.",
+    "fixes": [
+      "Compare the two normal forms that `ring_nf` displays to see which term differs.",
+      "Eliminate truncated subtraction/division first (`Nat.cast_sub`, `obtain ⟨k, rfl⟩ := Nat.exists_eq_add_of_le h`), or move to ℤ/ℝ with `zify`/`push_cast`.",
+      "For fields use `field_simp` then `ring`; for goals with hypotheses use `linear_combination h`."
+    ],
+    "example": "ring failed, ring_nf subsidiary goal",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "norm-num-failed",
+    "pattern": "norm_num failed|norm_num extension failed",
+    "title": "norm_num failed to simplify",
+    "explanation": "`norm_num` could not close or simplify the goal. It evaluates numerals and decides arithmetic facts like `Nat.Prime 1291`, but it does not know your definitions.",
+    "fixes": [
+      "Pass the definitions and lemmas: `norm_num [f, Finset.sum_range_succ]`.",
+      "For finite checks over variables use `interval_cases x <;> norm_num`, or `decide`.",
+      "If the goal contains a variable, `norm_num` can only simplify; finish with `omega`, `linarith` or `positivity`."
+    ],
+    "example": "norm_num failed to simplify",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "positivity-failed",
+    "pattern": "failed to prove positivity|not a positivity goal|positivity failed",
+    "title": "positivity failed",
+    "explanation": "`positivity` proves only goals of the form `0 < e`, `0 ≤ e` or `e ≠ 0` by syntactic structure. It fails on subtraction (`a - b`), on atoms without a sign hypothesis it can find, or on goals like `a < b`.",
+    "fixes": [
+      "Rewrite the goal as `0 < b - a` (`sub_pos.mpr`) and prove it with `linarith`/`nlinarith`.",
+      "Supply facts about atoms by `have ha : 0 < a := …` first; positivity uses hypotheses only for atoms.",
+      "For ℕ subtraction, use `Nat.sub_pos_of_lt` or `omega`."
+    ],
+    "example": "failed to prove positivity: the expression a - b is not positive",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "exact-question-mark-failed",
+    "pattern": "exact\\?.?\\s*could not close the goal|apply\\? didn't find any relevant lemmas",
+    "title": "exact? found nothing",
+    "explanation": "Library search did not find a single lemma closing the goal. Search tactics are fine locally, but they must not stay in a nosorry submission.",
+    "fixes": [
+      "Reformulate the goal into a standard form (`simp only` first, `push_neg`, move casts), then retry `exact?` or `apply?` locally.",
+      "Search by name pattern: Mathlib names follow the statement (`Finset.card_le_card`, `Nat.lt_of_lt_of_le`), and `rw?`/`simp?` can help.",
+      "Replace every `exact?` by the term it suggested before submitting."
+    ],
+    "example": "`exact?` could not close the goal. Try `apply?` to see partial suggestions.",
+    "tags": [
+      "tactic"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "termination-failed",
+    "pattern": "failed to prove termination|structural recursion cannot be used|fail to show termination",
+    "title": "Termination proof failed",
+    "explanation": "A recursive definition is not structurally recursive, and Lean could not prove that the well-founded measure decreases.",
+    "fixes": [
+      "Add `termination_by n - i` (or another measure) and a `decreasing_by` block, proving the decrease with `omega` or `simp_wf; omega`.",
+      "Reformulate with structural recursion on `ℕ` or with `Nat.iterate`/`List.foldl`. Such definitions are also easier to `decide`.",
+      "`partial def` is refused on nosorry, so you need a real termination proof."
+    ],
+    "example": "fail to show termination for f with errors: failed to prove termination",
+    "tags": [
+      "elaboration"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "unknown-tactic",
+    "pattern": "unknown tactic",
+    "title": "Unknown tactic",
+    "explanation": "The tactic name is not available: missing `import Mathlib`, a Lean 3 tactic name (`norm_num1` variants, `by_contradiction`, `cases'` used wrongly), or a tactic renamed in recent Mathlib (`push_neg` vs `push Not`).",
+    "fixes": [
+      "Make sure the file imports Mathlib (the challenge header does).",
+      "Use Lean 4 names: `by_contra`, `rcases`/`obtain`, `exact_mod_cast`, `field_simp`, `positivity`, `omega`, `decide`."
+    ],
+    "example": "unknown tactic",
+    "tags": [
+      "syntax",
+      "import"
+    ],
+    "source": {
+      "name": "nosorry",
+      "licence": "original"
+    }
+  }
+]

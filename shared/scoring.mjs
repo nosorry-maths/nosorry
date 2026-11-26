@@ -27,6 +27,9 @@ export const POINTS = {
   // Community review (referees), paid when a moderator decides a result held for review: a vote that matched the
   // decision, a suggested change that became the approved revision.
   referee: { vote: 2, suggestion: 10 },
+  // Book of methods (referee track): an entry cited by the proof that settles a problem credits its author — once per
+  // entry and problem, at most 3 entries per proof, never yourself, only entries older than the proof (knowledge.mjs).
+  book: { cited: 3, maxPerSubmission: 3 },
 };
 
 /** Why a verified proof must wait for a person. (Draft/disputed statements: proofs stay verified, points frozen — see ledger.mjs.) */

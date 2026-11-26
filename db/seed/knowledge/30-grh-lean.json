@@ -1,0 +1,1435 @@
+[
+  {
+    "slug": "demote-expensive-instances-with-low-priority",
+    "title": "Demote instances that start long failing searches",
+    "problem": "Elaboration is slow in a big development because instance search tries some general Mathlib instances first, and they open long searches that fail.",
+    "method_md": "Re-declare the culprit instances with a low priority (the default is 1000): `attribute [instance 20] Foo.toBar`. Instance search then tries them last, so a goal that has a direct instance never enters the expensive path. The GRH project keeps one such list of about 80 Mathlib instances (structure projections like `NonUnitalNonAssocSemiring.toAddCommMonoid`, `IsDedekindDomain.toIsDomain`, Lie-algebra-to-module paths, `MeasureTheory.instSFiniteOfCountable`, ...) in a single settings file that every file imports. The compact edition also raises a few cheap instances (`attribute [instance 1100] MonoidHomClass.toMulHomClass`) and adds shortcut instances such as `instance : SecondCountableTopology ℂ := inferInstance`, which caches a path that is otherwise searched again and again. Find the culprits with `set_option trace.Meta.synthInstance true in` on a slow line. The settings change speed only, not truth: the project reports that with the file emptied everything still compiles, just more slowly. In a single submission file use `attribute [local instance 20] ...` so the change ends with the file or section.",
+    "lean": "-- Tried late: tried early, these start long searches that fail.\nattribute [instance 20] NonUnitalNonAssocSemiring.toAddCommMonoid IsDedekindDomain.toIsDomain\n  MeasureTheory.instSFiniteOfCountable\n\n-- Cheap and frequently needed: tried early.\nattribute [instance 1100] MonoidHomClass.toMulHomClass\n\n-- Shortcut instance: one cached path instead of a fresh search each time.\ninstance : SecondCountableTopology ℂ := inferInstance\n\n-- Variant that ends with the current section or file:\nsection\nattribute [local instance 20] IsDedekindDomain.toIsDomain\nend",
+    "examples": [
+      {
+        "label": "global list of demoted Mathlib instances",
+        "ref": "grh/src/Lib/Speed.lean"
+      },
+      {
+        "label": "second short list and raised priorities",
+        "ref": "grh-compact/src/Lib/General/LinearAlgebra/Base.lean"
+      }
+    ],
+    "tags": [
+      "performance"
+    ],
+    "keywords": [
+      "instance priority",
+      "attribute instance",
+      "typeclass search",
+      "synthinstance",
+      "slow elaboration",
+      "shortcut instance"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Speed.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "erase-simp-lemmas-that-fail-on-side-conditions",
+    "title": "Remove simp lemmas that match everything and then fail",
+    "problem": "`simp` is slow because some default simp lemmas match very many terms, then fail on a side condition after an expensive attempt.",
+    "method_md": "Take such lemmas out of the default simp set and name them in the proofs that really need them. Inside one file, `attribute [-simp] foo` is enough. The GRH project wants the removal to reach every importing file too, and `-simp` does not carry over to importers. So it tags each lemma in both directions, `attribute [simp ←, simp] foo`, which (as the project reports) erases both entries, and wraps the line in `set_option warning.simp.varHead false in`, because the reversed tag would otherwise warn about a variable head. Typical victims include lemmas with a hypothesis such as `[IsEmpty α]` or `a ≤ b`, and lemmas whose left side is very general: `Nat.sub_eq_zero_of_le`, `Finset.univ_eq_empty`, `CharP.cast_eq_zero`, `norm_map`, `inf_of_le_left`. To find them, run `set_option diagnostics true in` on a slow `simp` and look at the lemmas that were tried most often and rarely used. The compact edition also does the opposite and adds useful lemmas to the default set: `attribute [simp] Finset.sum_add_distrib MeasureTheory.integral_const_mul`.",
+    "lean": "-- File-local: the lemma leaves the default simp set for the rest of this file.\nattribute [-simp] Nat.sub_eq_zero_of_le\n\n-- Erased for every importing file (the method used by the project's settings file).\nset_option warning.simp.varHead false in\nattribute [simp ←, simp] Finset.univ_eq_empty\n\n-- Name the lemma when a proof really needs it:\nexample (a b : ℕ) (h : a ≤ b) : a - b + 0 = 0 := by\n  simp [Nat.sub_eq_zero_of_le h]",
+    "examples": [
+      {
+        "label": "list of about 70 erased lemmas",
+        "ref": "grh/src/Lib/Speed.lean"
+      },
+      {
+        "label": "same list plus added lemmas",
+        "ref": "grh-compact/src/Lib/General/LinearAlgebra/Base.lean"
+      },
+      {
+        "label": "local removals",
+        "ref": "grh/src/Lib/Adelic/Adeles/LocalFactors.lean"
+      }
+    ],
+    "tags": [
+      "performance"
+    ],
+    "keywords": [
+      "simp set",
+      "attribute -simp",
+      "simp ←",
+      "warning.simp.varhead",
+      "simp lemma side condition",
+      "slow simp"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Speed.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "isempty-synonym-stops-simp-side-goals",
+    "title": "Stop simp from trying to prove IsEmpty side goals",
+    "problem": "Many simp lemmas carry an `[IsEmpty α]` hypothesis. When instance search does not find it, simp tries to prove it, which costs time on every call.",
+    "method_md": "Add a synonym of `IsEmpty` that simp knows nothing about, and a simp lemma of priority above the default that rewrites `IsEmpty α` to it. When simp meets an `IsEmpty α` side goal, it rewrites it to the synonym and gives up at once instead of searching. The lemma is proved by `.rfl`, because the synonym is a plain `def`. Downside: simp can no longer close `IsEmpty` goals by itself. When you need that, prove them by `inferInstance`, or remove the rewrite with `simp [-isEmpty_iff_isVoid]`. Use this only in a large file or project where profiling shows such side goals are expensive. In a short proof it saves nothing and only surprises readers.",
+    "lean": "/-- A synonym of `IsEmpty` about which `simp` knows nothing. -/\ndef IsVoid : Sort _ → Prop := IsEmpty\n\n/-- `simp` rewrites `IsEmpty α` to `IsVoid α` and stops there. -/\n@[simp 1001]\nlemma isEmpty_iff_isVoid (α : Sort _) : IsEmpty α ↔ IsVoid α := .rfl\n\n-- When an `IsEmpty` fact is really wanted:\nexample : IsEmpty (Fin 0) := inferInstance",
+    "examples": [
+      {
+        "label": "definition of the synonym and the rewrite",
+        "ref": "grh/src/Lib/Speed.lean"
+      },
+      {
+        "label": "reading note on the setting",
+        "ref": "grh/GUIDE.md"
+      }
+    ],
+    "tags": [
+      "performance",
+      "pitfalls"
+    ],
+    "keywords": [
+      "isempty",
+      "simp priority",
+      "synonym",
+      "side goal",
+      "simp 1001",
+      "isvoid"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Speed.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "seal-definitions-to-stop-unifier-unfolding",
+    "title": "Seal Finset.sum and heavy definitions so defeq checks do not unfold them",
+    "problem": "`exact`, `rw` or `apply` takes many heartbeats or times out. Unification is unfolding `Finset.sum`, `Finset.univ` or a big construction while it compares two terms.",
+    "method_md": "Put `seal Finset.sum Finset.prod Finset.univ in` in front of the slow declaration. `seal` makes the named constants irreducible for that declaration only. The defeq checker then treats `∑ i ∈ s, f i` as an opaque application and compares arguments instead of unfolding the sum into `Multiset.foldr` and the like. In the GRH sources this is the most frequent local setting, about 140 times, always with a one-line comment such as \"Keeps definitional checks from unfolding the finite sums\". The same works for any expensive definition the unifier keeps unfolding, for example `Abelian.Ext` or a functor of the development. Rewriting lemmas still work under `seal`. Only proofs that rely on the definitional unfolding (`rfl`, `show`, `change`) break, so those steps need a lemma instead. Suspect this when `set_option trace.Meta.isDefEq true in` shows the same big definition being unfolded again and again.",
+    "lean": "-- Keeps definitional checks from unfolding the finite sums.\nseal Finset.sum Finset.prod Finset.univ in\n/-- A weighted sum of nonnegative terms is nonnegative. -/\nlemma sum_mul_nonneg {ι : Type*} (s : Finset ι) (w f : ι → ℝ)\n    (hw : ∀ i ∈ s, 0 ≤ w i) (hf : ∀ i ∈ s, 0 ≤ f i) :\n    0 ≤ ∑ i ∈ s, w i * f i :=\n  Finset.sum_nonneg fun i hi ↦ mul_nonneg (hw i hi) (hf i hi)",
+    "examples": [
+      {
+        "label": "seal Finset.sum before a summability lemma",
+        "ref": "grh/src/Lib/Analytic/QuadraticTwist.lean"
+      },
+      {
+        "label": "seal Finset.sum Finset.prod Finset.univ",
+        "ref": "grh/src/Lib/Adelic/AutomorphicForms/BlockPeriods.lean"
+      },
+      {
+        "label": "seal Finset.univ when index types of stages are compared",
+        "ref": "grh/src/New/UpperBound/Seesaw/UnfoldingStages.lean"
+      },
+      {
+        "label": "seal Abelian.Ext against unfolding into the derived category",
+        "ref": "grh/src/Lib/PadicComparison/Duality/LineIntegration.lean"
+      }
+    ],
+    "tags": [
+      "performance"
+    ],
+    "keywords": [
+      "seal",
+      "unseal",
+      "finset.sum",
+      "finset.univ",
+      "defeq",
+      "unification timeout",
+      "irreducible",
+      "whnf"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/QuadraticTwist.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "make-defs-irreducible-after-their-api",
+    "title": "Mark a definition irreducible once its characterising lemmas are proved",
+    "problem": "A complicated definition, for example one built from `choose`, an integral or an operator, keeps getting unfolded by `simp`, `rfl` checks and instance search. Goals blow up and elaboration slows down.",
+    "method_md": "Write the definition, then right after it prove the few lemmas that use its body: the defining equation, positivity, continuity, the values you need. Then write `attribute [irreducible] foo`. From that point on, the rest of the file must go through the lemmas, and unification no longer sees the body. This is the same abstraction barrier as Mathlib's `irreducible_def`, but you choose where it starts. The GRH project does this for about ten large objects (`weilRep`, `heisenbergRep`, `formLift`, `locMap`, ...), and the guide warns readers that some definitions are irreducible. Use `attribute [local irreducible] foo` if the barrier should end with the section. Equation lemmas still work after the attribute, so `rw [foo]` or `simp only [foo]` can open the body on purpose.",
+    "lean": "noncomputable def kernel (t x : ℝ) : ℝ := Real.exp (-t * x ^ 2) / (1 + x ^ 2)\n\nlemma kernel_pos (t x : ℝ) : 0 < kernel t x := by\n  unfold kernel; positivity\n\nlemma kernel_le_one {t : ℝ} (ht : 0 ≤ t) (x : ℝ) : kernel t x ≤ 1 := by\n  unfold kernel\n  rw [div_le_one (by positivity)]\n  have : Real.exp (-t * x ^ 2) ≤ 1 := Real.exp_le_one_iff.2 (by nlinarith [sq_nonneg x])\n  nlinarith [sq_nonneg x]\n\n-- From here on, the API above is the only way in.\nattribute [irreducible] kernel",
+    "examples": [
+      {
+        "label": "attribute [irreducible] weilRep after its API",
+        "ref": "grh/src/Lib/Weil/Construction/WeilOperators.lean"
+      },
+      {
+        "label": "attribute [irreducible] locMap",
+        "ref": "grh/src/Lib/Adelic/Adeles/Basic.lean"
+      },
+      {
+        "label": "attribute [irreducible] formLift",
+        "ref": "grh/src/Lib/Weil/Lift.lean"
+      },
+      {
+        "label": "guide note on irreducible definitions",
+        "ref": "grh/GUIDE.md"
+      }
+    ],
+    "tags": [
+      "performance",
+      "architecture"
+    ],
+    "keywords": [
+      "irreducible",
+      "attribute irreducible",
+      "irreducible_def",
+      "api lemmas",
+      "abstraction barrier",
+      "unfolding"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Weil/Construction/WeilOperators.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "scope-instance-search-budgets-per-declaration",
+    "title": "Raise instance-search limits for one declaration, with a reason",
+    "problem": "The error says `failed to synthesize` with a (deterministic) timeout at `synthInstance`, or the maximum instance size was reached. The types are deeply nested, for example matrices indexed by sums of sums.",
+    "method_md": "Raise the limit for one declaration only, with `set_option synthInstance.maxHeartbeats 200000 in` (the default is 20000) or `set_option synthInstance.maxSize 512 in` (the default is 128). Put a comment above it that says why. The GRH project does this fewer than a dozen times in 300k lines and always gives the reason (\"The index types of the spaces in the proof nest too deeply for the default instance size\"). Before you raise a limit, check that the search can succeed at all: a missing instance only fails later after a bigger budget. Also try the cheaper fixes first: a `haveI` or `letI` of the exact instance, a low-priority demotion of the instance that leads the search astray, or a shortcut instance.",
+    "lean": "-- The index types nest too deeply for the default instance size.\nset_option synthInstance.maxSize 512 in\nset_option synthInstance.maxHeartbeats 200000 in\ntheorem det_fromBlocks_big {m n R : Type*} [Fintype m] [Fintype n] [DecidableEq m]\n    [DecidableEq n] [CommRing R] (A : Matrix m m R) (D : Matrix n n R) :\n    (Matrix.fromBlocks A 0 0 D).det = A.det * D.det := by\n  simp [Matrix.det_fromBlocks_zero₂₁]",
+    "examples": [
+      {
+        "label": "maxSize 512 for nested index types",
+        "ref": "grh/src/New/Determinant/Exchange/TheoremForPartners.lean"
+      },
+      {
+        "label": "synthInstance.maxHeartbeats 200000 on one lemma",
+        "ref": "grh/src/Lib/ClassField/GaloisCohomology/TateIndexFormula.lean"
+      },
+      {
+        "label": "same on a definition",
+        "ref": "grh/src/Lib/Adelic/Adeles/Basic.lean"
+      }
+    ],
+    "tags": [
+      "performance",
+      "pitfalls"
+    ],
+    "keywords": [
+      "synthinstance.maxheartbeats",
+      "synthinstance.maxsize",
+      "set_option in",
+      "typeclass timeout",
+      "nested index types"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/New/Determinant/Exchange/TheoremForPartners.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "heartbeat-discipline-global-budget-local-fixes",
+    "title": "Keep one heartbeat budget and fix slow steps instead of raising it everywhere",
+    "problem": "A proof hits `maximum number of heartbeats`, and the obvious fix is to sprinkle `set_option maxHeartbeats` over the file.",
+    "method_md": "The GRH project sets one generous global budget in `lakefile.toml` (`maxHeartbeats = 4000000`, 20 times the default, plus `maxSynthPendingDepth = 3` and `autoImplicit = false`). None of its source files contains `set_option maxHeartbeats`. Slow steps are fixed where they happen: with `seal`, irreducible definitions, a type ascription, a smaller simp set, or a split into lemmas. A verifier that checks a single file does not read your lakefile. There, put `set_option maxHeartbeats 400000 in` on the one declaration that needs it, together with `set_option autoImplicit false` and, if instance problems appear, `set_option maxSynthPendingDepth 3`. To find which step is slow, use Mathlib's `count_heartbeats in` in front of the declaration and bisect the proof with `sorry`. Raising the budget only hides a slow `simp` or a defeq blow-up, and the next small change will hit the wall again.",
+    "lean": "set_option autoImplicit false\n\n-- Measure first: reports the heartbeats the declaration used.\ncount_heartbeats in\ntheorem sum_range_id_mul_two' (n : ℕ) : (∑ i ∈ Finset.range n, i) * 2 = n * (n - 1) :=\n  Finset.sum_range_id_mul_two n\n\n-- If one declaration really needs more, scope the option to it:\nset_option maxHeartbeats 400000 in\ntheorem slow_but_fine : (2 : ℕ) ^ 20 = 1048576 := by norm_num",
+    "examples": [
+      {
+        "label": "global options (maxHeartbeats 4000000, autoImplicit false, maxSynthPendingDepth 3)",
+        "ref": "grh/lakefile.toml"
+      },
+      {
+        "label": "guide section on global settings",
+        "ref": "grh/GUIDE.md"
+      }
+    ],
+    "tags": [
+      "performance"
+    ],
+    "keywords": [
+      "maxheartbeats",
+      "set_option",
+      "count_heartbeats",
+      "autoimplicit",
+      "maxsynthpendingdepth",
+      "lakefile options",
+      "timeout"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/lakefile.toml",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "local-low-instance-fintype-of-finite",
+    "title": "Use Fintype.ofFinite as a low-priority local instance when summing over Finite types",
+    "problem": "The statement assumes `[Finite ι]` (or the type is only known to be `Finite`), but `∑ i, f i` and `Finset.univ` need a `Fintype` instance.",
+    "method_md": "Write `attribute [local instance low] Fintype.ofFinite` for the file or section, or put `... in` in front of one declaration. The GRH guide lists this as the standard local setting \"in files that sum over finite types\" (about 60 times). `low` matters: a type with its own computing `Fintype` instance (`Fin n`, `ZMod n`) still uses that one. Otherwise you create two non-defeq instances and get `rw` failures such as \"motive is not type correct\". State results with `Nat.card`, which does not depend on an instance, and convert with `Nat.card_eq_fintype_card` inside the proof. Do not make `Fintype.ofFinite` a global instance.",
+    "lean": "attribute [local instance low] Fintype.ofFinite in\nlemma sum_le_natCard_mul {ι : Type*} [Finite ι] (f : ι → ℝ) (C : ℝ) (h : ∀ i, f i ≤ C) :\n    ∑ i, f i ≤ Nat.card ι * C := by\n  calc ∑ i, f i ≤ ∑ _i : ι, C := Finset.sum_le_sum fun i _ ↦ h i\n    _ = Nat.card ι * C := by\n      rw [Finset.sum_const, Finset.card_univ, nsmul_eq_mul, Nat.card_eq_fintype_card]",
+    "examples": [
+      {
+        "label": "whole-file local instance",
+        "ref": "grh/src/Lib/ClassField/GaloisCohomology/KummerCyclicClasses.lean"
+      },
+      {
+        "label": "one-declaration version",
+        "ref": "grh/src/Lib/ClassField/GaloisCohomology/ContinuousCocycles.lean"
+      },
+      {
+        "label": "guide note",
+        "ref": "grh/GUIDE.md"
+      }
+    ],
+    "tags": [
+      "performance",
+      "pitfalls"
+    ],
+    "keywords": [
+      "fintype.offinite",
+      "finite",
+      "local instance low",
+      "finset.univ",
+      "nat.card",
+      "fintype.card",
+      "instance diamond"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/ClassField/GaloisCohomology/KummerCyclicClasses.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "remove-misleading-instance-for-one-declaration",
+    "title": "Switch off an instance that leads a statement to the wrong path",
+    "problem": "In a section with many variables, instance search finds a class (say `IsDomain K`) through an odd route via a section hypothesis. The statement then mentions an instance that does not match the one the lemmas you use expect.",
+    "method_md": "Put `attribute [-instance] Foo.toBar in` in front of the declaration, so the instance is not available while it elaborates. Leave a comment that names the bad path. To see which instance a statement picked, run `set_option pp.explicit true in #check @myLemma`, or `#synth IsDomain K` inside the section. A wrong path usually still gives a defeq instance, so the lemma itself compiles, and the trouble shows only at use sites, where `rw` or `exact` fails on an instance mismatch. Then `convert ... using 2` or `congr!` can bridge the gap, but turning the bad path off where the statement is made is the cleaner fix. The GRH guide also warns readers that local instances \"can matter for reading a statement\".",
+    "lean": "-- Without this, `IsDomain K` would be found through the field structure of a section\n-- variable rather than through `K`'s own instance.\nattribute [-instance] Field.isDomain in\nlemma my_lemma {K : Type*} [CommRing K] [IsDomain K] (a b : K) (h : a * b = 0) (ha : a ≠ 0) :\n    b = 0 :=\n  (mul_eq_zero.1 h).resolve_left ha",
+    "examples": [
+      {
+        "label": "attribute [-instance] ... in, with a comment",
+        "ref": "grh/src/Lib/GaloisRep/LocalGlobal/LabelCompatibility.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "performance"
+    ],
+    "keywords": [
+      "attribute -instance",
+      "instance path",
+      "section variables",
+      "wrong instance",
+      "convert",
+      "instance mismatch"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/GaloisRep/LocalGlobal/LabelCompatibility.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "ascription-elaborates-term-before-unifying",
+    "title": "Use the ascription (t :) when exact times out unifying with the goal",
+    "problem": "`exact foo h₁ h₂` times out or is very slow, although `have := foo h₁ h₂` is fast and the result matches the goal up to defeq.",
+    "method_md": "Write `exact (foo h₁ h₂ :)`. The empty ascription makes Lean elaborate the term without the expected type and only then unify the finished type with the goal. Without it, the expected type is pushed into the elaboration of `foo`, its implicit arguments are solved against the goal, and that can trigger expensive unfolding. The GRH sources do this at hard spots and say why: elaborating the term first is fast, while unifying it with the goal directly times out. The same works in `have h : T := (t :)`. If the final unification is the slow part, follow up with `convert (t :) using 2` or seal the definitions being unfolded.",
+    "lean": "example {α : Type*} [LinearOrder α] {a b c : α} (h₁ : a ≤ b) (h₂ : b ≤ c) : a ≤ c := by\n  -- the ascription elaborates `le_trans h₁ h₂` first, then matches its type with the goal\n  exact (le_trans h₁ h₂ :)\n\nexample (s : Finset ℕ) (f : ℕ → ℝ) (hf : ∀ i ∈ s, 0 ≤ f i) : 0 ≤ ∑ i ∈ s, f i := by\n  have h : 0 ≤ ∑ i ∈ s, f i := (Finset.sum_nonneg hf :)\n  exact h",
+    "examples": [
+      {
+        "label": "exact (… :) with a comment on the timeout",
+        "ref": "grh/src/Lib/PadicComparison/Crystalline/ComparisonMap.lean"
+      },
+      {
+        "label": "have h : T := (… :)",
+        "ref": "grh/src/Lib/Cohomology/TorsionTheories.lean"
+      }
+    ],
+    "tags": [
+      "performance",
+      "tactics"
+    ],
+    "keywords": [
+      "type ascription",
+      "elaboration order",
+      "exact timeout",
+      "expected type",
+      "unification",
+      "have"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/PadicComparison/Crystalline/ComparisonMap.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "clear-context-before-automation-in-default-arguments",
+    "title": "Clear the context before grind or linarith in an automatic side proof",
+    "problem": "A side-condition proof run automatically (a default argument or a wrapper tactic) is slow, or fails, because the local context is full of irrelevant hypotheses that automation tries to use.",
+    "method_md": "Start the automatic proof by dropping everything it does not need: `clear * - D` keeps only `D` and what `D` depends on. Then call the decision procedure with the facts it needs, given by name. In the GRH project, `D.le_of_hasLogBound` has a default argument `l < l'`. Its proof clears all hypotheses but `D` (\"which keeps `grind` fast\") and runs `grind [D.scale_inequalities]` on a linear problem in a few logarithms. A big context makes `grind`, `linarith` and `nlinarith` slower and can make them time out, because every hypothesis is preprocessed and becomes a candidate. The same applies to a hand-written `linarith` deep inside a long proof: `clear` the bulky hypotheses first, or call `linarith only [h₁, h₂]`.",
+    "lean": "structure Scales where\n  x : ℝ\n  b : ℝ\n  hx : 100 ≤ x\n  hb : 1000 * x ≤ b\n\n/-- The side condition `x + 1 < b` is proved automatically from the fields of `S` only. -/\nlemma lt_of_scales (S : Scales) (y : ℝ) (hy : y ≤ S.x + 1)\n    (h : S.x + 1 < S.b := by clear * - S; have := S.hx; have := S.hb; linarith) : y < S.b :=\n  lt_of_le_of_lt hy h\n\nexample (S : Scales) : S.x < S.b := lt_of_scales S S.x (by linarith)",
+    "examples": [
+      {
+        "label": "default proof `clear * - D` then grind with the scale inequalities",
+        "ref": "grh/src/New/Reduction/Data/Magnitudes.lean"
+      },
+      {
+        "label": "guide on HasLogBound and the default argument",
+        "ref": "grh/GUIDE.md"
+      }
+    ],
+    "tags": [
+      "performance",
+      "tactics"
+    ],
+    "keywords": [
+      "clear",
+      "clear * -",
+      "grind",
+      "linarith",
+      "default argument",
+      "autoparam",
+      "context",
+      "side condition"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/New/Reduction/Data/Magnitudes.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "classical-decidability-and-bridge-lemmas",
+    "title": "Bridge decidability-instance mismatches with congr lemmas",
+    "problem": "`rw` or `simp` fails on a goal that looks identical to the lemma. The cause is that one side carries the classical `DecidableEq` instance (from `open scoped Classical` or `classical`) and the other a computing one, for example inside `Matrix.det`, `Finset.filter` or `if`.",
+    "method_md": "Put classical reasoning on the definition, as `open scoped Classical in` in front of the `def` (more than 400 times in the GRH sources), and not on the whole file. Then the lemmas about it are stated with the instances the reader expects. When mismatches still appear, state a bridge lemma once. Decidability instances are subsingletons, so `by congr` (or `congr!`) proves that the term with an arbitrary instance `i` equals the canonical one. Tag the bridge `@[simp]`. The compact GRH edition goes further: it makes `Classical.propDecidable` a low-priority instance everywhere and adds such bridges for `Matrix.det`, `Matrix.diagonal` and `1`. In a single proof, `convert h using 2` or `simp only [...]` after `classical` usually does the job. `rfl` usually does not, because the instances are not defeq.",
+    "lean": "/-- `det` does not depend on the `DecidableEq` instance used to compute it. -/\n@[simp] lemma det_any_decEq {n R : Type*} [Fintype n] [CommRing R] {i : DecidableEq n}\n    (A : Matrix n n R) : @Matrix.det n i _ R _ A = A.det := by\n  congr\n\nopen scoped Classical in\n/-- The number of indices where `f` and `g` differ. -/\nnoncomputable def diffCount {ι : Type*} [Fintype ι] (f g : ι → ℝ) : ℕ :=\n  (Finset.univ.filter fun i ↦ f i ≠ g i).card",
+    "examples": [
+      {
+        "label": "classical decidability as low instance and bridge simp lemmas",
+        "ref": "grh-compact/src/Lib/General/LinearAlgebra/Base.lean"
+      },
+      {
+        "label": "open scoped Classical in before a definition",
+        "ref": "grh/src/Lib/Adelic/Adeles/SemilocalProducts.lean"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "mathlib"
+    ],
+    "keywords": [
+      "decidableeq",
+      "classical",
+      "open scoped classical in",
+      "instance mismatch",
+      "congr",
+      "convert",
+      "matrix.det",
+      "finset.filter"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh-compact/src/Lib/General/LinearAlgebra/Base.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "file-header-docstring-template",
+    "title": "Open every file with a header that states what it proves and what it uses",
+    "problem": "In a long development, or a long submission, readers and later agents cannot tell what a file proves, which outside notions it relies on, or where a result comes from.",
+    "method_md": "Begin each file with a `/-! ... -/` docstring in a fixed shape. Give a title, then one paragraph that states the result in words with the hypotheses. Add `## Main definitions and results` with fully qualified names and one line each, `Notions from other files` for each outside definition with its meaning, and `## Relation to the literature` with a precise source (book, theorem number). When the proof idea is not obvious, say it in two sentences (\"reads one Taylor coefficient of the transform at a far point in two ways\"). The GRH project does this in all 800 files and keeps an index of file titles (`CONTENTS.md`) and of results with their sources (`INDEX.md`). For a nosorry submission the same header at the top of the file tells referees and later provers what is proved and which steps are standard.",
+    "lean": "/-!\n# Landau's lemma\n\nThe Laplace transform of a nonnegative measure is not analytic at its abscissa of\nconvergence. Applied to transforms with simple poles whose residues at real points have\nnonnegative real part, it shows that no pole lies right of the one-sided bound.\n\n## Main definitions and results\n\n* `exists_Ioi_subset_integrableExpSet_of_analyticAt`: Landau's lemma.\n* `IsPolar.landau`: no pole to the right of `β`.\n\nNotions from other files:\n* `IsPolar`: `|E v| ≤ C e^v`, and the transform continues meromorphically in `re s > 0`.\n\n## Relation to the literature\n\nMontgomery–Vaughan, *Multiplicative Number Theory I*, Lemma 15.1.\n-/",
+    "examples": [
+      {
+        "label": "header with Main results, Notions from other files, Relation to the literature",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "header with a proof idea",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      },
+      {
+        "label": "header listing the main lemmas",
+        "ref": "grh/src/New/Reduction/Data/Magnitudes.lean"
+      },
+      {
+        "label": "index of all files and titles",
+        "ref": "grh/CONTENTS.md"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "module docstring",
+      "file header",
+      "main results",
+      "documentation",
+      "references",
+      "readability"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/Landau.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "statement-file-that-imports-only-mathlib",
+    "title": "Keep the trusted statements in a file that imports only Mathlib",
+    "problem": "A reviewer of a big formal proof must check that the theorem proved is the one claimed. Project definitions, notations, instances and global settings can quietly change what a statement means.",
+    "method_md": "Write the target statements as `def Name : Prop := ...` in a file that has `import Mathlib` and nothing else, using only Mathlib's own definitions (`riemannZeta`, `DirichletCharacter.LFunction`, Mathlib's `RiemannHypothesis`). The main file then proves `theorem t : Name := ...`. To trust the result, a reader checks only that file, the statements in the main file, and `#print axioms` (here `propext`, `Classical.choice`, `Quot.sound`). The GRH guide also points out that global settings (instance priorities, simp changes) are never imported by the statement file, so they cannot change which instances the statements mean. Derive the corollaries from one core statement (here the half-plane form) by short separate proofs. On nosorry the problem statement plays this role. Copy it exactly, prove helper lemmas above it, and run `#print axioms` on the final theorem before you submit.",
+    "lean": "import Mathlib\n\n/-- No Dirichlet L-function vanishes in `re s > 1/2`, the pole of the trivial character excepted. -/\ndef DirichletLNonvanishingRightOfHalf : Prop :=\n  ∀ (N : ℕ) [NeZero N] (χ : DirichletCharacter ℂ N) (s : ℂ),\n    1 / 2 < s.re → (χ ≠ 1 ∨ s ≠ 1) → DirichletCharacter.LFunction χ s ≠ 0\n\n-- In the main file:\n-- theorem LFunction_ne_zero_of_half_lt_re : DirichletLNonvanishingRightOfHalf := core_result\n-- #print axioms LFunction_ne_zero_of_half_lt_re",
+    "examples": [
+      {
+        "label": "statements as Props in Mathlib terms",
+        "ref": "grh/src/Statements.lean"
+      },
+      {
+        "label": "the five theorems derived from one core result",
+        "ref": "grh/src/Main.lean"
+      },
+      {
+        "label": "reading order for trust",
+        "ref": "grh/GUIDE.md"
+      },
+      {
+        "label": "independent re-check with Comparator",
+        "ref": "grh/README.md"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "pitfalls"
+    ],
+    "keywords": [
+      "statements",
+      "trusted base",
+      "print axioms",
+      "import mathlib",
+      "statement-first",
+      "prop definitions",
+      "review"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Statements.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "exclude-junk-values-in-analytic-statements",
+    "title": "Exclude the points where Mathlib returns a junk value",
+    "problem": "A statement about zeros of `riemannZeta` or `DirichletCharacter.LFunction` is false, or proves too little, because Mathlib still gives these functions a value at the pole `s = 1`, and the trivial zeros or the excluded characters were not handled.",
+    "method_md": "Total functions in Mathlib take a value even where the mathematical function is undefined. `riemannZeta 1` is a specific finite number, not a pole. `DirichletCharacter.LFunction 1 1` (trivial character at `s = 1`) is likewise just a number, and division by zero gives `0`. So zero-set statements must exclude those points by hand: the GRH statements carry `s ≠ 1`, `χ ≠ 1 ∨ s ≠ 1`, and `¬∃ n : ℕ, s = -2 * (n + 1)` for the trivial zeros of ζ, and they restrict the strip with `0 < s.re`. The README says plainly what is not claimed (nothing about zeros with `re s ≤ 0`). When you read or write a problem statement, check each excluded point against Mathlib's definition. When you prove one, look for the hypothesis that rules out the junk case, and expect to split cases on `χ = 1`, as in `eq_or_ne χ 1`.",
+    "lean": "def RiemannZetaZerosOnLine' : Prop :=\n  ∀ s : ℂ, riemannZeta s = 0 → (¬∃ n : ℕ, s = -2 * ((n : ℂ) + 1)) → s ≠ 1 → s.re = 1 / 2\n\n-- Typical case split in a proof about `χ.LFunction`:\nexample {N : ℕ} [NeZero N] (χ : DirichletCharacter ℂ N) {s : ℂ} (hs : 1 ≤ s.re) (h1 : s ≠ 1) :\n    χ.LFunction s ≠ 0 := by\n  obtain rfl | hχ := eq_or_ne χ 1\n  · exact DirichletCharacter.LFunction_ne_zero_of_one_le_re 1 (.inr h1) hs\n  · exact χ.LFunction_ne_zero_of_one_le_re (.inl hχ) hs",
+    "examples": [
+      {
+        "label": "hypotheses `s ≠ 1`, `χ ≠ 1 ∨ s ≠ 1`, trivial zeros excluded",
+        "ref": "grh/src/Statements.lean"
+      },
+      {
+        "label": "what is and is not stated",
+        "ref": "grh/README.md"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "mathlib"
+    ],
+    "keywords": [
+      "riemannzeta",
+      "lfunction",
+      "pole",
+      "junk value",
+      "trivial zeros",
+      "statement trap",
+      "s = 1"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Statements.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "separate-general-library-from-problem-specific-steps",
+    "title": "Put background results in general form, apart from the problem-specific argument",
+    "problem": "Lemmas proved inside the main argument mention its specific data, so they cannot be reused, are hard to state cleanly, and drag the whole context into every proof.",
+    "method_md": "Keep two layers. The library holds results that make sense without your problem, stated with minimal hypotheses in Mathlib's vocabulary, with the steps of their proofs, and it never imports the problem layer. The problem layer holds the set-up (a `structure Data` that bundles parameters and their inequalities) and the steps of the argument, which apply library lemmas to the data. GRH has 495 library files under `Lib` and 306 argument files under `New`. Each library file says what it is (\"known result\", with a source), and the guide calls the sorting \"a working classification\". In a single nosorry file the same discipline helps: first general lemmas with explicit hypotheses (each may become a reusable nosorry lemma), then the problem-specific part, then the main theorem. General statements are also easier for `exact?` and `apply?` to use.",
+    "lean": "-- Library layer: no problem data, minimal hypotheses.\nlemma mul_exp_le_of_le {E C β : ℝ} (h : E ≤ C * Real.exp (β - 1)) :\n    E * Real.exp 1 ≤ C * Real.exp β := by\n  calc E * Real.exp 1 ≤ C * Real.exp (β - 1) * Real.exp 1 := by gcongr\n    _ = C * Real.exp β := by rw [mul_assoc, ← Real.exp_add, sub_add_cancel]\n\n-- Problem layer: bundled data, then applications of the library.\nstructure Data where\n  C : ℝ\n  β : ℝ\n  hC : 0 ≤ C",
+    "examples": [
+      {
+        "label": "convention Lib versus New",
+        "ref": "grh/GUIDE.md"
+      },
+      {
+        "label": "layout and file counts",
+        "ref": "grh/README.md"
+      },
+      {
+        "label": "a general analytic lemma used by the argument",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "the problem-specific data structure",
+        "ref": "grh/src/New/Reduction/Data/AdmissibleData.lean"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "library",
+      "lemma generality",
+      "folder structure",
+      "reuse",
+      "lib",
+      "new",
+      "mathlib style",
+      "imports"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/GUIDE.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "choose-definition-with-spec-lemmas",
+    "title": "Define objects by choose and state their properties right after",
+    "problem": "An object exists by a theorem (a uniformiser, a lift, a basis), but you need to name it and use it in later definitions and statements.",
+    "method_md": "Prove an existence theorem that carries all the properties you will need as a conjunction. Define the object as `(exists_foo ...).choose`, and immediately state one lemma per property from `.choose_spec.1`, `.choose_spec.2`, and so on. Later proofs use only these lemmas and never unfold the definition. The definition is noncomputable, and its value is unspecified beyond the stated properties, so make the existence theorem strong enough at the start. The GRH guide warns that many objects come from `choose` and that \"the lemmas next to them give their properties\". Optionally mark the definition `irreducible`, or tag the spec lemmas `@[simp]` or `grind`, so automation finds them.",
+    "lean": "theorem exists_prime_gt (n : ℕ) : ∃ p, p.Prime ∧ n < p :=\n  (Nat.exists_infinite_primes (n + 1)).imp fun _ hp ↦ ⟨hp.2, hp.1⟩\n\n/-- A chosen prime above `n`. -/\nnoncomputable def primeAbove (n : ℕ) : ℕ := (exists_prime_gt n).choose\n\nlemma primeAbove_prime (n : ℕ) : (primeAbove n).Prime := (exists_prime_gt n).choose_spec.1\n\nlemma lt_primeAbove (n : ℕ) : n < primeAbove n := (exists_prime_gt n).choose_spec.2\n\nattribute [irreducible] primeAbove",
+    "examples": [
+      {
+        "label": "uniformizer via exists_irreducible",
+        "ref": "grh/src/Lib/General/NumberTheory/PadicLimitsValuation.lean"
+      },
+      {
+        "label": "spaceY via choose, with its lemmas",
+        "ref": "grh/src/New/UpperBound/Objects/Rows.lean"
+      },
+      {
+        "label": "liftResidue with @[local grind]",
+        "ref": "grh/src/Lib/Adelic/Unitary/CongruenceLevels.lean"
+      },
+      {
+        "label": "guide note on choose and epsilon",
+        "ref": "grh/GUIDE.md"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "choose",
+      "choose_spec",
+      "classical.choose",
+      "existence",
+      "noncomputable def",
+      "irreducible",
+      "api"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/General/NumberTheory/PadicLimitsValuation.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "default-argument-hypotheses-proved-by-tactic",
+    "title": "Let routine hypotheses be proved automatically by default arguments",
+    "problem": "A lemma needs regularity hypotheses (continuity, measurability, a numeric inequality) that are routine at almost every call site, and writing them out each time clutters the proofs.",
+    "method_md": "Write the hypothesis as `(hf : Continuous f := by fun_prop)`. When the caller leaves it out, Lean runs the tactic at the call site, and when the tactic fails there, the caller passes the proof explicitly. The GRH guide states the convention once: \"A hypothesis of the form `(h : … := by tac)` is proved by `tac` when the caller omits it\". It is used for `Continuous`, `Measurable`, `volume_tac` and for the exponent comparison closed by `grind`. Put such arguments after the main explicit ones, because the arguments that follow an auto-param become awkward to pass by position. Keep the tactic cheap and reliable (`fun_prop`, `positivity`, `norm_num`), since it runs at every use.",
+    "lean": "lemma intervalIntegrable_comp {f : ℝ → ℝ} (g : ℝ → ℝ) (hg : Continuous g)\n    (hf : Continuous f := by fun_prop) :\n    IntervalIntegrable (fun x ↦ g (f x)) MeasureTheory.volume 0 1 :=\n  (hg.comp hf).intervalIntegrable 0 1\n\n-- `hf` is proved by `fun_prop` at the call site:\nexample : IntervalIntegrable (fun x : ℝ ↦ Real.exp (x ^ 2) ^ 2) MeasureTheory.volume 0 1 :=\n  intervalIntegrable_comp (f := fun x ↦ Real.exp (x ^ 2)) (· ^ 2) (continuous_pow 2)",
+    "examples": [
+      {
+        "label": "(hF : Measurable F := by fun_prop)",
+        "ref": "grh/src/Lib/Adelic/QuotientMeasure/Basic.lean"
+      },
+      {
+        "label": "(hf : Continuous f := by fun_prop)",
+        "ref": "grh/src/Lib/Adelic/Adeles/LocalFactors.lean"
+      },
+      {
+        "label": "guide on the notation",
+        "ref": "grh/GUIDE.md"
+      },
+      {
+        "label": "comparison of exponents as a default proof",
+        "ref": "grh/src/New/Reduction/Data/Magnitudes.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "tactics"
+    ],
+    "keywords": [
+      "autoparam",
+      "default argument",
+      "fun_prop",
+      ":= by",
+      "measurable",
+      "continuous",
+      "side condition"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Adelic/QuotientMeasure/Basic.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "outparam-class-computes-bounds-by-instance-search",
+    "title": "Let instance search compute size bounds through an outParam class",
+    "problem": "You must prove many inequalities between large expressions built from a few scales (products, powers, sums, inverses). Doing each by hand with `gcongr` and `exp` arithmetic is long and brittle.",
+    "method_md": "Define a class `HasUpper F l : |F| ≤ exp l` whose exponent `l` is an `outParam`. Add instances that compute `l` from the shape of `F`: constants give `0`, `exp c` gives `c`, products add exponents, sums take the maximum plus `1`, and powers multiply. Then any expression built from these pieces gets its exponent from `inferInstance`. One final lemma turns \"upper exponent of `F` < lower exponent of `G`\" into `F ≤ G`, and the remaining linear inequality in logarithms goes to `linarith` or `grind`. The GRH project proves dozens of size comparisons with `D.le_of_hasLogBound` alone. Give the generic instances low priority and the specific ones normal priority, and keep the class `Prop`-valued so that instance choice does not matter.",
+    "lean": "class HasUpper (F : ℝ) (l : outParam ℝ) : Prop where\n  out : |F| ≤ Real.exp l\n\ninstance : HasUpper 1 0 := ⟨by simp⟩\ninstance (c : ℝ) : HasUpper (Real.exp c) c := ⟨by simp⟩\n\ninstance {F G l l' : ℝ} [HasUpper F l] [HasUpper G l'] : HasUpper (F * G) (l + l') := ⟨by\n  rw [abs_mul, Real.exp_add]\n  exact mul_le_mul HasUpper.out HasUpper.out (abs_nonneg _) (Real.exp_pos _).le⟩\n\nlemma abs_le_of_hasUpper (F : ℝ) {l : ℝ} [HasUpper F l] : |F| ≤ Real.exp l := HasUpper.out\n\n-- The exponent `2 + 3` is computed by instance search:\nexample : |Real.exp 2 * Real.exp 3| ≤ Real.exp (2 + 3) := abs_le_of_hasUpper _",
+    "examples": [
+      {
+        "label": "class HasLogBound with outParam exponent and instances for *, +, ^, √, ⁻¹",
+        "ref": "grh/src/New/Reduction/Data/Magnitudes.lean"
+      },
+      {
+        "label": "guide on HasLogBound",
+        "ref": "grh/GUIDE.md"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "tactics"
+    ],
+    "keywords": [
+      "outparam",
+      "typeclass",
+      "instance search",
+      "log bound",
+      "exp",
+      "inequality automation",
+      "magnitudes"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/New/Reduction/Data/Magnitudes.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "section-variables-with-omit-include",
+    "title": "Manage section variables with omit … in, include … in and variable … in",
+    "problem": "Lemmas in a section pick up unwanted instance arguments (for example `[T2Space X]`) from `variable`, or miss a variable that is used only in the proof. The result is extra hypotheses, or a \"variable not included\" error.",
+    "method_md": "Since Lean 4.10 or so, section variables enter a theorem only when they appear in its statement, or when they are instance arguments about such variables. Use `omit [T2Space X] in` before a lemma that does not need an instance the section assumes. Use `include h in` (or `include h` for the rest of the section) for a hypothesis used only in the proof. Use `variable (x) in` to make an implicit variable explicit for one lemma. The GRH sources use `omit … in` about 1,450 times and `variable … in` about 430 times, so the shared `variable` lines can stay rich while each statement stays minimal. Check the final signature with `#check @myLemma`. Extra instance arguments make a lemma harder to apply and can lead to instance mismatches at use sites.",
+    "lean": "section\nvariable {X : Type*} [TopologicalSpace X] [T2Space X] {f : X → ℝ}\n\nomit [T2Space X] in\nlemma continuous_sq_of_continuous (hf : Continuous f) : Continuous fun x ↦ f x ^ 2 := by\n  fun_prop\n\nomit [T2Space X] in\nvariable (f) in\n/-- Here `f` is an explicit argument. -/\nlemma sq_nonneg_comp (x : X) : 0 ≤ f x ^ 2 := sq_nonneg _\n\nend",
+    "examples": [
+      {
+        "label": "omit [T2Space B] in",
+        "ref": "grh/src/Lib/Adelic/Adeles/AdditiveCharacter.lean"
+      },
+      {
+        "label": "include D h_exp before lemmas that use a default argument",
+        "ref": "grh/src/New/Reduction/Data/Magnitudes.lean"
+      },
+      {
+        "label": "variable (O) in to change a binder",
+        "ref": "grh/src/Lib/General/NumberTheory/PadicLimitsValuation.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "pitfalls"
+    ],
+    "keywords": [
+      "variable",
+      "omit",
+      "include",
+      "section",
+      "instance arguments",
+      "linter unusedsectionvars",
+      "explicit binder"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Adelic/Adeles/AdditiveCharacter.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "comment-every-local-setting-with-its-reason",
+    "title": "Write the reason above every set_option, seal and attribute line",
+    "problem": "Local settings pile up in a file. Nobody, including later agents, knows which ones are still needed, and copying them into new proofs spreads slow or unsound habits.",
+    "method_md": "Give each local setting a one-line comment in front of it that names the failure it prevents. Examples from the sources: \"Keeps definitional checks from unfolding the finite sums\", \"Without the seal, unification unfolds these two functors and runs out of heartbeats\", \"Needed: without it, instance search fails on the quotient groups\". Scope each setting as tightly as possible: `... in` for one declaration, then section, then file. The GRH guide adds that local `seal`, `attribute` and `set_option` lines only steer elaboration and automation. They never add axioms, and the reader may ignore them when checking statements. When you clean up, delete a setting and recompile. If nothing breaks, it can go.",
+    "lean": "-- Without the seal, unification unfolds `Finset.prod` while comparing the two sides.\nseal Finset.prod in\nlemma prod_pos_of_pos {ι : Type*} (s : Finset ι) (f : ι → ℝ) (h : ∀ i ∈ s, 0 < f i) :\n    0 < ∏ i ∈ s, f i :=\n  Finset.prod_pos h",
+    "examples": [
+      {
+        "label": "guide on local settings",
+        "ref": "grh/GUIDE.md"
+      },
+      {
+        "label": "one-line reasons before seal",
+        "ref": "grh/src/Lib/Cohomology/ProjectiveLine/ConstantLineFormula.lean"
+      },
+      {
+        "label": "reasons before set_option",
+        "ref": "grh/src/Lib/Cohomology/Etale/BijectiveComparisons.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "performance"
+    ],
+    "keywords": [
+      "set_option",
+      "seal",
+      "attribute",
+      "comments",
+      "maintenance",
+      "conventions",
+      "documentation"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/GUIDE.md",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "named-local-haves-with-binders-and-step-comments",
+    "title": "Structure long proofs as named local facts with binders, one comment per step",
+    "problem": "A proof of 50+ lines is a wall of tactics. When it breaks after a Mathlib change, nobody can tell which mathematical step failed.",
+    "method_md": "Inside the proof, state each intermediate fact as a named local lemma with its own binders: `have h_dom (v : ℝ) (hv : 0 < v) (z : ℂ) (hz : _) : ‖F z v‖ ≤ G v := by ...`. Prove it in place and use it by name. Use `let` with binders for auxiliary functions (`let term (k : ℕ) (y : ℝ) : ℝ := ...`), and `obtain ⟨ε, hε, h⟩ : ∃ ε > 0, ... := ...` to name what an existence lemma gives. Put a one-line `--` comment that states the mathematical step in front of each block. When a fact is reused or the proof exceeds a screen, move it out into a `private lemma` with a docstring (the GRH sources have about 700). The result reads like the paper proof, and an error points to a single named claim.",
+    "lean": "lemma exp_mul_le {E : ℝ → ℝ} {β Y : ℝ} (hY : ∀ v ≥ Y, E v ≤ Real.exp ((β - 1) * v)) :\n    ∀ v, Y ≤ v → E v * Real.exp v ≤ Real.exp (β * v) := by\n  -- The exponents add up: `(β - 1) v + v = β v`.\n  have h_exp (v : ℝ) : Real.exp ((β - 1) * v) * Real.exp v = Real.exp (β * v) := by\n    rw [← Real.exp_add]; congr 1; ring\n  -- For `v ≥ Y` the one-sided bound gives the claim.\n  intro v hv\n  calc E v * Real.exp v ≤ Real.exp ((β - 1) * v) * Real.exp v := by gcongr; exact hY v hv\n    _ = Real.exp (β * v) := h_exp v",
+    "examples": [
+      {
+        "label": "function-style haves h_dom, h_norm, h_diff inside one proof",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      },
+      {
+        "label": "step comments inside a proof",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "private helper lemmas before a main lemma",
+        "ref": "grh/src/Lib/Adelic/Landherr.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "tactics"
+    ],
+    "keywords": [
+      "have",
+      "obtain",
+      "local lemma",
+      "proof structure",
+      "comments",
+      "private lemma",
+      "readability",
+      "refactoring"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "alias-iff-directions-for-dot-notation",
+    "title": "Give each direction of an iff lemma a dot-notation name with alias",
+    "problem": "Mathlib has `foo_iff_bar` but no `Bar.foo`, so every use spells out `(foo_iff_bar).2 h` and dot notation like `h.of_at` is not available.",
+    "method_md": "Write `alias ⟨Foo.toBar, Bar.toFoo⟩ := foo_iff_bar`, with `_` for a direction you do not want. Each direction becomes an ordinary theorem in the namespace you choose, so dot notation works on hypotheses: `h.of_at` for `h : ∀ x, ContinuousAt f x`. The compact GRH edition does this for a handful of Mathlib iff lemmas, among them `continuous_iff_continuousAt`, `isCompact_iff_compactSpace` and `Filter.eventually_all`. Name the new direction after Mathlib's conventions (`of_`, `to`, the namespace of the hypothesis's head symbol) so others can guess it.",
+    "lean": "alias ⟨_, Continuous.of_at⟩ := continuous_iff_continuousAt\nalias ⟨IsCompact.toCompactSpace', _⟩ := isCompact_iff_compactSpace\n\nexample {f : ℝ → ℝ} (h : ∀ x, ContinuousAt f x) : Continuous f := Continuous.of_at h",
+    "examples": [
+      {
+        "label": "alias ⟨_, Continuous.of_at⟩ := continuous_iff_continuousAt and others",
+        "ref": "grh-compact/src/Lib/General/LinearAlgebra/Base.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "alias",
+      "iff",
+      "dot notation",
+      "mp",
+      "mpr",
+      "naming",
+      "api"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh-compact/src/Lib/General/LinearAlgebra/Base.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "simps-for-bundled-definitions",
+    "title": "Generate apply lemmas for bundled maps with @[simps!]",
+    "problem": "A ring hom, linear map or representation defined by a combinator (`RingHom.prod`, `LinearMap.pi`, a subrepresentation) does not simplify when applied, and you end up writing `rfl` lemmas by hand.",
+    "method_md": "Tag the definition `@[simps!]` (with `!` when the body is a combinator that must be unfolded first, not a structure literal). It generates `foo_apply` simp lemmas for the coercion to a function. List projections (`@[simps! apply_fst apply_snd]`) to get one lemma per component of a pair-valued map. Add `-fullyApplied` to get the unapplied form as an equation of functions. The GRH sources use this about 80 times for bundled homs and representations. Check what was generated with `#check @foo_apply`. If the generated statement is ugly, write the lemma by hand and prove it by `rfl`.",
+    "lean": "/-- The diagonal ring hom `R → R × R`. -/\n@[simps!]\ndef diagHom (R : Type*) [Semiring R] : R →+* R × R :=\n  RingHom.prod (RingHom.id R) (RingHom.id R)\n\n-- `simp` now evaluates applications of `diagHom`:\nexample (R : Type*) [Semiring R] (x : R) : (diagHom R x).1 = x := by simp",
+    "examples": [
+      {
+        "label": "@[simps! apply_fst apply_snd] on a RingHom.prod",
+        "ref": "grh/src/Lib/Adelic/Adeles/Basic.lean"
+      },
+      {
+        "label": "@[simps!] on RingHom.pi",
+        "ref": "grh/src/Lib/Adelic/Adeles/SemilocalProducts.lean"
+      },
+      {
+        "label": "@[simps! -fullyApplied ...] on a representation",
+        "ref": "grh/src/Lib/Adelic/AutomorphicForms/SmoothAlgebraicForms.lean"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "mathlib"
+    ],
+    "keywords": [
+      "simps",
+      "simps!",
+      "apply lemma",
+      "bundled hom",
+      "ringhom.prod",
+      "projections",
+      "simp lemma generation"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Adelic/Adeles/Basic.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "grw-rewrite-with-inequalities-in-calc",
+    "title": "Rewrite with inequalities using grw inside calc steps",
+    "problem": "In a chain of estimates you want to replace a subterm by an upper bound inside a larger monotone expression. Doing it with `gcongr` plus `exact`, or with `mul_le_mul` by hand, is clumsy.",
+    "method_md": "`grw [h]` with `h : a ≤ b` replaces `a` by `b` (or by `a` for `← h`) at every position where the goal is monotone in it. It uses the `gcongr` lemmas and closes side goals such as `0 ≤ c` with positivity, which also uses hypotheses of the form `0 ≤ c` from the context. Several bounds can go in one call, mixed with equalities and lemma instances: `grw [norm_mul, hE v hv.le, le_abs_self C]`. It is the second most used rewriting tactic in the GRH analytic files, more than 1,500 uses. The typical shape is `calc _ ≤ _ := by grw [bound₁, bound₂]` followed by `_ = _ := by ring`. If `grw` cannot see that the position is monotone (subtraction, division by a variable), state the step and use `gcongr`, which reports the side goals it could not close.",
+    "lean": "example {E : ℝ → ℝ} {C Y v : ℝ} (hC : 0 ≤ C) (hvY : v ≤ Y)\n    (hE : ∀ w ≥ (0 : ℝ), |E w| ≤ C * Real.exp w) (hv : 0 ≤ v) :\n    E v * Real.exp v ≤ C * Real.exp Y * Real.exp Y := by\n  calc E v * Real.exp v ≤ C * Real.exp v * Real.exp v := by\n        grw [le_abs_self (E v), hE v hv]\n    _ ≤ C * Real.exp Y * Real.exp Y := by grw [hvY]",
+    "examples": [
+      {
+        "label": "grw in calc steps of an exponential bound",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "grw with norm_sub_le and a lower bound in reverse",
+        "ref": "grh/src/Lib/Analytic/PolyaVinogradov.lean"
+      },
+      {
+        "label": "many norm estimates",
+        "ref": "grh/src/Lib/Analytic/DirichletTheta.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "grw",
+      "gcongr",
+      "calc",
+      "inequality rewriting",
+      "monotonicity",
+      "estimates",
+      "norm bounds",
+      "positivity"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/Landau.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "gcongr-positivity-bound-for-monotone-steps",
+    "title": "Close monotone estimate steps with gcongr, positivity and bound",
+    "problem": "A goal like `f a * g ≤ f b * g` or `0 < x ^ 2 * exp y / (1 + z)` needs a stack of `mul_le_mul`, `div_pos` and `pow_le_pow_left` lemmas with matching side conditions.",
+    "method_md": "Use `gcongr` when the two sides have the same shape and differ in monotone positions. It reduces the goal to the varying parts (`a ≤ b`), closes them by `assumption` when it can, and sends side goals (`0 ≤ g`) to positivity. Use `positivity` for goals `0 < e`, `0 ≤ e` or `e ≠ 0` built from sums, products, powers, `exp`, `sqrt`, norms and casts. Atoms need a hypothesis `0 < x` in the context. Use `bound` (Mathlib) for mixed inequality goals that are not exactly the same shape, such as `x ^ 2 ≤ y ^ 2 + 1`. It also takes extra facts, `bound [h]`. In rewrites with side conditions, discharge them inline: `rw [div_le_iff₀ (by positivity)]`. Across the GRH sources these three tactics appear about 5,000 times, almost always as one-liners closing the steps of a `calc`.",
+    "lean": "example (x y : ℝ) (hxy : x ≤ y) : Real.exp x + 1 ≤ Real.exp y + 1 := by gcongr\n\nexample (x z : ℝ) (hz : 0 < z) : 0 < x ^ 2 * Real.exp x / z + 1 := by positivity\n\nexample (x y : ℝ) (hx : 0 ≤ x) (hxy : x ≤ y) : x ^ 2 ≤ y ^ 2 + 1 := by bound\n\nexample (a b : ℝ) (h : a ≤ 2 * Real.exp b) : a / Real.exp b ≤ 2 := by\n  rw [div_le_iff₀ (by positivity)]\n  exact h",
+    "examples": [
+      {
+        "label": "gcongr in a calc step after ring",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      },
+      {
+        "label": "positivity for side conditions of rw",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "bound for a side condition",
+        "ref": "grh/src/Lib/Analytic/Primes.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "gcongr",
+      "positivity",
+      "bound",
+      "monotonicity",
+      "side goals",
+      "inequalities",
+      "div_le_iff₀"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "filter-upwards-to-combine-eventually-facts",
+    "title": "Combine several eventually and almost-everywhere facts with filter_upwards",
+    "problem": "You have several `∀ᶠ x in atTop, …` or `∀ᵐ x ∂μ, …` hypotheses and need a combined eventual statement, or you need to prove an `=ᵐ[μ]` equality pointwise on a restricted set.",
+    "method_md": "Write `filter_upwards [h₁, h₂, eventually_ge_atTop 0] with x hx₁ hx₂ hx₀` and prove the pointwise statement. Add `using term` to finish in one line. Facts that hold everywhere need not be listed. For integrals over a set, add `ae_restrict_mem measurableSet_Ioi` to get `x ∈ Ioi 0` almost everywhere for `volume.restrict (Ioi 0)`. You can give the binder a type ascription to unfold set membership at once: `with v (hv : 0 < v)`. For neighbourhood filters, `self_mem_nhdsWithin` and `nhdsWithin_le_nhds h` play the same role. The GRH analytic files use this more than 300 times. It replaces manual `Filter.Eventually.and` / `.mono` chains and keeps the pointwise algebra readable.",
+    "lean": "open Filter in\nexample {f g : ℝ → ℝ} (hf : ∀ᶠ x in atTop, f x ≤ 1) (hg : ∀ᶠ x in atTop, 0 ≤ g x) :\n    ∀ᶠ x in atTop, f x * g x ≤ g x := by\n  filter_upwards [hf, hg] with x hfx hgx\n  nlinarith\n\nopen MeasureTheory Set in\nexample (F G : ℝ → ℝ) (h : ∀ v, 0 < v → F v = G v) :\n    F =ᵐ[volume.restrict (Ioi 0)] G := by\n  filter_upwards [ae_restrict_mem measurableSet_Ioi] with v (hv : 0 < v)\n  exact h v hv",
+    "examples": [
+      {
+        "label": "filter_upwards [ae_restrict_mem measurableSet_Ioi] with v (hv : 0 < v)",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "three eventually facts at atTop",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      },
+      {
+        "label": "neighbourhood filters",
+        "ref": "grh/src/Lib/Analytic/EntireLFunction.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "filter_upwards",
+      "eventually",
+      "attop",
+      "ae",
+      "ae_restrict_mem",
+      "eventuallyeq",
+      "nhdswithin",
+      "measure"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/Landau.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "fun-prop-with-discharger-and-tagged-lemmas",
+    "title": "Prove continuity, measurability and differentiability with fun_prop",
+    "problem": "Goals like `Continuous fun x ↦ exp (f x) * x ^ 2`, `Measurable …` or `AnalyticAt ℂ …` need long chains of `.mul`, `.comp` and `.pow`, and side conditions such as `x ≠ 0` for division.",
+    "method_md": "Prefer `fun_prop` to `continuity` and `measurability`: it is faster and more predictable, with about 1,800 uses against about 110 for the other two in the GRH sources. Side conditions (a denominator `≠ 0`, `0 < x` for `rpow`) go to a discharger: `fun_prop (disch := assumption)`, `(disch := simp)` or `(disch := exact h)`. Pass definitions to unfold as `fun_prop [myFun]`. Make your own lemmas usable by tagging them `@[fun_prop]` (or `attribute [fun_prop] Foo.continuous` afterwards). The GRH guide notes that five Mathlib lemmas get the `fun_prop` tag where they are first needed, with `attribute [local fun_prop] Continuous.rpow_const` as an example. Tagged lemmas must have the shape `Continuous f`, or `Continuous fun x ↦ g (f x)` with the composition hypotheses.",
+    "lean": "example (f : ℝ → ℝ) (hf : Continuous f) : Continuous fun x ↦ Real.exp (f x) * x ^ 2 := by\n  fun_prop\n\nexample {x₀ : ℝ} (h : x₀ ≠ 0) : ContinuousAt (fun x : ℝ ↦ Real.exp x / x) x₀ := by\n  fun_prop (disch := assumption)\n\n/-- A project function with its continuity lemma registered for `fun_prop`. -/\nnoncomputable def bump (x : ℝ) : ℝ := Real.exp (-x ^ 2)\n@[fun_prop] lemma continuous_bump : Continuous bump := by unfold bump; fun_prop\nexample : Continuous fun x ↦ bump x + bump (2 * x) := by fun_prop",
+    "examples": [
+      {
+        "label": "fun_prop (disch := exact …) for a quotient",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "fun_prop (disch := simp_all) [logDeriv]",
+        "ref": "grh/src/Lib/Analytic/Primes.lean"
+      },
+      {
+        "label": "attribute [fun_prop] on project lemmas",
+        "ref": "grh/src/Lib/Adelic/AutomorphicForms/Basic.lean"
+      },
+      {
+        "label": "local fun_prop on Mathlib lemmas",
+        "ref": "grh/src/Lib/ClassField/HeckeL/ContinuationAtOne.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "fun_prop",
+      "disch",
+      "continuity",
+      "measurability",
+      "analyticat",
+      "differentiable",
+      "attribute fun_prop"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/Landau.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "grind-with-lemma-hints-for-arithmetic-glue",
+    "title": "Use grind with a few named facts for arithmetic and case glue",
+    "problem": "A goal mixes linear arithmetic with real and imaginary parts, casts, divisibility or `if` cases. `linarith` misses it because it needs one rewrite first, and `omega` does not apply over ℝ.",
+    "method_md": "Call `grind [lemma₁, lemma₂]` with the few rewrite or fact lemmas that connect the goal to arithmetic. For example, `grind [Complex.sub_re, Complex.ofReal_re]` proves `(β - s).re < 0` from `β + 2 < s.re`. `grind` does congruence closure, case splits and linear arithmetic over ordered fields and integers in one call. Raise `(splits := 20)` when many `if` or `max` terms must be split, and add `only` to keep the search small. The GRH sources call it about 1,800 times, mostly as a finisher after the real mathematics is done. If grind is slow, clear the context or switch to `linarith [facts]` and `omega`, which are more predictable. If it fails, the error lists the facts it derived and helps you find the missing lemma.",
+    "lean": "example (β : ℝ) (s : ℂ) (hs : β + 2 < s.re) : ((β : ℂ) - s).re < 0 := by\n  grind [Complex.sub_re, Complex.ofReal_re]\n\nexample (a b : ℕ) (h₁ : a ≤ b) (h₂ : b < 5) (h₃ : a ≠ b) : a < 4 := by\n  grind\n\nexample (x : ℝ) (n : ℕ) (h : x ≤ n) (hn : n ≤ 3) : x ≤ 3 := by\n  have : (n : ℝ) ≤ 3 := by exact_mod_cast hn\n  grind",
+    "examples": [
+      {
+        "label": "grind [sub_re, ofReal_re] for a real-part inequality",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "grind with scale inequalities and splits",
+        "ref": "grh/src/New/Reduction/Data/Magnitudes.lean"
+      },
+      {
+        "label": "grind (splits := 20) only [...]",
+        "ref": "grh/src/Lib/DiscreteSeries/Bruhat/FloorGroups.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "grind",
+      "splits",
+      "linear arithmetic",
+      "complex re",
+      "divisibility",
+      "case analysis",
+      "omega",
+      "linarith"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/Landau.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "differentiate-under-the-integral-by-domination",
+    "title": "Differentiate a parametric integral by domination, by induction for iterated derivatives",
+    "problem": "You need `deriv` or `iteratedDeriv k` of `s ↦ ∫ v in Ioi 0, F s v` (a Laplace or Mellin transform), and integrability of the derivative integrand.",
+    "method_md": "Use Mathlib's `hasDerivAt_integral_of_dominated_loc_of_deriv_le` (Mathlib/Analysis/Calculus/ParametricIntegral.lean). It needs eventual a.e.-strong measurability of `F z` near `s`, integrability of `F s`, a bound `‖F' z v‖ ≤ bound v` uniform on a neighbourhood, integrability of `bound`, and pointwise `HasDerivAt`. It returns integrability of `F' s` and the `HasDerivAt` of the integral at once. For `iteratedDeriv k`, prove `IntegrableOn (k-th integrand) ∧ iteratedDeriv k Φ s = ∫ …` by `induction k generalizing s`. In the step, apply the lemma to the `k`-th integrand, get the neighbourhood equality from the induction hypothesis (`=ᶠ[𝓝 s]`), and finish with `iteratedDeriv_succ` and `HasDerivAt.congr_of_eventuallyEq`. For `v e^{-εv}`-type domination, `Real.add_one_le_exp` gives `ε v ≤ e^{ε v}`. The order and form of the first argument (a radius `ε > 0` or a set `s ∈ 𝓝 x₀`) has changed between Mathlib versions, so `#check` it first.",
+    "lean": "open MeasureTheory Set Filter Topology in\nexample (F F' : ℂ → ℝ → ℂ) (bound : ℝ → ℝ) (s : ℂ) (S : Set ℂ) (hS : S ∈ 𝓝 s)\n    (h_meas : ∀ᶠ z in 𝓝 s, AEStronglyMeasurable (F z) (volume.restrict (Ioi 0)))\n    (h_int : IntegrableOn (F s) (Ioi 0))\n    (h_meas' : AEStronglyMeasurable (F' s) (volume.restrict (Ioi 0)))\n    (h_dom : ∀ᵐ v ∂volume.restrict (Ioi 0), ∀ z ∈ S, ‖F' z v‖ ≤ bound v)\n    (h_bound : IntegrableOn bound (Ioi 0))\n    (h_diff : ∀ᵐ v ∂volume.restrict (Ioi 0), ∀ z ∈ S, HasDerivAt (F · v) (F' z v) z) :\n    HasDerivAt (fun z ↦ ∫ v in Ioi 0, F z v) (∫ v in Ioi 0, F' s v) s :=\n  (hasDerivAt_integral_of_dominated_loc_of_deriv_le hS h_meas h_int h_meas' h_dom h_bound\n    h_diff).2",
+    "examples": [
+      {
+        "label": "iteratedDeriv of a transform by induction on k",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      },
+      {
+        "label": "local differentiability of a parametric integral",
+        "ref": "grh/src/Lib/General/Analysis/HolomorphicIntegrals.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "tactics"
+    ],
+    "keywords": [
+      "hasderivat_integral_of_dominated_loc_of_deriv_le",
+      "iteratedderiv",
+      "laplace transform",
+      "dominated",
+      "integrableon",
+      "induction generalizing"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "identity-theorem-to-extend-equalities-on-half-planes",
+    "title": "Extend an identity from re s > 1 to a half-plane with the identity theorem",
+    "problem": "You know `f s = g s` where a Dirichlet series converges (for example `re s > 1`), and both sides are holomorphic on a larger half-plane where you need the equality.",
+    "method_md": "Show both sides are `DifferentiableOn ℂ` on the open half-plane `U = {s | σ < s.re}`. Turn that into `AnalyticOnNhd ℂ _ U` with `DifferentiableOn.analyticOnNhd` (this needs `U` open), and prove `f =ᶠ[𝓝 z₀] g` at one point `z₀ ∈ U` where the series formula holds. To get the eventual equality, use `Filter.mem_of_superset` or `.mono` of an open neighbourhood `{s | 1 < s.re} ∈ 𝓝 2`. Then `AnalyticOnNhd.eqOn_of_preconnected_of_eventuallyEq hf hg hU_conn hz₀ hfg` gives `EqOn f g U`, and `(convex_halfSpace_re_gt σ).isPreconnected` gives the connectedness. Connectedness matters: on a set with removed points (poles), use `IsPreconnected` of the punctured region, or multiply by `(s - 1)` first to remove the pole, as Mathlib's `LFunctionTrivChar₁` does.",
+    "lean": "open Complex Filter Topology in\nexample {f g : ℂ → ℂ} (hf : DifferentiableOn ℂ f {s | 0 < s.re})\n    (hg : DifferentiableOn ℂ g {s | 0 < s.re}) (h : f =ᶠ[𝓝 2] g) {s : ℂ} (hs : 0 < s.re) :\n    f s = g s := by\n  have hU : IsOpen {s : ℂ | 0 < s.re} := isOpen_lt continuous_const continuous_re\n  exact (hf.analyticOnNhd hU).eqOn_of_preconnected_of_eventuallyEq (hg.analyticOnNhd hU)\n    (convex_halfSpace_re_gt 0).isPreconnected (by simp) h hs",
+    "examples": [
+      {
+        "label": "Mellin transform of a theta series equals a ratio of L-functions on re s > 0",
+        "ref": "grh/src/Lib/Analytic/DirichletTheta.lean"
+      },
+      {
+        "label": "entire L-function and its zeros",
+        "ref": "grh/src/Lib/Analytic/EntireLFunction.lean"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "tactics"
+    ],
+    "keywords": [
+      "analytic continuation",
+      "identity theorem",
+      "eqon_of_preconnected_of_eventuallyeq",
+      "analyticonnhd",
+      "differentiableon",
+      "half-plane",
+      "convex_halfspace_re_gt"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/DirichletTheta.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "eventually-attop-to-explicit-threshold",
+    "title": "Turn an eventual bound into an explicit threshold and split at it",
+    "problem": "You have `∀ᶠ v in atTop, E v ≤ B v` but need a bound for all `v > 0` with some constant. Small `v` must be handled by a crude bound and large `v` by the eventual one.",
+    "method_md": "Extract the threshold with `obtain ⟨Y, hY⟩ := h.exists_forall_of_atTop` (or `Filter.eventually_atTop.1 h`). Choose the constant as a `max` of what each region needs, for example `max 1 (|C| * exp Y ^ 2)`, and split with `obtain hYv | hvY := le_total Y v`. In each branch, a short `calc` uses `le_max_left` or `le_max_right`. Writing the constant explicitly before splitting (`refine ⟨max …, fun v hv ↦ ?_⟩`) keeps the existential out of the case analysis. Going the other way (explicit to eventual), use `Filter.eventually_ge_atTop Y` together with `filter_upwards`.",
+    "lean": "open Filter in\nexample {E : ℝ → ℝ} {C : ℝ} (hE : ∀ v, |E v| ≤ C) (h : ∀ᶠ v in atTop, E v ≤ 1) :\n    ∃ K, ∀ v, E v ≤ K := by\n  obtain ⟨Y, hY⟩ := h.exists_forall_of_atTop\n  refine ⟨max 1 C, fun v ↦ ?_⟩\n  obtain hYv | _ := le_total Y v\n  · exact (hY v hYv).trans (le_max_left _ _)\n  · exact (le_abs_self _).trans ((hE v).trans (le_max_right _ _))",
+    "examples": [
+      {
+        "label": "exists_mul_exp_le, with the constant max 1 (|C| * exp Y ^ 2)",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "eventually facts at atTop",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "eventually",
+      "attop",
+      "exists_forall_of_attop",
+      "eventually_attop",
+      "le_total",
+      "threshold",
+      "max constant"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/Landau.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "control-simp-order-with-pre-lemmas-and-exclusions",
+    "title": "Control simp with ↓ pre-lemmas and -lemma exclusions instead of fighting it",
+    "problem": "`simp` unfolds a definition, or splits a structure, before the lemma you need gets a chance to fire, or it loops between two lemmas. The goal ends in a useless normal form.",
+    "method_md": "Mark a lemma with `↓` in the simp list (`simp [↓map_mul, myDef]`) to make it a pre-lemma. It fires on the way down, before simp visits and rewrites the subterms. So `map_mul` can split `χ (a * b)` before `myDef` unfolds `χ`. Exclude default lemmas that steer into the wrong normal form with `-name`, for example `simp [-map_inv]` when you want `χ x⁻¹` kept for a later lemma. Combine `-foo, ← foo` to run a default lemma backwards. A lemma together with its reverse makes simp loop, so leave one direction out, as the GRH sources do with `Spec.map_comp` (\"with `← Spec.map_comp_assoc` it loops\"). Leave a comment when the order matters (\"↓: map_mul has to act before simp unfolds the characters\"). When control gets fiddly, write `simp only [...]` with the exact list, which is also faster.",
+    "lean": "noncomputable def sqNorm (z : ℂ) : ℝ := Complex.normSq z\n\n-- `↓`: `map_mul` splits the product before `sqNorm` is unfolded.\nexample (z w : ℂ) : sqNorm (z * w) = Complex.normSq z * Complex.normSq w := by\n  simp [sqNorm, ↓map_mul]\n\n-- `-lemma`: keep `‖x⁻¹‖` instead of the default normal form `‖x‖⁻¹`.\nexample (x : ℂ) (h : ‖x⁻¹‖ = 2) : ‖x⁻¹‖ + 0 = 2 := by\n  simp [-norm_inv, h]",
+    "examples": [
+      {
+        "label": "simp [↓map_mul, ↓map_pow, …] with a reason",
+        "ref": "grh/src/Lib/Weil/DualPair/MixedModel.lean"
+      },
+      {
+        "label": "simp [-map_inv, -map_zpow]",
+        "ref": "grh/src/Lib/Adelic/Adeles/LocalFactors.lean"
+      },
+      {
+        "label": "simp [-lemma, ← lemma] to reverse a default",
+        "ref": "grh/src/Lib/Adelic/AutomorphicForms/AutomorphicAsAlgebraic.lean"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "pitfalls"
+    ],
+    "keywords": [
+      "simp",
+      "pre lemma",
+      "↓",
+      "simp exclusion",
+      "-lemma",
+      "simp loop",
+      "simp only",
+      "unfolding order"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Weil/DualPair/MixedModel.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "clear-denominators-with-field-simp-then-ring",
+    "title": "Clear denominators with field_simp, then finish with ring or linear_combination",
+    "problem": "An identity between rational expressions in ℝ or ℂ (`q / 2 * (1/k + 1/(q - k)) = …`) does not close with `ring`, because of division and nonzero conditions.",
+    "method_md": "First move casts into place: `rw [Nat.cast_sub h]` for natural subtraction, then `push_cast`. Then call `field_simp`, which multiplies out the denominators. It needs to know each one is nonzero, so have hypotheses `hq : (q : ℝ) ≠ 0` in context or pass them, `field_simp [hq.ne']`. Close with `ring`, or with `linear_combination (coeff) * h` when the identity uses a hypothesis equation. Recent Mathlib also has a one-step finisher `field` (the GRH sources use `field`, `field [NeZero.ne]` and `simp [..., field]`). If it is not available on the verifier, `field_simp` followed by `ring` is the portable form. When `field_simp` leaves a goal in a strange shape, it is usually missing a nonzero fact. Look for leftover `x / y` terms.",
+    "lean": "example (q k : ℝ) (hk : 0 < k) (hkq : k < q) :\n    q / 2 * (1 / k + 1 / (q - k)) = q ^ 2 / (2 * k * (q - k)) := by\n  have h1 : k ≠ 0 := hk.ne'\n  have h2 : q - k ≠ 0 := (sub_pos.2 hkq).ne'\n  field_simp\n  ring\n\nexample (n : ℕ) (H : ℝ) (hH : 0 < H) : ((n + 1 : ℕ) : ℝ) / H * H = n + 1 := by\n  push_cast\n  exact div_mul_cancel₀ _ hH.ne'",
+    "examples": [
+      {
+        "label": "rw casts, then field_simp, then ring",
+        "ref": "grh/src/Lib/Analytic/PolyaVinogradov.lean"
+      },
+      {
+        "label": "push_cast then field",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      },
+      {
+        "label": "linear_combination for identities with hypotheses",
+        "ref": "grh/src/New/Reduction/Data/Magnitudes.lean"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "field_simp",
+      "ring",
+      "field",
+      "push_cast",
+      "linear_combination",
+      "denominators",
+      "nonzero hypotheses",
+      "ne_of_gt"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/PolyaVinogradov.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "return-integrability-and-value-together",
+    "title": "State integral lemmas as integrability ∧ value, and get integrability from a nonzero value",
+    "problem": "Every integral computation needs a separate integrability proof, and the same dominated bounds are proved twice, once for `Integrable` and once inside `integral_add` or `integral_sub`.",
+    "method_md": "State the lemma as `IntegrableOn f s ∧ ∫ x in s, f x = c` and prove both together, then name the parts with `.1` and `.2` (or `obtain ⟨hint, heq⟩`). When the value `c` is nonzero, integrability is free: `MeasureTheory.Integrable.of_integral_ne_zero` says a function whose Bochner integral is nonzero is integrable, since non-integrable functions have integral `0` by convention. In the GRH sources, the Gamma moments `∫₀^∞ v^j e^{-Hv} = j!/H^{j+1}` are proved this way. Linear combinations of them follow with `integral_add`, `integral_sub` and `integral_const_mul`, fed by the `.1` parts, and the result is again a conjunction. This keeps the integrability arguments next to the values they justify.",
+    "lean": "open MeasureTheory in\n/-- A computed nonzero integral value carries integrability with it. -/\nlemma integrableOn_and_integral_eq {f : ℝ → ℝ} {s : Set ℝ} {c : ℝ} (hc : c ≠ 0)\n    (h_eq : ∫ x in s, f x = c) : IntegrableOn f s ∧ ∫ x in s, f x = c :=\n  ⟨Integrable.of_integral_ne_zero (h_eq.trans_ne hc), h_eq⟩\n\nopen MeasureTheory in\nexample {f g : ℝ → ℝ} {s : Set ℝ} (hf : IntegrableOn f s ∧ ∫ x in s, f x = 1)\n    (hg : IntegrableOn g s ∧ ∫ x in s, g x = 2) : ∫ x in s, (f x + 3 * g x) = 7 := by\n  rw [integral_add hf.1 (hg.1.const_mul 3), integral_const_mul, hf.2, hg.2]\n  norm_num",
+    "examples": [
+      {
+        "label": "integrableOn_and_integral_pow_mul_exp_neg_mul",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      },
+      {
+        "label": "integrableOn_and_integral_gamma_mul_quadratic built from moments",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "integrableon",
+      "integral",
+      "of_integral_ne_zero",
+      "conjunction",
+      "integral_add",
+      "integral_sub",
+      "moments",
+      "laplace"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "dirichlet-l-function-api-in-mathlib",
+    "title": "Find the Dirichlet L-function API in Mathlib (LFunction, LSeries, vonMangoldt)",
+    "problem": "You need basic facts about Dirichlet L-functions (series in `re s > 1`, nonvanishing on `re s ≥ 1`, the log derivative as a von Mangoldt series, behaviour at the pole) and do not know the Mathlib names.",
+    "method_md": "The main names (with the `DirichletCharacter` namespace) are as follows. `χ.LFunction s` is the entire continuation for `χ ≠ 1`. `χ.LFunction_eq_LSeries hs : χ.LFunction s = LSeries (χ ·) s` holds for `1 < s.re`. `χ.LFunction_ne_zero_of_one_le_re (h : χ ≠ 1 ∨ s ≠ 1) (hs : 1 ≤ s.re)` gives nonvanishing. `χ.LSeries_twist_vonMangoldt_eq` and `χ.deriv_LFunction_eq_deriv_LSeries` give `-L'/L` as `∑ χ(n)Λ(n)n^{-s}`. `LFunctionTrivChar₁ N`, which is `(s - 1) L(s, 1)` patched at `1`, is an entire function without the pole, and `LFunction_changeLevel` relates levels through Euler factors. The files are Mathlib/NumberTheory/LSeries/DirichletContinuation.lean, Nonvanishing.lean, PrimesInAP.lean (residue classes of `Λ`), SumCoeff.lean (Abel summation: `LSeries_eq_mul_integral`) and RiemannZeta.lean (`riemannZeta`, `RiemannHypothesis`). `ArithmeticFunction.vonMangoldt` is written `Λ` under `open ArithmeticFunction`, and `vonMangoldt_nonneg` and `vonMangoldt_le_log` are the usual bounds. Search with `exact?` after stating the goal in these terms. Most lemmas are stated for `χ : DirichletCharacter ℂ N` with `[NeZero N]`.",
+    "lean": "open DirichletCharacter in\nexample {N : ℕ} [NeZero N] (χ : DirichletCharacter ℂ N) {s : ℂ} (hs : 1 < s.re) :\n    χ.LFunction s = LSeries (fun n ↦ χ n) s :=\n  χ.LFunction_eq_LSeries hs\n\nopen DirichletCharacter in\nexample {N : ℕ} [NeZero N] (χ : DirichletCharacter ℂ N) (hχ : χ ≠ 1) {s : ℂ}\n    (hs : 1 ≤ s.re) : χ.LFunction s ≠ 0 :=\n  χ.LFunction_ne_zero_of_one_le_re (.inl hχ) hs",
+    "examples": [
+      {
+        "label": "L as LSeries, nonvanishing, log derivative",
+        "ref": "grh/src/Lib/Analytic/EntireLFunction.lean"
+      },
+      {
+        "label": "Mathlib files credited",
+        "ref": "grh/ATTRIBUTION.md"
+      },
+      {
+        "label": "statements in Mathlib terms",
+        "ref": "grh/src/Statements.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "dirichletcharacter.lfunction",
+      "lfunction_eq_lseries",
+      "lfunction_ne_zero_of_one_le_re",
+      "lseries",
+      "vonmangoldt",
+      "lfunctiontrivchar₁",
+      "riemannzeta",
+      "primesinap"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/EntireLFunction.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "finite-fourier-gauss-sums-and-harmonic-bounds-in-mathlib",
+    "title": "Use Mathlib's finite Fourier transform, Gauss sums and geometric sums for character-sum bounds",
+    "problem": "You need to bound a character sum (Pólya–Vinogradov style) and must expand `χ` in additive characters, sum a geometric series of roots of unity, and bound a harmonic sum.",
+    "method_md": "The pieces are in Mathlib. `ZMod.dft` and `ZMod.invDFT_apply` give the discrete Fourier transform on `ZMod q`. Expand with `conv_lhs => rw [← dft.symm_apply_apply χ]`. `ZMod.stdAddChar` is `k ↦ exp(2πik/q)`. `gaussSum χ ψ`, together with `IsPrimitive.fourierTransform_eq_inv_mul_gaussSum`, gives the Fourier coefficients of a primitive character, and the norm of the Gauss sum is `√q` for primitive `χ`. `geom_sum_Ico` sums `∑_{v ∈ Ico m n} x^v` when `x ≠ 1`. `norm_sum_le_of_le` bounds a sum termwise, and `harmonic_le_one_add_log` gives `H_q ≤ 1 + log q`. Move between `Ioc 0 X` and `Ico` sums with `Finset.Ico_add_one_add_one_eq_Ioc`, and reindex through `ZMod.val` with `Finset.sum_image` (injectivity `ZMod.val_injective`). Then the bound is one `calc`: expand, `grw [norm_mul, norm_sum_le_of_le _ h_term]`, reindex, `gcongr`, then the harmonic bound.",
+    "lean": "example (q : ℕ) : (harmonic q : ℝ) ≤ 1 + Real.log q := harmonic_le_one_add_log q\n\nexample {x : ℂ} (hx : x ≠ 1) (n : ℕ) :\n    ∑ v ∈ Finset.Ico 1 (n + 1), x ^ v = (x ^ (n + 1) - x ^ 1) / (x - 1) :=\n  geom_sum_Ico hx (Nat.le_add_left 1 n)",
+    "examples": [
+      {
+        "label": "Pólya–Vinogradov from Fourier inversion and a geometric sum",
+        "ref": "grh/src/Lib/Analytic/PolyaVinogradov.lean"
+      },
+      {
+        "label": "divisor-count bound by splitting at √r",
+        "ref": "grh/src/Lib/Analytic/PolyaVinogradov.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "gausssum",
+      "zmod.dft",
+      "stdaddchar",
+      "geom_sum_ico",
+      "harmonic_le_one_add_log",
+      "norm_sum_le_of_le",
+      "character sum",
+      "polya vinogradov"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/PolyaVinogradov.lean",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "mellin-laplace-and-mgf-api-in-mathlib",
+    "title": "Find Mathlib's Mellin, Laplace and moment-generating-function API",
+    "problem": "An analytic argument needs transforms `∫₀^∞ f(t) t^{s-1} dt` or `∫ e^{sX} dμ`: convergence from growth bounds, holomorphy, derivatives, and explicit integrals of exponentials.",
+    "method_md": "Mellin transforms live in Mathlib/Analysis/MellinTransform.lean. `mellin f s` is the transform, and `mellinConvergent_of_isBigO_rpow_exp` and `mellin_differentiableAt_of_isBigO_rpow` turn `IsBigO` growth at `0` and `∞` into convergence and holomorphy (state the growth with `=O[atTop]` and `=O[𝓝[>] 0]`). Moment generating functions are in Mathlib/Probability/Moments: `complexMGF X μ z`, the convergence set `integrableExpSet X μ` (an interval), `analyticAt_complexMGF` and `iteratedDeriv_complexMGF` on the interior. One-sided Laplace integrals reduce to `integrableOn_exp_mul_complex_Ioi (ha : a.re < 0) c`, `integral_exp_mul_complex_Ioi`, `integral_exp_neg_Ioi_zero` and `Real.integral_rpow_mul_exp_neg_mul_Ioi` (Gamma integrals). Growth facts come from Mathlib/Analysis/SpecialFunctions/Pow/Asymptotics.lean and friends: `isLittleO_pow_exp_pos_mul_atTop` and `isLittleO_pow_log_id_atTop`. For bounds `|E v| ≤ C e^v` on `v ≥ 0`, it is often easier to prove a project lemma `integrableOn_laplace_of_abs_le` once and reuse it.",
+    "lean": "open MeasureTheory Set in\nexample {a : ℂ} (ha : a.re < 0) : IntegrableOn (fun x : ℝ ↦ Complex.exp (a * x)) (Ioi 0) :=\n  integrableOn_exp_mul_complex_Ioi ha 0\n\nopen MeasureTheory Set in\nexample {a : ℂ} (ha : a.re < 0) : ∫ x : ℝ in Ioi 0, Complex.exp (a * x) = -1 / a := by\n  simpa using integral_exp_mul_complex_Ioi ha 0",
+    "examples": [
+      {
+        "label": "complexMGF, integrableExpSet, iteratedDeriv_complexMGF in Landau's lemma",
+        "ref": "grh/src/Lib/Analytic/Landau.lean"
+      },
+      {
+        "label": "Mellin transforms of theta series",
+        "ref": "grh/src/Lib/Analytic/DirichletTheta.lean"
+      },
+      {
+        "label": "exponential integrals on Ioi",
+        "ref": "grh/src/Lib/Analytic/PrimeNumberTheorem/Tauberian.lean"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "mellin",
+      "mellinconvergent",
+      "complexmgf",
+      "integrableexpset",
+      "laplace",
+      "integrableon_exp_mul_complex_ioi",
+      "isbigo",
+      "iteratedderiv_complexmgf"
+    ],
+    "source": {
+      "name": "GRH Lean project (adapted; authors and upstream credits in its ATTRIBUTION.md and NOTICE)",
+      "path": "grh/src/Lib/Analytic/Landau.lean",
+      "licence": "Apache-2.0"
+    }
+  }
+]

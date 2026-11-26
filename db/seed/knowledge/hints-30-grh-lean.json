@@ -1,0 +1,102 @@
+[
+  {
+    "slug": "grh-synthinstance-heartbeats-timeout",
+    "pattern": "\\(deterministic\\) timeout at `?synthInstance|synthInstance\\.maxHeartbeats",
+    "title": "Instance search ran out of heartbeats",
+    "explanation": "Typeclass synthesis hit its own budget (`synthInstance.maxHeartbeats`, 20000 by default) before finding an instance. Often a general instance is tried early and starts a long search that fails.",
+    "fixes": [
+      "If the search can succeed but is long, raise the budget for this declaration only: `set_option synthInstance.maxHeartbeats 200000 in`, with a comment that says why.",
+      "Demote the instance that leads the search astray: `attribute [local instance 20] Foo.toBar` (find it with `set_option trace.Meta.synthInstance true in`).",
+      "Provide the instance directly with `haveI`/`letI`, or add a shortcut `instance : C T := inferInstance` once."
+    ],
+    "example": "(deterministic) timeout at `synthInstance`, maximum number of heartbeats (20000) has been reached",
+    "tags": [
+      "typeclass",
+      "performance"
+    ],
+    "source": {
+      "name": "GRH Lean project (code comments; Apache-2.0)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "grh-synthinstance-maxsize-reached",
+    "pattern": "maximum class-instance resolution (size|depth)|synthInstance\\.maxSize",
+    "title": "Instance problem too large (synthInstance.maxSize)",
+    "explanation": "The instance terms grew past the size limit, typically with deeply nested index types (sums of sums, products of matrix types) or long chains of structure projections.",
+    "fixes": [
+      "Raise the limit for the one declaration: `set_option synthInstance.maxSize 512 in` (the default is 128), with a comment naming the nested types.",
+      "Name the nested type with an `abbrev` or a `def` with its own instances, so the search sees a small term.",
+      "Check that the instance exists at all (`#synth`), since a missing instance also fails, only later."
+    ],
+    "example": "failed to synthesize\n  Fintype ((m ⊕ n) ⊕ (p ⊕ q))\nmaximum class-instance resolution size has been reached",
+    "tags": [
+      "typeclass",
+      "performance"
+    ],
+    "source": {
+      "name": "GRH Lean project (code comments; Apache-2.0)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "grh-unifier-timeout-unfolding-sums",
+    "pattern": "\\(deterministic\\) timeout at `?(whnf|isDefEq|elaborator)",
+    "title": "Timeout while unifying (definitions being unfolded)",
+    "explanation": "The defeq checker is unfolding definitions such as `Finset.sum`, `Finset.univ` or a large construction while comparing two terms, often in `exact`, `rw` or `apply`.",
+    "fixes": [
+      "Seal the definitions for this declaration: `seal Finset.sum Finset.prod Finset.univ in` before the lemma (or `seal myBigDef in`).",
+      "Elaborate the term before unifying with the goal: `exact (foo h :)` instead of `exact foo h`.",
+      "Make large definitions irreducible after proving their API lemmas: `attribute [irreducible] myDef`."
+    ],
+    "example": "(deterministic) timeout at `isDefEq`, maximum number of heartbeats (200000) has been reached",
+    "tags": [
+      "performance",
+      "elaboration"
+    ],
+    "source": {
+      "name": "GRH Lean project (code comments; Apache-2.0)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "grh-simp-loops-with-reversed-lemma",
+    "pattern": "maximum recursion depth has been reached|simp failed, maximum number of steps exceeded",
+    "title": "simp loops between a lemma and its reverse",
+    "explanation": "A simp set contains a lemma together with a lemma that undoes it (for example `foo` and `← foo_assoc`), or a definition is unfolded and refolded, so simp never terminates.",
+    "fixes": [
+      "Leave one direction out: `simp [-foo, ← foo]` or remove the reversed lemma from the list.",
+      "Use `simp only [...]` with an explicit list, and mark lemmas that must act first as pre-lemmas: `simp [↓map_mul]`.",
+      "If a default simp lemma always misleads, erase it for the file with `attribute [-simp] foo`."
+    ],
+    "example": "maximum recursion depth has been reached\nuse `set_option maxRecDepth <num>` to increase limit",
+    "tags": [
+      "tactic",
+      "performance"
+    ],
+    "source": {
+      "name": "GRH Lean project (code comments; Apache-2.0)",
+      "licence": "Apache-2.0"
+    }
+  },
+  {
+    "slug": "grh-decidable-instance-mismatch",
+    "pattern": "motive is not type correct|did not find instance of the pattern.*(decidable|Decidable|Fintype)",
+    "title": "Rewrite fails on a different Decidable or Fintype instance",
+    "explanation": "The goal and the lemma carry different (non-defeq) instances, for example the classical `DecidableEq` against a computing one, or `Fintype.ofFinite` against `Fin n`'s own instance, so the pattern does not match syntactically.",
+    "fixes": [
+      "Bridge the instances with `convert h using 2`, `congr!`, or a small `@[simp]` lemma proved by `congr` (instances of `Decidable`/`Fintype` are subsingletons).",
+      "Put `open scoped Classical in` on the definition instead of the whole file, and add `Fintype.ofFinite` only as `attribute [local instance low]`.",
+      "State results with `Nat.card` instead of `Fintype.card` to avoid the instance altogether."
+    ],
+    "example": "tactic 'rewrite' failed, motive is not type correct",
+    "tags": [
+      "typeclass",
+      "tactic"
+    ],
+    "source": {
+      "name": "GRH Lean project (code comments; Apache-2.0)",
+      "licence": "Apache-2.0"
+    }
+  }
+]

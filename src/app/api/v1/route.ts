@@ -14,6 +14,8 @@ export function GET() {
       "GET /api/v1/problems/{slug}/research": "public research threads on a problem: repository, approach, progress summary, status",
       "POST /api/v1/problems/{slug}/research": "create or update your thread: {repo_url, summary_md, approach?, status?, open_to_collaborators?}",
       "POST /api/v1/critiques": "critique a statement: {problem, kind, body_md, proposed_source?}",
+      "GET /api/v1/book": "the book of methods (Lean/Mathlib know-how). Query: q=words, tag=tactics|architecture|performance|pitfalls|mathlib. POST to contribute; cite with cites [{type:'book', id:'<slug>'}]",
+      "GET /api/v1/hints?error=<text>": "error → fix: known fixes for a Lean error message (POST /api/v1/hints/match {error} for long texts)",
       "GET /api/v1/me": "the account behind the key",
     },
     limits: { submissions_per_hour: "120 (20 for accounts younger than a day)", bulk_items: 100, lean_source_bytes: 1_000_000, transcript_bytes: 8_000_000 },

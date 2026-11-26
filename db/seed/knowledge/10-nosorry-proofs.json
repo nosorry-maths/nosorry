@@ -1,0 +1,649 @@
+[
+  {
+    "slug": "no-native-decide-use-decide-kernel",
+    "title": "Replace native_decide by decide +kernel on small closed facts",
+    "problem": "A finite computation (prime counts, a table of values, a finite invariant) must be checked, but nosorry refuses `native_decide`.",
+    "method_md": "The preflight rejects `native_decide`, `decide +native`, `ofReduceBool` and `trustCompiler`, and the axiom check refuses `Lean.ofReduceBool`; only `propext`, `Quot.sound` and `Classical.choice` are accepted. Use `decide +kernel`: the kernel evaluates the `Decidable` instance directly, skipping the elaborator's `whnf`, which is often what makes plain `decide` hit `maxRecDepth`. Keep each computation small and give it its own named lemma (`pc_14 : Nat.primeCounting 14 = 6`), then feed these lemmas to `norm_num [...]` or `rw` in the main proof. A large finite check splits into many `decide +kernel` lemmas over sub-ranges far more reliably than one big `decide`. If even `decide +kernel` is too slow, the definition probably does not reduce well (well-founded recursion, `Nat.find`, `Real`). Prove a structural recursion equation first, or reduce the claim to `Nat`/`Fin`/`Bool` data.",
+    "lean": "theorem pc_14 : Nat.primeCounting 14 = 6 := by decide +kernel\ntheorem pc_28 : Nat.primeCounting 28 = 9 := by decide +kernel\n\n-- reuse the facts instead of recomputing inside a big goal\nexample : Nat.primeCounting 28 - Nat.primeCounting 14 = 3 := by\n  rw [pc_28, pc_14]",
+    "examples": [
+      {
+        "label": "prime counts for a counterexample",
+        "ref": "s-j15cz79z4e"
+      },
+      {
+        "label": "explicit step counts n < 32",
+        "ref": "s-2vajrgk889"
+      },
+      {
+        "label": "finite invariant checked by kernel decide",
+        "ref": "s-43xpf9vxpj"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "performance",
+      "pitfalls"
+    ],
+    "keywords": [
+      "native_decide",
+      "decide +kernel",
+      "decide",
+      "ofreducebool",
+      "axioms",
+      "maxrecdepth",
+      "computation"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "disproof-not-prefixed-statement-verbatim",
+    "title": "State a disproof as not_<name> : ¬ (reference statement), verbatim",
+    "problem": "A disproof is rejected with \"must have type ¬ (reference statement)\" or \"not found in the submission\".",
+    "method_md": "The checker looks for the reference name with its last component prefixed by `not_` (for `Foo.erdos_786.parts.i` it is `Foo.erdos_786.parts.not_i`), in the same namespace. Its type must be exactly `¬ (S)`, where `S` is the reference type: turn the theorem's binders into `∀` binders (`(n : ℕ) (hn : 1 < n)` becomes `∀ (n : ℕ) (_ : 1 < n), …`), keep the same instance binders, the same `let`s and the same auxiliary `by` terms. Universes are a common trap. `Type*` in the reference elaborates to `Type u_1`, so write `Type u_1` (after `universe u_1`), not `Type u` or a fresh `Type*`, and instantiate your counterexample at that level (`G19.{u_1}`, or `ULift.{u_1} (Fin n)`). After `intro h`, specialise `h` to the counterexample and derive `False`.",
+    "lean": "universe u_1\n\n-- reference: theorem conj {α : Type*} [Fintype α] (G : SimpleGraph α) ... : P G\ntheorem not_conj :\n    ¬ (∀ {α : Type u_1} [Fintype α] [DecidableEq α] (G : SimpleGraph α),\n        G.Connected → P G) := by\n  intro h\n  have := h (G17.{u_1}) G17_connected\n  exact G17_not_P this",
+    "examples": [
+      {
+        "label": "graph counterexample, universe fixed to u_1",
+        "ref": "s-q8d7j94zkp"
+      },
+      {
+        "label": "lemma disproof with ULift.{u_1} (Fin 17)",
+        "ref": "s-kn6aqj3h9s"
+      },
+      {
+        "label": "numeric counterexample with ∀ binders",
+        "ref": "s-j15cz79z4e"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "disproof",
+      "not_",
+      "negation",
+      "universe",
+      "u_1",
+      "type*",
+      "statement mismatch",
+      "counterexample"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "counterexample-specialise-then-interval-cases",
+    "title": "Kill an existential with a concrete n and interval_cases",
+    "problem": "To refute `∀ n, … → ∃ k < n, P n k`, you must show that no k works for one specific n.",
+    "method_md": "Specialise the universal hypothesis to the counterexample and destructure the witness. The bound `k < n` is now `k < 14`, so `interval_cases k` splits it into one goal per value. Close each branch with `first | (norm_num at hp; done) | (norm_num [facts] at he; done)`, where `facts` are precomputed `decide +kernel` lemmas. The `done` makes each alternative fail unless it really closes the branch, so `first` moves on to the next one. This keeps everything kernel-checkable with no `native_decide`, and a failing branch is easy to spot.",
+    "lean": "theorem not_conjecture_2 : ¬ (∀ (n : ℕ) (_ : 1 < n) (_ : n ≠ 8),\n    ∃ k : ℕ, 0 < k ∧ k < n ∧ (2 * k + 1).Prime ∧\n      Nat.primeCounting (k * n) - Nat.primeCounting ((k - 1) * n) =\n      Nat.primeCounting ((k + 1) * n) - Nat.primeCounting (k * n)) := by\n  intro h\n  obtain ⟨k, hk0, hk, hp, he⟩ := h 14 (by norm_num) (by norm_num)\n  interval_cases k <;>\n    first\n    | (norm_num at hp; done)\n    | (norm_num [pc_14, pc_28, pc_42, Nat.primeCounting_zero] at he; done)",
+    "examples": [
+      {
+        "label": "OEIS A238281 conjecture 2 disproof",
+        "ref": "s-j15cz79z4e"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "interval_cases",
+      "counterexample",
+      "disproof",
+      "norm_num",
+      "first",
+      "existential",
+      "finite check"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "finite-graph-counterexample-on-fin",
+    "title": "Build a finite graph counterexample on Fin n with decidable adjacency",
+    "problem": "A graph conjecture is false and you have a concrete counterexample (say 17 or 19 vertices) that must be checked inside Lean.",
+    "method_md": "Define the graph on `Fin n`, or on `ULift.{u_1} (Fin n)` when the statement quantifies over `α : Type u_1`, with `Adj` given by a Boolean function of block indices, and prove `symm`/`loopless` by `decide` after `revert`. Provide a `DecidableRel G.Adj` instance so that `degree` and `neighborFinset` compute. Prove each fact as a statement over `Fin k` with the variables reverted and then `decide`. `generalize blk u.down = a; revert a; decide` turns a statement about vertices into a finite check on the block quotient. Prove distances with a combinatorial lower bound (a walk cannot be shorter than the block distance) plus explicit short walks. Do not try to `decide` `SimpleGraph.dist` directly. Keep the derived invariants (degree bounds, distance formula, induced-tree bound) as separate lemmas, then combine them in the `not_…` theorem.",
+    "lean": "def blk : Fin 17 → Fin 7 := fun i => ⟨i.val % 7, Nat.mod_lt _ (by omega)⟩\ndef c7adj (a b : Fin 7) : Bool := a ≠ b && ((a.val + 1) % 7 == b.val || (b.val + 1) % 7 == a.val)\n\ndef G17 : SimpleGraph (ULift.{u_1} (Fin 17)) where\n  Adj u v := u ≠ v ∧ (c7adj (blk u.down) (blk v.down) = true ∨ blk u.down = blk v.down)\n  symm u v h := ⟨h.1.symm, by\n    have h2 := h.2; clear h; revert h2\n    generalize blk u.down = a; generalize blk v.down = b\n    revert a b; decide⟩\n  loopless u h := h.1 rfl\n\ninstance : DecidableRel (G17.{u_1}).Adj := fun _ _ =>\n  inferInstanceAs (Decidable (_ ∧ _))\n\ntheorem G17_deg_ge_five (w : ULift.{u_1} (Fin 17)) : 5 ≤ (G17.{u_1}).degree w := by\n  sorry -- rewrite degree as a filter over Fin 17, then `revert x; decide`",
+    "examples": [
+      {
+        "label": "17-vertex clique blow-up of C7",
+        "ref": "s-kn6aqj3h9s"
+      },
+      {
+        "label": "19-vertex layered counterexample",
+        "ref": "s-q8d7j94zkp"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "tactics"
+    ],
+    "keywords": [
+      "simplegraph",
+      "counterexample",
+      "fin",
+      "ulift",
+      "decidablerel",
+      "decide",
+      "generalize",
+      "degree",
+      "dist"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "small-cases-by-interval-cases-decide",
+    "title": "Split off small cases with interval_cases <;> decide",
+    "problem": "An arithmetic claim has a clean general argument only above some threshold, while small values need a direct check.",
+    "method_md": "Split on `x ≤ N`. Below the threshold, `interval_cases x <;> decide` (or `<;> norm_num`, or `<;> simp [f]`) checks every value. `interval_cases` reads the bounds from hypotheses such as `0 < x` and `x ≤ 16`. Above it, `push_neg` (or `push Not` in the current Mathlib) turns `¬ x ≤ 16` into `16 < x`, and the general argument can use that bound freely. Pick the smallest threshold that makes the general argument work, because each case costs elaboration time. If `decide` is slow on a case, use `decide +kernel` or `norm_num [ArithmeticFunction.sigma_apply]`.",
+    "lean": "theorem sigma_ne_add_five (x : ℕ) (hx : 0 < x) :\n    ArithmeticFunction.sigma 1 x ≠ x + 5 := by\n  by_cases h16 : x ≤ 16\n  · interval_cases x <;> decide\n  · push_neg at h16\n    -- general argument using 16 < x\n    sorry",
+    "examples": [
+      {
+        "label": "5 is untouchable",
+        "ref": "s-9pqktjgtks"
+      },
+      {
+        "label": "p = 5 checked directly before p ≥ 7",
+        "ref": "s-b0xt490kh1"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "interval_cases",
+      "decide",
+      "by_cases",
+      "small cases",
+      "push_neg",
+      "threshold"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "residue-classes-symbolic-iteration-omega",
+    "title": "Prove statements on residue classes by symbolic iteration and omega",
+    "problem": "A dynamical statement (Collatz-type iteration) must hold for all n in some residue classes mod 2^k.",
+    "method_md": "Write `n = 32 * k + r`, obtained with `⟨n / 32, n % 32, by omega, rfl, by omega⟩`. Turn membership of `r` in a `Finset` literal into a disjunction with `simp only [Finset.mem_insert, Finset.mem_singleton]`, and split it with `rcases … with rfl | rfl | …`. For each concrete `r`, unfold a fixed number of iterations with `simp (disch := omega) only [Function.iterate_succ_apply', Function.iterate_zero, step_even, step_odd]`. The `omega` discharger decides the parity side conditions `(32*k+r) % 2 = 0`, and a final `omega` closes the linear goal in `k`. Bounded quantifiers over step counts go through `intro t ht; interval_cases t <;> …`. Wrap the lemma in `set_option maxHeartbeats N in`, since these unfoldings are heavy.",
+    "lean": "set_option maxHeartbeats 2000000 in\ntheorem zero_on_classes (n : ℕ) (hn : 32 ≤ n)\n    (hr : n % 32 ∈ ({2, 4, 5, 12} : Finset ℕ)) : P n := by\n  obtain ⟨k, r, hk, hnr, rfl⟩ : ∃ k r, 1 ≤ k ∧ r = n % 32 ∧ n = 32 * k + r :=\n    ⟨n / 32, n % 32, by omega, rfl, by omega⟩\n  have hr' : r ∈ ({2, 4, 5, 12} : Finset ℕ) := by rw [hnr]; simpa using hr\n  simp only [Finset.mem_insert, Finset.mem_singleton] at hr'\n  rcases hr' with rfl | rfl | rfl | rfl\n  all_goals\n    apply P_of_iterate\n    simp (disch := omega) only [Function.iterate_succ_apply',\n      Function.iterate_zero, id_eq, step_even, step_odd]\n    omega",
+    "examples": [
+      {
+        "label": "a(n) = 0 on 8 classes mod 32",
+        "ref": "s-vq9yyt99pz"
+      },
+      {
+        "label": "reduction of A153330 conjecture 3",
+        "ref": "s-wyere5fbn1"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "performance"
+    ],
+    "keywords": [
+      "omega",
+      "simp disch",
+      "iterate",
+      "residue",
+      "mod",
+      "rcases",
+      "collatz",
+      "maxheartbeats"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "explicit-witness-with-nat-division-omega",
+    "title": "Give ℕ witnesses with / and % and let omega check them",
+    "problem": "An existential over ℕ (for example a Frobenius-coin representation m = 5x + 8y) needs explicit witnesses involving truncated subtraction and division.",
+    "method_md": "Write the witnesses as closed formulas using `/`, `%` and `-`, and close the equation with `omega`. `omega` understands `ℕ` subtraction, division and modulus by numerals, so you never have to prove `a ≤ b` before subtracting. For `m ≥ 28`, `y = (2m) % 5` makes `m - 8y` divisible by 5. This beats case analysis on `m % 5`. The same trick gives `n = 32 * (n / 32) + n % 32` and other decompositions instantly.",
+    "lean": "theorem exists_five_eight_of_ge (m : ℕ) (hm : 28 ≤ m) :\n    ∃ x y : ℕ, m = 5 * x + 8 * y :=\n  ⟨(m - 8 * ((2 * m) % 5)) / 5, (2 * m) % 5, by omega⟩",
+    "examples": [
+      {
+        "label": "Frobenius bound for 5 and 8",
+        "ref": "s-w223qj3e73"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "omega",
+      "witness",
+      "nat subtraction",
+      "nat division",
+      "mod",
+      "existential",
+      "frobenius"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "nat-subtraction-casts",
+    "title": "Move ℕ subtraction to ℤ or ℝ only with a ≤ proof",
+    "problem": "A goal mixes `ℕ` subtraction (`n - k`, `p - 1`) with casts to `ℤ`, `ZMod` or `ℝ`, and `push_cast`/`ring` get stuck on `↑(n - k)`.",
+    "method_md": "Truncated subtraction does not commute with casts. `↑(n - k) = ↑n - ↑k` holds only when `k ≤ n`, so give that fact explicitly: `rw [Nat.cast_sub hk]`, `push_cast [Nat.cast_sub hk]` or `zify [hk]`. For `p - 1` with `p` prime, use `hp.one_le`. Often it is easier to eliminate the subtraction: `obtain ⟨m, rfl⟩ := Nat.exists_eq_add_of_le hk`, or `have := Nat.sub_add_cancel hk` followed by `omega`/`nlinarith`. `omega` handles goals that are purely linear in ℕ, but not casts to ℝ or products of variables. Watch for `n - 1` in formal-conjectures statements such as `Nat.nth Nat.Prime (n - 1)`. When `n = 0` it is `0`, so statements often need `0 < n` hypotheses.",
+    "lean": "example (n k : ℕ) (hk : k ≤ n) : ((n - k : ℕ) : ℤ) = n - k := by\n  rw [Nat.cast_sub hk]\n\nexample (p : ℕ) (hp : p.Prime) : ((p - 1 : ℕ) : ℝ) + 1 = p := by\n  rw [Nat.cast_sub hp.one_le]; push_cast; ring\n\nexample (n k : ℕ) (hk : k ≤ n) (h : n - k + k = 10) : n = 10 := by\n  omega",
+    "examples": [
+      {
+        "label": "casts of k ≤ n and p - 1 in ZMod",
+        "ref": "s-06qfhrkdgm"
+      },
+      {
+        "label": "supercongruence with p - 1",
+        "ref": "s-t1k1rvc05q"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "tactics"
+    ],
+    "keywords": [
+      "nat.cast_sub",
+      "nat.sub_add_cancel",
+      "zify",
+      "push_cast",
+      "truncated subtraction",
+      "omega",
+      "tsub"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "set-ncard-to-finset-card",
+    "title": "Turn Set.ncard into Finset.card before counting",
+    "problem": "The statement measures a set with `Set.ncard` (or `Nat.card`), but all the counting lemmas you want are about `Finset.card`.",
+    "method_md": "formal-conjectures often writes sizes as `(S : Set ℕ).ncard`, which is `0` for infinite sets. First show that `S` is the coercion of an explicit `Finset`, for example `Set.Icc 1 N \\ B = ↑(Finset.Icc 1 N \\ B')`, usually by `ext; simp`. Then `rw [Set.ncard_coe_finset]`. Without an explicit finset, use `Set.ncard_eq_toFinset_card _ hfin` (or the primed version with a `Fintype` instance). Then `Finset.card_sdiff`, `Finset.card_le_card`, `Nat.card_Icc : #(Icc a b) = b + 1 - a` and `omega` do the arithmetic. For `Nat.card` on a subtype, `Nat.card_eq_fintype_card` and then `Fintype.card_subtype` gets you back to a filter.",
+    "lean": "example (N : ℕ) (B : Finset ℕ) :\n    ((Set.Icc 1 N) \\ (↑B : Set ℕ)).ncard = (Finset.Icc 1 N \\ B).card := by\n  rw [← Set.ncard_coe_finset]\n  congr 1\n  ext x; simp\n\nexample (a b : ℕ) (h : a ≤ b) : (Finset.Icc a b).card + a = b + 1 := by\n  rw [Nat.card_Icc]; omega",
+    "examples": [
+      {
+        "label": "nonUniqueSumCount via Set.ncard_coe_finset",
+        "ref": "s-3529deds8v"
+      },
+      {
+        "label": "density counts with ncard",
+        "ref": "s-5jdxghmm3j"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "pitfalls"
+    ],
+    "keywords": [
+      "set.ncard",
+      "nat.card",
+      "set.ncard_coe_finset",
+      "set.ncard_eq_tofinset_card",
+      "nat.card_icc",
+      "finset.card"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "split-into-shared-lemmas",
+    "title": "Split a hard problem into lemmas that others can prove",
+    "problem": "A full proof is out of reach in one go, but the argument has a clear case split or a reduction to a core statement.",
+    "method_md": "Reduce the target to a few named lemmas with precise statements, each a `theorem … := by sorry`, and submit the reduction as a partial proof with shared lemmas. Each open lemma becomes its own `lemma-…` problem that can be proved, or even disproved, separately. Once a lemma is verified, paste its full declaration (statement and proof) into the next file, with the same name and statement, so that later submissions reuse it. Good splits follow the mathematics: a case on minimum degree, on diameter ≤ 2 versus ≥ 3, on cut vertex versus 2-connected, or small n versus large n. State lemmas with hypotheses exactly as the main proof will use them, so that they apply without glue. A disproved lemma, which nosorry records too, tells you that the planned route is dead.",
+    "lean": "/-- open: proved separately as a lemma problem -/\ntheorem conj_of_cutVertex (G : SimpleGraph α) [DecidableRel G.Adj]\n    (hc : G.Connected) (v : α) (hv : ¬ (G.induce {v}ᶜ).Connected) : P G := by\n  sorry\n\ntheorem conj_of_two_le_minDegree (G : SimpleGraph α) [DecidableRel G.Adj]\n    (hc : G.Connected) (hδ : 2 ≤ G.minDegree) : P G := by\n  sorry\n\ntheorem conj (G : SimpleGraph α) [DecidableRel G.Adj] (hc : G.Connected) : P G := by\n  rcases le_or_gt 2 G.minDegree with h | h\n  · exact conj_of_two_le_minDegree G hc h\n  · obtain ⟨v, hv⟩ := exists_cutVertex_of_minDegree_lt_two G hc h\n    exact conj_of_cutVertex G hc v hv",
+    "examples": [
+      {
+        "label": "Conjecture 84: final proof assembling two verified lemmas",
+        "ref": "s-khf8tj2vap"
+      },
+      {
+        "label": "Conjecture 189: reduction to one open lemma",
+        "ref": "s-kxbkm3s7jh"
+      },
+      {
+        "label": "A153330: reduction with four proved helper lemmas",
+        "ref": "s-wyere5fbn1"
+      },
+      {
+        "label": "a lemma disproved, closing a route",
+        "ref": "s-kn6aqj3h9s"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "partial proof",
+      "lemma",
+      "share_lemmas",
+      "sorry",
+      "reduction",
+      "case split",
+      "open lemma"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "keep-challenge-file-add-helpers-before-target",
+    "title": "Submit the challenge file itself and put helpers before the target",
+    "problem": "A proof is rejected because definitions the statement depends on \"were changed or are missing\", or because the statement differs.",
+    "method_md": "The checker compares your target and every definition it depends on against the reference module. Start from the challenge file as it is, header and namespace included. Insert your helper lemmas in a `section` (or a private namespace) before the target theorem, and replace only the target's `sorry`. Other theorems in the file may keep their `sorry`, because only what the target depends on is checked. When porting an external proof that carries its own copies of the formal-conjectures definitions, delete those copies and use the challenge's definitions, otherwise you prove a statement about different constants. Do not 'clean up' the statement either: reformatting is fine, but changing binder order, implicitness, `Type*` levels or an inline `(by simp)` proof changes the compiled term.",
+    "lean": "namespace OeisA46969\n\ndef a (n : ℕ) : ℕ := ...            -- the challenge's definition, untouched\n\nsection Proof\nlemma key (p : ℕ) (hp : p.Prime) : ... := by ...\nend Proof\n\n@[category research open, AMS 11]\ntheorem conjecture (p : ℕ) (hp : p.Prime) (h3 : 3 < p) : ... := by\n  exact key p hp ...\n\nend OeisA46969",
+    "examples": [
+      {
+        "label": "port dropping the repo's copy of the definition",
+        "ref": "s-ddagdg67fs"
+      },
+      {
+        "label": "modules assembled into the challenge file as sections",
+        "ref": "s-5jdxghmm3j"
+      },
+      {
+        "label": "helper code placed in a section before the target",
+        "ref": "s-x75tfmf0ng"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "pitfalls"
+    ],
+    "keywords": [
+      "challenge file",
+      "definition mismatch",
+      "statement differs",
+      "section",
+      "port",
+      "helpers",
+      "reference"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "true-iff-validator-bridge",
+    "title": "Bridge a 'True ↔ statement' validator to the challenge theorem",
+    "problem": "An external formalization proves `True ↔ S` (the formal-conjectures `answer(True) ↔ S` shape), or `¬ (True ↔ S)`, and the challenge wants `S` or `¬ S`.",
+    "method_md": "Ported validator bodies often prove a theorem `target : True ↔ S`, where `S` is the challenge statement. Conclude the proof with `target.mp trivial`. For a negative answer, `target : ¬ (True ↔ S)`, and the disproof is `fun h => target ⟨fun _ => h, fun _ => trivial⟩`. For questions phrased as `answer(sorry) ↔ S`, nosorry presents each variant with its answer fixed. Prove the resulting statement (`proof`), or its negation as `not_…` (`disproof`). Leaving a `sorry` elsewhere in the reference type is refused as \"sorry outside an answer(...) slot\". Delete `#print axioms` lines from ported code, because the preflight refuses all `#` commands.",
+    "lean": "namespace Bounty\ntheorem target : (True ↔ S) := ⟨fun _ => proof_of_S, fun _ => trivial⟩\ntheorem target' : ¬ (True ↔ T) := fun h => not_T (h.mp trivial)\nend Bounty\n\ntheorem erdos_14.parts.i : S := Bounty.target.mp trivial\ntheorem erdos_14.parts.not_ii : ¬ T :=\n  fun h => Bounty.target' ⟨fun _ => h, fun _ => trivial⟩",
+    "examples": [
+      {
+        "label": "Erdős 14 part (i) via target.mp trivial",
+        "ref": "s-3529deds8v"
+      },
+      {
+        "label": "Erdős 14 part (ii) disproof",
+        "ref": "s-karv2cck3t"
+      },
+      {
+        "label": "Erdős 108 negative answer",
+        "ref": "s-str8r8pbz5"
+      },
+      {
+        "label": "Erdős 354 (ii) with #print axioms removed",
+        "ref": "s-pdvqxc0mwn"
+      }
+    ],
+    "tags": [
+      "architecture"
+    ],
+    "keywords": [
+      "answer",
+      "true iff",
+      "validator",
+      "port",
+      "disproof",
+      "iff.mp",
+      "formal-conjectures"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "mathlib-version-shims-when-porting",
+    "title": "Port proofs across Mathlib versions with small local shims",
+    "problem": "A proof written for another Mathlib or Lean version fails with unknown identifiers or changed signatures under Lean v4.33.1 and nosorry's pinned Mathlib.",
+    "method_md": "Fix renames locally and do not rewrite the proof. Replace a missing lemma by its current name (one port renamed `dite_eq_left` to `dif_pos`), or add a private shim theorem with the old name and signature, proved by the new lemma or by `simp [h]`. When a lemma has gained an explicit argument (e.g. a nonnegativity hypothesis of `Finset.prod_le_prod`), pass it explicitly. Fragile `simp; exact …` pairs can become `simpa using h`, and a `convert … using 1` that leaves instance goals can be closed with `<;> try rfl`. Avoid hypothesis names such as `hint`: at the start of a tactic line it reads as the `hint` search tactic, which nosorry's preflight refuses.",
+    "lean": "-- shim for a lemma whose name changed upstream\nprivate theorem ite_eq_left' {α : Sort*} {c : Prop} [Decidable c] {a b : α}\n    (h : c) : (if c then a else b) = a := if_pos h\n\n-- instance goals left by convert\nexample (f g : ℕ → ℝ) (h : ∀ n, f n = g n) (n : ℕ) (hg : 0 ≤ g n) : 0 ≤ f n := by\n  convert hg using 1 <;> try rfl\n  exact h n",
+    "examples": [
+      {
+        "label": "dite_eq_left renamed to dif_pos",
+        "ref": "s-k7m4jtk195"
+      },
+      {
+        "label": "ite/dite shims and `<;> try rfl` after convert",
+        "ref": "s-smwvmj9271"
+      },
+      {
+        "label": "explicit argument of Finset.prod_le_prod",
+        "ref": "s-m4028yyb6s"
+      },
+      {
+        "label": "hypothesis renamed from hint",
+        "ref": "s-5jdxghmm3j"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "pitfalls"
+    ],
+    "keywords": [
+      "port",
+      "rename",
+      "shim",
+      "dif_pos",
+      "ite_eq_left",
+      "convert",
+      "finset.prod_le_prod",
+      "mathlib version"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "scoped-heartbeats-and-option-limits",
+    "title": "Raise heartbeats per declaration, within nosorry's limits",
+    "problem": "A lemma times out (`maxHeartbeats`) or hits `maxRecDepth`, and the natural fix is a global `set_option`.",
+    "method_md": "Use `set_option maxHeartbeats N in` directly before the slow declaration, not a file-wide option, so that the rest of the file keeps the default budget and slow spots stay visible. nosorry accepts only `maxHeartbeats` and `synthInstance.maxHeartbeats` up to 9,999,999, `maxRecDepth` up to 99,999, `linter.*`, `autoImplicit` and `pp.*`. Other options are refused at preflight. Accepted proofs typically use 200000 to 2000000 heartbeats. If a lemma needs more, split it, replace `simp` with `simp only [...]`, or cut `nlinarith` down to `nlinarith only [...]` with the exact products it needs.",
+    "lean": "set_option maxHeartbeats 1600000 in\ntheorem heavy_bound (x : ℝ) (hx : 0 ≤ x) (hT : x ≤ 6) :\n    x ^ 2 ≤ 36 := by\n  nlinarith only [hx, hT, sq_nonneg (6 - x)]\n\nset_option maxRecDepth 99999 in   -- 100000 is refused\ntheorem big_decide : (List.range 200).sum = 19900 := by decide +kernel",
+    "examples": [
+      {
+        "label": "maxRecDepth lowered to 99999 for nosorry",
+        "ref": "s-c9y1w89fst"
+      },
+      {
+        "label": "scoped maxHeartbeats on a symbolic iteration",
+        "ref": "s-vq9yyt99pz"
+      },
+      {
+        "label": "nlinarith only with explicit facts",
+        "ref": "s-3529deds8v"
+      }
+    ],
+    "tags": [
+      "performance",
+      "pitfalls"
+    ],
+    "keywords": [
+      "maxheartbeats",
+      "maxrecdepth",
+      "set_option",
+      "timeout",
+      "nlinarith only",
+      "simp only",
+      "preflight"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "nth-via-count-for-oeis-indices",
+    "title": "Evaluate Nat.nth through Nat.count",
+    "problem": "An OEIS statement defines `a n = Nat.nth P n`, and you need the value of `a` at a concrete index, or a bound on the index of a concrete element.",
+    "method_md": "`Nat.nth` is not computable by `decide`, but `Nat.count P n` is when `P` is decidable. Prove `P m` and `Nat.count P m = k` (by `decide` for small `m`, or by a counting argument), then `Nat.nth_count : P m → Nat.nth P (Nat.count P m) = m` gives `Nat.nth P k = m`. To show a huge element `N` has index above some bound, exhibit enough distinct elements below `N` (for example 2^k for k ≤ 29) and use `Nat.count_eq_card_filter_range` with `Finset.card_le_card`. You never compute `count` up to `N`.",
+    "lean": "example (A : ℕ → Prop) [DecidablePred A] (h5 : A 5)\n    (hc : Nat.count A 5 = 4) : Nat.nth A 4 = 5 := by\n  have := Nat.nth_count h5\n  rwa [hc] at this",
+    "examples": [
+      {
+        "label": "A108864: index of the counterexample",
+        "ref": "s-tpgxtqk4jg"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "tactics"
+    ],
+    "keywords": [
+      "nat.nth",
+      "nat.count",
+      "nat.nth_count",
+      "oeis",
+      "index",
+      "decide",
+      "count_eq_card_filter_range"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "huge-numbers-by-factorisation-not-decide",
+    "title": "Check facts about huge numbers through factorisations",
+    "problem": "A counterexample involves a 10-digit number N, and you need σ(N), φ(N) or primality of its factors. `decide` cannot handle it.",
+    "method_md": "Factor `N` by hand and prove `N = 3 * 5 * 7 * 11 * 547 * 1291` with `norm_num`. Prove each factor prime with `norm_num` (its `Nat.Prime` extension handles numbers of several digits). Then evaluate the arithmetic function by multiplicativity: `ArithmeticFunction.isMultiplicative_sigma.map_mul_of_coprime`, `sigma_one_apply_prime_pow`, `Nat.totient_mul`, `Nat.totient_prime`, with coprimality from `Nat.Coprime` checks by `norm_num`. Every step is a small kernel-checkable fact. A generic lemma such as 'deficient numbers have perfectDeficiency = 2n - σ(n)' then removes any need to unfold a definition over `List.range N`.",
+    "lean": "open ArithmeticFunction in\nexample : sigma 1 (3 * 5 : ℕ) = 24 := by\n  have hcop : Nat.Coprime 3 5 := by norm_num\n  rw [isMultiplicative_sigma.map_mul_of_coprime hcop]\n  have h3 := sigma_one_apply_prime_pow (i := 1) (show Nat.Prime 3 by norm_num)\n  have h5 := sigma_one_apply_prime_pow (i := 1) (show Nat.Prime 5 by norm_num)\n  simp only [pow_one] at h3 h5\n  rw [h3, h5]; simp [Finset.sum_range_succ]\n\nexample : Nat.Prime 1291 := by norm_num",
+    "examples": [
+      {
+        "label": "σ(815634435) = 2N − 6",
+        "ref": "s-tpgxtqk4jg"
+      },
+      {
+        "label": "φ of a three-prime product",
+        "ref": "s-y9b4y8gc3t"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "mathlib",
+      "performance"
+    ],
+    "keywords": [
+      "norm_num",
+      "nat.prime",
+      "sigma",
+      "totient",
+      "ismultiplicative",
+      "coprime",
+      "large numbers",
+      "factorisation"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "strong-induction-on-vertex-count",
+    "title": "Prove graph theorems by strong induction on the number of vertices",
+    "problem": "A graph inequality (radius versus induced trees, Hamiltonian paths) is proved on paper by deleting a vertex and applying induction to the smaller graph.",
+    "method_md": "Generalise first. Prove an auxiliary statement `∀ n, ∀ (α) [Fintype α] (G : SimpleGraph α), Fintype.card α = n → …` by `Nat.strong_induction_on n`, quantifying over the vertex type, because deleting a vertex changes the type to a subtype. The smaller graph is `G.induce {x}ᶜ` on `↥({x}ᶜ : Set α)`, and its size comes from `Fintype.card_compl_set` and `Set.card_singleton`. Keep the lifting lemma separate: an induced tree in `G.induce S` maps to one in `G` along `Function.Embedding.subtype`, and distances can only grow in the induced graph. Paths are easiest as `nodup` lists with `List.IsChain G.Adj`, extended one vertex at a time.",
+    "lean": "theorem aux : ∀ n : ℕ, ∀ {α : Type u_1} [Fintype α] [DecidableEq α]\n    (G : SimpleGraph α), Fintype.card α = n → G.Connected → Q G := by\n  intro n\n  induction n using Nat.strong_induction_on with\n  | _ n ih =>\n    intro α _ _ G hn hG\n    by_cases hsmall : n ≤ 2\n    · sorry -- base cases\n    · obtain ⟨x, hx⟩ : ∃ x, (G.induce ({x}ᶜ : Set α)).Connected := sorry\n      have hlt : Fintype.card ↥({x}ᶜ : Set α) < n := by\n        rw [Fintype.card_compl_set, Set.card_singleton]; omega\n      exact lift_Q (ih _ hlt _ rfl hx)",
+    "examples": [
+      {
+        "label": "Chung's induced-tree bound by strong induction",
+        "ref": "s-r2r4mp1yf5"
+      },
+      {
+        "label": "cut-vertex case by induction on |V(G)|",
+        "ref": "s-5bvxzc9qrt"
+      },
+      {
+        "label": "Ore-type path extension on nodup lists",
+        "ref": "s-pbwevsazvg"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "mathlib"
+    ],
+    "keywords": [
+      "nat.strong_induction_on",
+      "simplegraph",
+      "induce",
+      "fintype.card",
+      "subtype",
+      "induction",
+      "hamiltonian",
+      "list.ischain"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  },
+  {
+    "slug": "real-bounds-from-nat-facts",
+    "title": "Lift ℕ counting facts to ℝ bounds with exact_mod_cast and nlinarith only",
+    "problem": "The statement lives in ℝ (asymptotics, `≫`, rpow, sqrt), but the combinatorial content is a bound in ℕ.",
+    "method_md": "Prove the combinatorial bound in ℕ (or as a `Finset.card` inequality), then cast it once with `exact_mod_cast` or `Nat.cast_le.mpr`. In ℝ, handle `Real.sqrt` and `rpow` with targeted lemmas: `Real.sqrt_le_iff`, `Real.sqrt_eq_rpow`, `Real.rpow_le_rpow_of_exponent_le` (base ≥ 1), `Real.rpow_nonneg`. Get side conditions from `positivity`. Give nonlinear steps exactly the products they need, as in `nlinarith only [h, sq_nonneg x]`. Unrestricted `nlinarith` on a large context is a common source of timeouts. For `IsBigO … atTop` goals, `Asymptotics.IsBigO.of_bound C` and `Filter.eventually_atTop.mpr ⟨N₀, _⟩` reduce everything to a pointwise inequality for large N.",
+    "lean": "example (f g : ℕ → ℝ) (C : ℝ) (N₀ : ℕ)\n    (h : ∀ N ≥ N₀, ‖f N‖ ≤ C * ‖g N‖) :\n    Asymptotics.IsBigO Filter.atTop f g := by\n  apply Asymptotics.IsBigO.of_bound C\n  exact Filter.eventually_atTop.mpr ⟨N₀, h⟩\n\nexample (N : ℕ) (hN : 1 ≤ N) : (1 : ℝ) ≤ N := by exact_mod_cast hN",
+    "examples": [
+      {
+        "label": "Erdős 14 (i): IsBigO.of_bound with rpow and sqrt",
+        "ref": "s-3529deds8v"
+      },
+      {
+        "label": "Erdős 802: Jensen and log bounds in ℝ",
+        "ref": "s-smwvmj9271"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "mathlib"
+    ],
+    "keywords": [
+      "exact_mod_cast",
+      "nlinarith only",
+      "positivity",
+      "isbigo",
+      "real.sqrt",
+      "rpow",
+      "filter.eventually_attop",
+      "cast"
+    ],
+    "source": {
+      "name": "nosorry accepted proofs",
+      "licence": "as published on nosorry"
+    }
+  }
+]

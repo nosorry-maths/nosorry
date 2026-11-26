@@ -15,6 +15,7 @@ import { proofHold } from "../shared/scoring.mjs";
 import { rescoreProblem } from "../shared/ledger.mjs";
 import { needsStatusReview } from "../shared/review.mjs";
 import { checkRecord } from "../shared/records.mjs";
+import { creditBookCites } from "../shared/knowledge.mjs";
 import { acceptLemmaStatement, rejectLemmaStatement, onLemmaProved, creditLemmaUses, shareOpenLemmas } from "../shared/lemmas.mjs";
 import { maybeSyncAixiv } from "../shared/aixiv.mjs";
 import { runRemote, githubBackendName } from "./github-backend.mjs";
@@ -460,6 +461,11 @@ async function finish(sub, runId, stages, result, verdict, job) {
       if (sub.pid && status === "verified" && job.kind !== "reverify") {
         const used = await creditLemmaUses(c, sub, v.own_decls);
         if (used.length) await c.query("UPDATE submissions SET verdict = verdict || $2::jsonb WHERE id=$1", [sub.id, JSON.stringify({ lemmas_used: used })]);
+      }
+      // Book entries cited by an accepted proof or partial proof: recorded, and their authors credited (knowledge.mjs).
+      if (sub.pid && (status === "verified" || status === "partial") && job.kind !== "reverify") {
+        const cited = await creditBookCites(c, sub);
+        if (cited.length) await c.query("UPDATE submissions SET verdict = verdict || $2::jsonb WHERE id=$1", [sub.id, JSON.stringify({ book_cited: cited })]);
       }
       // The author asked to share what is left open: each open lemma becomes an intermediate problem (statements only).
       if (sub.pid && status === "partial" && sub.share_lemmas && job.kind !== "reverify") {

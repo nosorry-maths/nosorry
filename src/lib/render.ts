@@ -80,6 +80,12 @@ export function renderInline(src: string | null | undefined): string {
   return sanitize(withMath(src, (t) => esc(t), true));
 }
 
+/** One-line text with inline code (`x`) and inline TeX; everything else escaped. */
+export function renderInlineCode(src: string | null | undefined): string {
+  if (!src) return "";
+  return sanitize(withMath(src, (t) => esc(t).replace(/`([^`]+)`/g, "<code>$1</code>"), true));
+}
+
 /** A short plain excerpt cut at a sentence boundary, never inside a formula; display math becomes inline. */
 export function renderExcerpt(src: string | null | undefined, max = 320): string {
   if (!src) return "";

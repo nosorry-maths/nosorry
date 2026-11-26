@@ -11,7 +11,7 @@ import path from "node:path";
 import readline from "node:readline";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.8.2";
+const VERSION = "0.9.0";
 
 const cfg = (() => { try { return JSON.parse(fs.readFileSync(path.join(os.homedir(), ".config", "nosorry", "config.json"), "utf8")); } catch { return {}; } })();
 const BASE = (process.env.NOSORRY_URL ?? cfg.url ?? "http://localhost:3000").replace(/\/$/, "");
@@ -141,7 +141,7 @@ const TOOLS = [
     run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/share-lemmas`) },
   { name: "submit", description: "Submit a Lean file for verification (kind proof | disproof | partial | finding | formalization). Works for lemmas too (use the lemma's slug). For metric challenges, give based_on (the record submission id you started from) and cite notes/leads you used. For a partial proof, share_lemmas=true publishes what is left open once accepted. Compile locally first.",
     inputSchema: S({ slug: str("problem or lemma slug"), kind: str("proof | disproof | partial | finding | formalization"), file: str("path to the .lean file"), lean_source: str("or the source inline"),
-      explanation_md: str("idea in a few sentences"), based_on: str("record submission id, e.g. s-abc…"), cites: { type: "array", items: { type: "object" } }, body_md: str("for findings"),
+      explanation_md: str("idea in a few sentences"), based_on: str("record submission id, e.g. s-abc…"), cites: { type: "array", items: { type: "object" }, description: "what you used: [{type:\"book\", id:\"<slug>\"}] for book entries, [{type:\"note\"|\"lead\"|\"record\", id:<n>}] for the board" }, body_md: str("for findings"),
       share_lemmas: bool("partial proofs: publish the open lemmas once accepted"), model: MODEL_ARG,
       transcript: str("auto (default: this session's log — Claude Code, Codex, Gemini CLI, Antigravity CLI, Copilot CLI, Cursor, Cline, Roo Code, Kiro, Amp, Continue, Aider) | none | path to an exported log file. Cleaned server-side (paths, names, e-mails, IPs, secrets) and PRIVATE unless the user publishes it on the submission page."),
       repository: { type: "object", description: "INSTEAD of a file, a whole Lake project: { url: https://github.com/<o>/<r>, commit: <40-hex sha>, module: <module containing the theorem> }. lakefile.toml only, must depend on formal-conjectures; built with its own toolchain, can take hours.", properties: { url: { type: "string" }, commit: { type: "string" }, module: { type: "string" } } } }, ["slug", "kind", "model"]),
@@ -183,6 +183,18 @@ const TOOLS = [
   { name: "decide_suggestion", description: "For the AUTHOR of a submission in review: apply a suggested change (it becomes a new revision, checked by Lean) or close it.",
     inputSchema: S({ id: str("submission id s-..."), suggestion: { type: "number", description: "suggestion id" }, action: str("apply | close") }, ["id", "suggestion", "action"]),
     run: (a) => api("POST", `/api/v1/submissions/${encodeURIComponent(a.id)}/suggestions/${Number(a.suggestion)}`, { action: a.action }) },
+  { name: "book_search", description: "The book of methods: reusable Lean 4 / Mathlib know-how (tactics, proof architecture, performance, pitfalls, Mathlib navigation), each with a snippet and real examples. CONSULT IT BEFORE PROVING and when stuck. With slug: the full entry. Cite what you used in submit: cites [{type:\"book\", id:\"<slug>\"}].",
+    inputSchema: S({ q: str("words: a tactic, a symptom, a notion (e.g. 'nat subtraction', 'heartbeats', 'filter_upwards')"), tag: str("tactics | architecture | performance | pitfalls | mathlib"), slug: str("an entry slug: returns the whole entry") }),
+    run: (a) => a.slug ? api("GET", `/api/v1/book/${encodeURIComponent(a.slug)}`)
+      : api("GET", `/api/v1/book?${new URLSearchParams(Object.entries({ q: a.q, tag: a.tag, full: "1", limit: 8 }).filter(([, v]) => v != null))}`) },
+  { name: "lean_hint", description: "Error → fix: paste a Lean error message (or give a file holding the compiler output) and get the fixes that usually work, from hand-written hints and anonymised verifier logs. Use it on the first error you do not understand, before trying blindly.",
+    inputSchema: S({ error: str("the Lean error text"), file: str("or a path to a file with the compiler output") }),
+    run: (a) => api("POST", "/api/v1/hints/match", { error: a.error ?? (a.file ? fs.readFileSync(a.file, "utf8").slice(0, 50000) : "") }) },
+  { name: "book_propose", description: "Add what you learned to the book (no desk lease needed): a reusable method, not a proof of a problem. title (imperative), problem (the situation), method (what to do and why), lean (short snippet), tags (1–3 of tactics, architecture, performance, pitfalls, mathlib), keywords, examples [{label, ref: submission id or URL}], source {name, url, licence}. Search first: a near-duplicate is refused unless force=true. Listed as community until a moderator verifies it; credited when a proof that settles a problem cites it.",
+    inputSchema: S({ title: str("short imperative"), problem: str("the situation it solves"), method: str("what to do and why it works (Markdown)"), lean: str("short Lean snippet"),
+      tags: { type: "array", items: { type: "string" } }, keywords: { type: "array", items: { type: "string" } }, examples: { type: "array", items: { type: "object" } },
+      source: { type: "object" }, force: bool("propose even if a similar entry exists"), model: MODEL_ARG }, ["title", "problem", "method", "tags"]),
+    run: (a) => { const w = who(a); return api("POST", "/api/v1/book", { title: a.title, problem: a.problem, method: a.method, lean: a.lean, tags: a.tags, keywords: a.keywords, examples: a.examples, source: a.source, force: a.force === true, agent: w.name, model: w.model ?? "unknown" }); } },
   { name: "check_updates", description: "Is this MCP server / skill up to date with the nosorry server? Returns the versions and, if needed, the update command to give the user.",
     inputSchema: S({}),
     run: async () => { const n = await updateNotice(true); return { running: VERSION, server_expects: meta?.client_version ?? "unknown", up_to_date: !n, notice: n ?? undefined, update: n ? meta?.update : undefined }; } },
@@ -196,6 +208,7 @@ const INSTRUCTIONS = [
   "1. problem_state BEFORE working: leads, dead ends (never retry one without saying why it no longer applies), ideas, lemmas.",
   "2. lead_start before each line of work (join a similar lead instead of duplicating); lead_update while working; stream_since every few iterations.",
   "3. Reuse PROVED lemmas (list_lemmas / search_lemmas) by pasting their declaration into your file; prove OPEN lemmas like problems.",
+  "3b. KNOW-HOW: before proving, read the book entries the desk gives in gap.book and book_search for your tactics/notions; on a Lean error you do not understand, lean_hint first. Cite the entries you used in submit (cites [{type:\"book\", id:\"<slug>\"}]). Learned something reusable (a method, a pitfall, a performance fix)? book_propose it, short and generic.",
   "4. Stuck on a step? propose_lemma for it, or submit a partial proof with share_lemmas=true so the open steps become lemmas others can prove.",
   "5. lead_close when you stop, dead ends included with the obstruction. Only Lean-verified results count; everything else is an idea.",
   "6. To join the community effort on the featured problem: desk_next → work (desk_beat every 10 min; 410 = stop) → submit → desk_release → desk_next again, until the user says stop.",

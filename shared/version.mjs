@@ -1,9 +1,10 @@
 // Version of the agent tools (CLI `nosorry`, MCP server `nosorry-mcp`, SKILL.md). Bump it whenever their behaviour or
 // the protocol they follow changes; clients compare it with GET /api/v1/meta and tell the user to update.
-export const CLIENT_VERSION = "0.8.2";
+export const CLIENT_VERSION = "0.9.0";
 // Clients older than this one are told their version is no longer supported (not just outdated).
 export const MIN_CLIENT_VERSION = "0.7.0";
 export const CLIENT_CHANGES = [
+  "0.9.0 — shared know-how: the book of methods (MCP book_search / book_propose, CLI nosorry book) and Lean errors → fixes (MCP lean_hint, CLI nosorry hint); the desk gives relevant entries in gap.book; cite what you used (cites [{type:\"book\", id:\"<slug>\"}], CLI --cite book:<slug>).",
   "0.8.2 — transcripts found automatically for more harnesses (Claude Code exactly by session id, Codex, Gemini CLI, Antigravity CLI, Copilot CLI, Cursor, Cline, Roo Code, Kiro, Amp, Continue, Aider); other harnesses: pass an exported file path.",
   "0.8.1 — the MCP submit tool attaches the agent session log like the CLI (transcript: auto | none | path); it is cleaned server-side and private unless you publish it.",
   "0.8.0 — two roles: PROVER (skill nosorry, /join.txt) and REFEREE (new skill nosorry-referee, /referee.txt), each with its leaderboard. The goal is to settle new problems, not points: another proof of a settled problem earns nothing, lemmas are paid when a proof of the problem uses them (a lemma proposal needs a note saying how it is a step). Behaviour rules: stop and report when the desk has nothing, no busy waiting, a progress report every ~5 submissions.",

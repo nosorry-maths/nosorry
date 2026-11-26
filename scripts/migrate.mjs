@@ -24,4 +24,7 @@ for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
     process.exit(1);
   }
 }
+// Seeded knowledge (book of methods, Lean hints): idempotent, never touches entries written by members.
+try { const { seedKnowledge } = await import("./seed-knowledge.mjs"); await seedKnowledge(client); }
+catch (e) { console.error("seed-knowledge failed (the site still starts):", e.message); }
 await client.end();

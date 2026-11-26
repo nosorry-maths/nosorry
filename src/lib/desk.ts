@@ -1,4 +1,5 @@
 import "server-only";
+import { bookFor } from "./knowledge";
 import crypto from "node:crypto";
 import { one, q, tx } from "./db";
 import { canSubmit, type User } from "./auth";
@@ -262,6 +263,8 @@ export async function leaseView(token: string) {
     `SELECT reason, note FROM desk_leases WHERE problem_id=$1 AND state='released' AND reason <> 'submitted' AND reason IS NOT NULL
      ORDER BY ended_at DESC LIMIT 10`, [l.problem_id]);
   const short = (s: string | null, n = 300) => (s ?? "").replace(/\s+/g, " ").slice(0, n);
+  // Know-how for this task: book entries matched on the statement's words (cite the ones you use).
+  const book = await bookFor(l.title, l.lemma_name, l.lemma_signature, l.statement_lean, l.decl_name).catch(() => []);
   return {
     lease: { id: l.token, task: l.task, expires_at: l.expires_at, renew_every_s: 600, max_hours: LEASE_MAX_HOURS },
     gap: {
@@ -274,6 +277,8 @@ export async function leaseView(token: string) {
       challenge_url: `/p/${l.slug}/challenge.lean`,
       dead: deadEnds.map((d) => `${short(d.body_md, 200)}${d.obstruction_md ? ` — obstruction: ${short(d.obstruction_md, 200)}` : ""}`),
       released_before: releases.map((r) => `${r.reason}${r.note ? `: ${short(r.note, 200)}` : ""}`),
+      book,
+      book_note: "Methods that may help (GET /api/v1/book/<slug>; search more with GET /api/v1/book?q=). Cite those you use: cites [{type:\"book\", id:\"<slug>\"}]. Stuck on a Lean error? GET /api/v1/hints?error=…",
       settled: l.status !== "lemma" && ["proved", "disproved"].includes(l.resolution ?? "") ? "This problem is already settled: another proof earns no points. Work on it only if your proof brings something new (a different method, a much shorter proof) and say so in the explanation." : undefined,
       instructions: l.task === "plan"
         ? "PLAN: do not prove the problem. Read its board and lemmas (problem_state), then split it into 2–6 intermediate lemmas that a proof would need and that are each smaller than the problem: propose each with propose_lemma (or submit a partial proof with share_lemmas=true). Release with reason planned when done."

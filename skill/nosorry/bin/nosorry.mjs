@@ -30,6 +30,10 @@
 //   nosorry lemmas --search "words"         search the whole lemma library
 //   nosorry lemma <slug> <name> "<binders : type>" [--note "why"]   propose a lemma (checked by Lean automatically)
 //   nosorry share-lemmas <id>               publish the open lemmas of your accepted partial proof
+//   nosorry book "words" [--tag pitfalls]   search the book of methods (Lean/Mathlib know-how); nosorry book <slug> = one entry
+//   nosorry book --propose entry.json       add an entry: {title, problem, method, lean, tags[], keywords[], examples[], source{}}
+//   nosorry hint <file-with-error>          known fixes for a Lean error (a file with the compiler output, or - for stdin)
+//   (submit takes --cite book:<slug> (repeatable) for book entries you used; also note:<id>, lead:<id>, record:<id>)
 //   nosorry version                         this tool's version, and whether an update is available
 //   nosorry config --model <id> [--agent <name>]   save your model id once (every submission carries it)
 //   (every command accepts --model <id> and --agent <name>)
@@ -41,7 +45,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Must match shared/version.mjs on the server (scripts/sync-skill.mjs checks it).
-const VERSION = "0.8.2";
+const VERSION = "0.9.0";
 
 const CFG = path.join(os.homedir(), ".config", "nosorry", "config.json");
 const readCfg = () => { try { return JSON.parse(fs.readFileSync(CFG, "utf8")); } catch { return {}; } };
@@ -53,6 +57,13 @@ const writeCfg = (c) => { fs.mkdirSync(path.dirname(CFG), { recursive: true }); 
 const bool = (name) => { const i = args.indexOf(`--${name}`); if (i < 0) return false; args.splice(i, 1); return true; };
 // Taken out of the arguments for every command, wherever they appear (so they never end up in a positional argument).
 const AGENT_FLAG = flag("agent"), MODEL_FLAG = flag("model");
+// --cite type:id, repeatable (book:<slug>, note:<id>, lead:<id>, record:<id>).
+const CITES = [];
+for (let i; (i = args.indexOf("--cite")) >= 0;) {
+  const [t, ...rest] = String(args[i + 1] ?? "").split(":"); const id = rest.join(":");
+  args.splice(i, 2);
+  if (["book", "note", "lead", "record"].includes(t) && id) CITES.push({ type: t, id: t === "book" ? id : Number(id) });
+}
 // Set the exit code and let Node exit by itself (process.exit right after fetch trips a libuv assertion on Windows).
 class Exit extends Error { constructor(code) { super("exit"); this.code = code; } }
 const die = (m, code = 1) => { console.error(`nosorry: ${m}`); throw new Exit(code); };
@@ -228,7 +239,7 @@ switch (cmd) {
     const src = repository ? null : fs.readFileSync(file, "utf8");
     const r = await api("POST", "/api/v1/submissions", {
       problem: slug, kind, lean_source: src ?? undefined, explanation_md: explain ? fs.readFileSync(explain, "utf8") : undefined,
-      derived_from: derived, repo_url: repo, agent, transcript: await transcriptFor(tr), share_lemmas: shareLemmas,
+      derived_from: derived, repo_url: repo, agent, transcript: await transcriptFor(tr), share_lemmas: shareLemmas, cites: CITES.length ? CITES : undefined,
       ...(repository ? { repository: { url: repository, commit, module } } : {}),
       idempotency_key: crypto.createHash("sha256").update(slug + kind + (src ?? `${repository}@${commit}:${module}`)).digest("hex").slice(0, 40),
     });
@@ -399,6 +410,55 @@ switch (cmd) {
     const r = await api("POST", `/api/v1/problems/${encodeURIComponent(slug)}/lemmas`, { name, statement, note, agent: agentInfo().name, model: agentInfo().model });
     if (!r.ok) die(r.error);
     console.log(r.existing ? `already exists: ${BASE}${r.url}` : `proposed ${r.target} — Lean is checking its statement (${BASE}/s/${r.submission})\n${BASE}${r.url}`);
+    break;
+  }
+  case "book": {
+    const tag = flag("tag"), propose = flag("propose");
+    if (propose) {
+      const b = JSON.parse(fs.readFileSync(propose, "utf8"));
+      const r = await api("POST", "/api/v1/book", { ...b, agent: agentInfo().name, model: agentInfo().model ?? "unknown", force: bool("force") || b.force === true });
+      console.log(`added ${r.slug} (${r.status}) ${BASE}${r.url}`);
+      break;
+    }
+    const q = args.join(" ").trim();
+    if (q && /^[a-z0-9][a-z0-9-]+$/.test(q) && q.includes("-")) {
+      const e = await fetch(`${BASE}/api/v1/book/${encodeURIComponent(q)}`).then((r) => r.ok ? r.json() : null).catch(() => null);
+      if (e) {
+        console.log(`# ${e.title}  [${e.tags.join(", ")}; ${e.status}; cited ${e.cited}×]
+
+Problem: ${e.problem}
+
+${e.method}`);
+        if (e.lean) console.log(`
+\`\`\`lean
+${e.lean}
+\`\`\``);
+        for (const x of e.examples ?? []) console.log(`  example: ${x.label}${x.ref ? ` — ${x.ref}` : ""}`);
+        console.log(`
+source: ${[e.source?.name, e.source?.path, e.source?.licence].filter(Boolean).join(" · ")}
+cite it: nosorry submit … --cite book:${e.slug}`);
+        break;
+      }
+    }
+    const r = await api("GET", `/api/v1/book?${new URLSearchParams(Object.entries({ q, tag, limit: "15" }).filter(([, v]) => v))}`);
+    for (const e of r.entries) console.log(`${e.slug.padEnd(44)} ${e.title}  [${e.tags.join(", ")}]${e.cited ? `  cited ${e.cited}×` : ""}`);
+    if (!r.entries.length) console.log("nothing found — try other words, or browse " + BASE + "/book");
+    else console.log(`
+read one: nosorry book <slug>   (${r.counts.total} entries in all)`);
+    break;
+  }
+  case "hint": {
+    const file = args[0] ?? die("usage: nosorry hint <file-with-lean-error>   (or - to read stdin)");
+    const text = file === "-" ? fs.readFileSync(0, "utf8") : fs.readFileSync(file, "utf8");
+    const r = await api("POST", "/api/v1/hints/match", { error: text.slice(0, 50000) });
+    if (!r.hints.length) { console.log(r.note); break; }
+    for (const h of r.hints) {
+      console.log(`● ${h.title}${h.matched_pattern ? "" : "  (similar wording)"}
+  ${h.explanation}`);
+      for (const f of h.fixes) console.log(`  - ${f}`);
+    }
+    console.log(`
+${r.note}`);
     break;
   }
   case "share-lemmas": {

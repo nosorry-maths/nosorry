@@ -1,0 +1,639 @@
+[
+  {
+    "slug": "find-lemmas-with-exact-apply-rw-search",
+    "title": "Find the lemma with exact?, apply? and rw? before guessing names",
+    "problem": "You need a Mathlib fact (a monotonicity, a cast identity, an order lemma) and do not know its name; guessed names fail with \"unknown identifier\".",
+    "method_md": "State the needed fact as a local goal (`have key : a * c ≤ b * c := by exact?`) and let library search find it. `exact?` closes the goal with one lemma application (using local hypotheses), `apply?` lists lemmas whose conclusion unifies and leaves their hypotheses as goals, `rw?` proposes rewrites of the current goal. Replace the call by the suggested `Try this:` line immediately: library search is slow and its result can change between Mathlib versions, so never leave `exact?` in a submitted proof. If search times out, make the goal more specific (fix the type, e.g. `ℝ` instead of a generic field, remove irrelevant hypotheses with `clear`), or split it into the exact shape a lemma would have. `exact?` only finds single-lemma closures up to reducible unfolding; for anything needing `simp` normalisation first, try `simp?` or `hint`.",
+    "lean": "example (a b c : ℝ) (hc : 0 ≤ c) (h : a ≤ b) : a * c ≤ b * c := by\n  exact?  -- prints \"Try this: exact mul_le_mul_of_nonneg_right h hc\"\n\n-- freeze the suggestion:\nexample (a b c : ℝ) (hc : 0 ≤ c) (h : a ≤ b) : a * c ≤ b * c :=\n  mul_le_mul_of_nonneg_right h hc\n\nexample (n : ℕ) (hn : 0 < n) : n - 1 + 1 = n := by\n  rw?     -- lists candidate rewrites, e.g. Nat.sub_add_cancel\n  sorry",
+    "examples": [
+      {
+        "label": "Lean reference: library search tactics",
+        "ref": "https://lean-lang.org/doc/reference/latest/Tactic-Proofs/Tactic-Reference/"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "mathlib"
+    ],
+    "keywords": [
+      "exact?",
+      "apply?",
+      "rw?",
+      "library search",
+      "hint",
+      "try this",
+      "lemma search"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://lean-lang.org/doc/reference/latest/Tactic-Proofs/Tactic-Reference/",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "loogle-and-leansearch-query-syntax",
+    "title": "Query Loogle by shape and LeanSearch by meaning",
+    "problem": "exact? does not find the lemma (the goal is not in the right shape yet) and you need to browse Mathlib for the statement you have in mind.",
+    "method_md": "Loogle (https://loogle.lean-lang.org, also `#loogle` in some setups) searches by structure. Filters are separated by commas and must all hold: a constant (`Real.sqrt`), a quoted name substring (`\"sum_range\"`), a pattern with holes and metavariables (`_ * (_ ^ _)`, `Real.sqrt ?a * Real.sqrt ?a`), or a conclusion pattern after the turnstile (`|- tsum _ = _ * tsum _`). Hypothesis order does not matter, and metavariables are independent between filters. LeanSearch (https://leansearch.net) takes natural-language queries (\"sum of geometric series closed form\") and returns Mathlib declarations; it is good when you know the mathematics but not the vocabulary. Once you have a candidate, `#check @Name` shows its exact signature and implicit arguments in your Mathlib version: search indexes can lag behind, so always confirm locally.",
+    "lean": "-- Loogle queries (typed into loogle.lean-lang.org):\n--   Finset.sum, Finset.range, |- _ = _ + _      (sum over range peeled)\n--   \"cast_sub\"                                  (name contains cast_sub)\n--   Real.log, |- Real.log (_ * _) = _           (log of a product)\n--   ?a ^ (?n + 1), |- _ = ?a * ?a ^ ?n          (pow_succ'-shaped)\n\n-- confirm the candidate locally before use:\n#check @Finset.sum_range_succ\n#check @Nat.cast_sub\n#check @Real.log_mul",
+    "examples": [
+      {
+        "label": "Loogle query syntax help",
+        "ref": "https://loogle.lean-lang.org/"
+      },
+      {
+        "label": "LeanSearch",
+        "ref": "https://leansearch.net/"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "loogle",
+      "leansearch",
+      "search",
+      "#check",
+      "pattern query",
+      "turnstile",
+      "find lemma"
+    ],
+    "source": {
+      "name": "Loogle help page (paraphrased)",
+      "url": "https://loogle.lean-lang.org/",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "guess-names-with-mathlib-naming-convention",
+    "title": "Guess lemma names from the Mathlib naming convention",
+    "problem": "Searching is slow; you want to predict a lemma name directly from the statement.",
+    "method_md": "Mathlib theorem names are snake_case and describe the conclusion, with hypotheses appended after `_of_`: `le_of_lt`, `pos_of_ne_zero`, `Nat.succ_le_of_lt`. Symbols have fixed words: `add`, `mul`, `sub`, `neg`, `div`, `inv`, `pow`, `le`, `lt`, `eq`, `ne`, `zero`, `one`, `two`, `abs`, `sq`, `dvd`, `mem`. Order lemmas are stated with `le`/`lt`, not `ge`/`gt`; signs use `pos` (0 < x), `nonneg` (0 ≤ x), `neg`, `nonpos`, `ne_zero`. Biconditionals are often suffixed `_iff` (`Nat.lt_succ_iff`, `sub_nonneg`). Cast lemmas live under the source type: `Nat.cast_add`, `Nat.cast_sub`, `Int.cast_mul`. Variants with primes (`pow_succ'`) usually differ in argument order or side. Many lemmas are also available by dot notation on a hypothesis (`h.le`, `h.trans h2`, `hx.ne'`). Guess, then confirm with `#check`; if the guess is close, the \"unknown identifier\" error often suggests nearby names.",
+    "lean": "-- conclusion first, hypotheses after _of_\n#check @le_of_lt          -- a < b → a ≤ b\n#check @sub_nonneg        -- 0 ≤ a - b ↔ b ≤ a\n#check @mul_pos           -- 0 < a → 0 < b → 0 < a * b\n#check @Nat.cast_add      -- ((m + n : ℕ) : R) = m + n\n#check @abs_sub_comm      -- |a - b| = |b - a|\nexample (x : ℝ) (hx : 0 < x) : x ≠ 0 := hx.ne'\nexample (a b c : ℝ) (h1 : a < b) (h2 : b ≤ c) : a < c := h1.trans_le h2",
+    "examples": [
+      {
+        "label": "Mathlib naming conventions",
+        "ref": "https://leanprover-community.github.io/contribute/naming.html"
+      }
+    ],
+    "tags": [
+      "mathlib"
+    ],
+    "keywords": [
+      "naming convention",
+      "lemma names",
+      "_of_",
+      "nonneg",
+      "pos",
+      "dot notation",
+      "_iff"
+    ],
+    "source": {
+      "name": "Mathlib naming conventions (paraphrased)",
+      "url": "https://leanprover-community.github.io/contribute/naming.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "choose-the-right-arithmetic-closer",
+    "title": "Pick omega, linarith, nlinarith, positivity, norm_num or linear_combination",
+    "problem": "An arithmetic goal is \"obvious\" but the tactic you tried fails or times out.",
+    "method_md": "`omega`: linear arithmetic over ℕ and ℤ, including truncated subtraction, `/` and `%` by numerals; it ignores nonlinear terms except as atoms. `linarith`: linear arithmetic over ordered fields (ℚ, ℝ), uses hypotheses and extra terms `linarith [h1, sq_nonneg x]`. `nlinarith`: `linarith` plus products of pairs of hypotheses/hint terms; give it the right squares (`nlinarith [sq_nonneg (a - b), mul_pos ha hb]`). `positivity`: goals `0 < e`, `0 ≤ e`, `e ≠ 0` by syntactic structure of `e`. `norm_num`: numeric evaluation, including `Nat.Prime 97`. `ring`/`ring_nf`: identities in commutative (semi)rings. `polyrith` is effectively unavailable: Mathlib documents that the Sage server it called was shut down; write `linear_combination e₁ * h₁ + e₂ * h₂` yourself, with the coefficients found by hand. `grind` (core Lean) can combine congruence closure and arithmetic and is worth one try on mixed goals.",
+    "lean": "example (a b : ℕ) (h : a < b) : a + 1 ≤ b ∧ b - a ≥ 1 := by omega\nexample (x y : ℝ) (h1 : x ≤ 2 * y) (h2 : y ≤ 3) : x ≤ 6 := by linarith\nexample (x y : ℝ) : 2 * x * y ≤ x ^ 2 + y ^ 2 := by\n  nlinarith [sq_nonneg (x - y)]\nexample (x : ℝ) (hx : 0 < x) : 0 < x ^ 3 + 2 * x := by positivity\nexample : Nat.Prime 97 := by norm_num\nexample (a b : ℚ) (h : a = 2 * b) : a ^ 2 = 4 * b ^ 2 := by\n  linear_combination (a + 2 * b) * h",
+    "examples": [
+      {
+        "label": "polyrith status note",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Polyrith.html"
+      },
+      {
+        "label": "linarith docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Linarith/Frontend.html"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "omega",
+      "linarith",
+      "nlinarith",
+      "positivity",
+      "norm_num",
+      "linear_combination",
+      "polyrith",
+      "ring",
+      "grind"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Polyrith.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "gcongr-and-bound-for-monotone-inequalities",
+    "title": "Use gcongr (or bound) to compare two expressions of the same shape",
+    "problem": "You must prove `f(a) ≤ f(b)` for a compound expression (sums, products, powers, divisions) and applying monotonicity lemmas by hand is tedious.",
+    "method_md": "`gcongr` matches the two sides of an inequality, finds the varying positions, and reduces the goal to inequalities between them, applying `@[gcongr]` lemmas. Main goals are closed by `assumption` when possible; side goals (like `0 ≤ c` for multiplication) go to a positivity-based discharger and otherwise are left to you. Use a pattern to say what varies: `gcongr ?_ * c + 1`. It also works under `∑` and with `<`, `⊆`, `∣`. `bound` is an Aesop-based alternative that recurses through the expression, can switch between `0 ≤ x` and `x ≤ y` goals, and accepts extra facts `bound [h1, h2 n]`; Mathlib notes `gcongr` is faster and more specialised. In a `calc` chain, `by gcongr` per step is the idiomatic way to justify monotone steps.",
+    "lean": "example (a b c : ℝ) (h : a ≤ b) : a * c ^ 2 + 1 ≤ b * c ^ 2 + 1 := by\n  gcongr            -- side goal 0 ≤ c ^ 2 closed by positivity\n\nexample (f : ℕ → ℝ) (n : ℕ) (h : ∀ i, f i ≤ 1) :\n    ∑ i ∈ Finset.range n, f i ≤ ∑ i ∈ Finset.range n, (1 : ℝ) := by\n  gcongr with i hi\n  exact h i\n\nexample (x y : ℝ) (hx : 0 ≤ x) (h : x ≤ y) : x ^ 2 ≤ y ^ 2 := by\n  bound",
+    "examples": [
+      {
+        "label": "gcongr docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/GCongr/Core.html"
+      },
+      {
+        "label": "bound docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Bound.html"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "gcongr",
+      "bound",
+      "monotonicity",
+      "inequality",
+      "calc",
+      "positivity",
+      "side goal"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Bound.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "casts-push-cast-norm-cast-exact-mod-cast",
+    "title": "Move between ℕ, ℤ, ℚ, ℝ with push_cast, norm_cast, exact_mod_cast, zify",
+    "problem": "The statement mixes `(n : ℝ)` with natural-number facts, and `linarith`/`ring` fail because casts block them.",
+    "method_md": "`push_cast` pushes coercions toward the leaves (`((m + n : ℕ) : ℝ)` becomes `(m : ℝ) + n`), after which `ring`/`linarith` see ordinary atoms. `norm_cast` moves casts up and removes them when both sides are casts, and `exact_mod_cast h` / `assumption_mod_cast` close a goal from a hypothesis that agrees up to casts. To transfer a whole ℕ goal to ℤ/ℚ/ℝ use `zify`, `qify`, `rify`; pass the inequalities that justify subtractions (`zify [hle]`) so `↑(a - b)` becomes `↑a - ↑b`. Cast of subtraction needs the order fact: `Nat.cast_sub (h : m ≤ n)`; cast of division needs divisibility (`Nat.cast_div`) or use real division from the start. Prove numeric side facts in ℕ with `omega` before casting.",
+    "lean": "example (a b : ℕ) (h : a + 3 ≤ b) : ((b - a : ℕ) : ℝ) = (b : ℝ) - a := by\n  rw [Nat.cast_sub (by omega)]\n\nexample (n : ℕ) (h : (n : ℝ) < 5) : n < 5 := by exact_mod_cast h\n\nexample (m n : ℕ) (h : m ≤ n) : ((n - m : ℕ) : ℤ) + m = n := by\n  omega   -- omega understands ℕ→ℤ casts, incl. subtraction\n\nexample (a b : ℕ) (h : b ≤ a) (h2 : a - b = 3) : (a : ℤ) = b + 3 := by\n  zify [h] at h2\n  linarith",
+    "examples": [
+      {
+        "label": "norm_cast / push_cast docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/NormCast.html"
+      },
+      {
+        "label": "zify docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Zify.html"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "pitfalls"
+    ],
+    "keywords": [
+      "push_cast",
+      "norm_cast",
+      "exact_mod_cast",
+      "zify",
+      "qify",
+      "rify",
+      "nat.cast_sub",
+      "coercion"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Zify.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "nat-truncated-subtraction-and-division-traps",
+    "title": "Watch ℕ subtraction, ℕ division and 1/2 exponents in statements",
+    "problem": "A statement looks true on paper but the formal version is false or trivial, or the proof breaks because `n - 1` or `n / 2` behaves unexpectedly.",
+    "method_md": "On ℕ, `a - b = 0` when `a ≤ b`, and `a / b` is floor division with `a / 0 = 0`; on fields `x / 0 = 0` too. So `n - 1 + 1 = n` needs `0 < n`, and `(n - 1 : ℕ)` cast to ℝ is not `(n : ℝ) - 1` unless `1 ≤ n`. A classic trap in formal statements: in `(x : ℝ) ^ (1 / 2)` the exponent elaborates as `1 / 2 : ℕ = 0`, so the expression is `1`; real square roots must be `Real.sqrt x` or `x ^ ((1 : ℝ) / 2)` (rpow). Before proving, read the statement with these semantics (hover the term, or `#check` with `set_option pp.numericTypes true`) and check edge values like `n = 0` with `decide`/`norm_num`. In proofs, keep facts like `1 ≤ n` in context and let `omega` handle the subtraction bookkeeping.",
+    "lean": "example : (3 : ℕ) - 5 = 0 := by decide\nexample : (7 : ℕ) / 2 = 3 := by decide\nexample : (5 : ℕ) / 0 = 0 := by decide\nexample (x : ℝ) : x ^ (1 / 2) = 1 := by norm_num   -- ℕ exponent 1/2 = 0\nexample (x : ℝ) (hx : 0 ≤ x) : x ^ ((1 : ℝ) / 2) = Real.sqrt x := by\n  rw [Real.sqrt_eq_rpow]\nexample (n : ℕ) (hn : 0 < n) : n - 1 + 1 = n := by omega",
+    "examples": [
+      {
+        "label": "Mathematics in Lean, basics on ℕ",
+        "ref": "https://leanprover-community.github.io/mathematics_in_lean/"
+      }
+    ],
+    "tags": [
+      "pitfalls"
+    ],
+    "keywords": [
+      "truncated subtraction",
+      "nat division",
+      "rpow",
+      "real.sqrt",
+      "omega",
+      "pp.numerictypes",
+      "edge cases"
+    ],
+    "source": {
+      "name": "Mathematics in Lean (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathematics_in_lean/",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "decide-not-native-decide",
+    "title": "Prefer decide / norm_num over native_decide for finite checks",
+    "problem": "A finite computation (small primes, bounded ∀ over ℕ, a Fin case table) must be verified and `native_decide` is tempting.",
+    "method_md": "`decide` evaluates a `Decidable` instance in the kernel; the proof uses no extra axioms. `decide +kernel` skips the elaborator-side evaluation and asks the kernel directly, which is often faster for larger instances. `native_decide` compiles and runs the check, so the proof trusts the compiler: older toolchains show `Lean.ofReduceBool` (which depends on `Lean.trustCompiler`) in `#print axioms`, and after the 2026 rework (lean4 PR #12217) the tactic instead adds a generated auxiliary axiom per use (names containing `_native`); the old machinery is deprecated. Either way the proof is no longer kernel-only, and verifiers that whitelist `propext`, `Classical.choice`, `Quot.sound` reject it. If `decide` hits \"maximum recursion depth\" or is slow, prefer `norm_num`/`simp` with evaluation lemmas, `interval_cases` + `omega`, or restructure the check (e.g. prove a lemma that reduces to a smaller decidable statement).",
+    "lean": "example : ∀ n < 50, n ^ 2 % 8 ≠ 5 := by decide\nexample : (List.range 20).sum = 190 := by decide\nexample : Nat.Prime 1009 := by norm_num\nexample : ∀ a : Fin 5, ∀ b : Fin 5, a * b = b * a := by decide +kernel\n\n-- avoid in submitted proofs:\n-- example : Nat.Prime 1000003 := by native_decide\n-- #print axioms then lists a compiler-trusting axiom",
+    "examples": [
+      {
+        "label": "Zulip: changes to native_decide (and bv_decide)",
+        "ref": "https://leanprover-community.github.io/archive/stream/270676-lean4/topic/Heads.20up.3A.20changes.20to.20native_decide.20(and.20bv_decide).html"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "tactics"
+    ],
+    "keywords": [
+      "decide",
+      "native_decide",
+      "decide +kernel",
+      "lean.ofreducebool",
+      "lean.trustcompiler",
+      "axioms",
+      "norm_num"
+    ],
+    "source": {
+      "name": "Lean Zulip archive (paraphrased)",
+      "url": "https://leanprover-community.github.io/archive/stream/270676-lean4/topic/Heads.20up.3A.20changes.20to.20native_decide.20(and.20bv_decide).html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "interval-cases-and-fin-cases",
+    "title": "Split bounded variables into cases with interval_cases and fin_cases",
+    "problem": "A variable is known to lie in a small range (or a finite type) and the claim must be checked value by value.",
+    "method_md": "`interval_cases n` looks for lower and upper bounds on `n` (ℕ, ℤ, or PNat) among the hypotheses, and creates one goal per value with `n` substituted everywhere. Make the bounds explicit first (`have : n < 6 := by omega`). Follow with `<;> simp_all`, `<;> omega` or `<;> norm_num` to close all branches. `fin_cases x` does the same for `x` in a `Fintype`-like type (`Fin n`, `ZMod n`, `Bool`, or membership `x ∈ ({1, 2, 3} : Finset ℕ)`). Keep the number of cases small (tens, not thousands); for large ranges, prove a structural lemma instead. Clear irrelevant hypotheses first so the substituted copies do not slow `simp_all`.",
+    "lean": "example (n : ℕ) (h1 : 2 ≤ n) (h2 : n < 5) (h : n ^ 2 % 5 = 4) :\n    n = 2 ∨ n = 3 := by\n  interval_cases n <;> simp_all\n\nexample (x : ZMod 4) : x ^ 2 = 0 ∨ x ^ 2 = 1 := by\n  fin_cases x <;> decide\n\nexample (m : ℤ) (h1 : -1 ≤ m) (h2 : m ≤ 1) : m ^ 3 = m := by\n  interval_cases m <;> norm_num",
+    "examples": [
+      {
+        "label": "interval_cases docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/IntervalCases.html"
+      },
+      {
+        "label": "fin_cases docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/FinCases.html"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "interval_cases",
+      "fin_cases",
+      "case split",
+      "zmod",
+      "fin",
+      "simp_all",
+      "omega"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/IntervalCases.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "finset-sum-range-induction",
+    "title": "Prove Finset.sum identities by induction with Finset.sum_range_succ",
+    "problem": "A goal involves `∑ i ∈ Finset.range n, f i` (closed forms, bounds, telescoping).",
+    "method_md": "Induct on `n`; in the step, `rw [Finset.sum_range_succ]` peels the last term (`∑ i ∈ range (n+1), f i = ∑ i ∈ range n, f i + f n`), then use the induction hypothesis and `ring`/`push_cast`/`field_simp`. Work in a field (ℚ or ℝ) for closed forms with division, since ℕ division truncates. Other workhorses: `Finset.sum_range_zero`, `Finset.sum_range_succ'` (peels the first term), `Finset.sum_comm`, `Finset.mul_sum`/`Finset.sum_mul`, `Finset.sum_add_distrib`, `Finset.sum_le_sum`, `Finset.sum_range_sub` for telescoping, `Finset.sum_congr rfl` to rewrite the summand under a membership hypothesis. Current syntax is `∑ i ∈ s, f i`; the older `∑ i in s, f i` is deprecated. `simp` with `Finset.sum_range_succ` evaluates sums over small literal ranges.",
+    "lean": "open Finset in\nexample (n : ℕ) : ∑ i ∈ range (n + 1), (i : ℚ) = n * (n + 1) / 2 := by\n  induction n with\n  | zero => simp\n  | succ k ih =>\n    rw [sum_range_succ, ih]\n    push_cast\n    ring\n\nexample : ∑ i ∈ Finset.range 4, i ^ 2 = 14 := by\n  simp [Finset.sum_range_succ]",
+    "examples": [
+      {
+        "label": "Finset.sum_range_succ",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Algebra/BigOperators/Basic.html"
+      }
+    ],
+    "tags": [
+      "mathlib",
+      "tactics"
+    ],
+    "keywords": [
+      "finset.sum_range_succ",
+      "finset.sum",
+      "induction",
+      "big operators",
+      "telescoping",
+      "finset.sum_congr",
+      "sum_comm"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Algebra/BigOperators/Basic.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "filter-upwards-for-eventually",
+    "title": "Combine Filter.Eventually hypotheses with filter_upwards",
+    "problem": "Asymptotic statements (`∀ᶠ n in atTop, …`, `Tendsto`, `=O[atTop]`) need several eventual facts combined into one.",
+    "method_md": "`filter_upwards [h₁, h₂] with x hx₁ hx₂` turns a goal `∀ᶠ x in l, p x` into `p x` for an arbitrary `x` with `hx₁`, `hx₂` the pointwise versions of the listed eventual hypotheses. It also accepts membership facts `s ∈ l`. Useful generators: `Filter.eventually_ge_atTop N` (eventually `N ≤ n`), `Filter.eventually_gt_atTop N`, and `Filter.Eventually.mono`. To leave the filter world, `Filter.eventually_atTop` rewrites `∀ᶠ n in atTop, p n` to `∃ N, ∀ n ≥ N, p n`. Many formal-conjectures statements about densities or growth are phrased with filters; convert once to explicit `∃ N` form if the rest of the argument is elementary.",
+    "lean": "open Filter in\nexample (f g : ℕ → ℝ) (hf : ∀ᶠ n in atTop, 0 ≤ f n)\n    (hg : ∀ᶠ n in atTop, f n ≤ g n) : ∀ᶠ n in atTop, 0 ≤ g n := by\n  filter_upwards [hf, hg] with n h1 h2\n  linarith\n\nopen Filter in\nexample (f : ℕ → ℝ) (h : ∀ n ≥ 10, f n = 1) : ∀ᶠ n in atTop, f n = 1 := by\n  filter_upwards [eventually_ge_atTop 10] with n hn\n  exact h n hn",
+    "examples": [
+      {
+        "label": "filter_upwards docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Order/Filter/Basic.html"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "mathlib"
+    ],
+    "keywords": [
+      "filter_upwards",
+      "filter.eventually",
+      "attop",
+      "eventually_ge_attop",
+      "eventually_attop",
+      "asymptotics"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Order/Filter/Basic.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "calc-chains-and-conv-for-targeted-steps",
+    "title": "Structure inequalities with calc; rewrite one spot with conv or nth_rw",
+    "problem": "A long inequality or equality chain is unreadable as one tactic call, or `rw` rewrites the wrong occurrence.",
+    "method_md": "A `calc` block lists intermediate terms, each step with its own justification (`by gcongr`, `by ring`, a lemma). Relations may mix (`=`, `≤`, `<`) as long as `Trans` instances exist; the chain must start with the goal left side and end with its right side (otherwise finish with `_ = rhs := by ring`). Steps that fail show exactly which link is wrong, which is much easier to debug than a monolithic `nlinarith`. For targeted rewriting, `nth_rw 2 [h]` rewrites only the second occurrence, and `conv_lhs => rw [h]` / `conv => enter [2, 1]; rw [h]` navigates into a subterm (`enter` takes argument positions, `arg i`, `ext x` for binders). Use `conv` also to rewrite under `fun`/`∑` binders where `rw` fails with \"motive is not type correct\".",
+    "lean": "example (a b : ℝ) (ha : 0 ≤ a) (h : a ≤ b) : a * a ≤ b * b := by\n  calc a * a ≤ a * b := mul_le_mul_of_nonneg_left h ha\n    _ ≤ b * b := mul_le_mul_of_nonneg_right h (ha.trans h)\n\nexample (a b c : ℝ) : a * (b + c) = a * (c + b) := by\n  conv_rhs => rw [add_comm]\n\nexample (x y : ℕ) (h : x = y) : x + x = y + x := by\n  nth_rw 1 [h]",
+    "examples": [
+      {
+        "label": "Lean reference: calc and conv",
+        "ref": "https://lean-lang.org/doc/reference/latest/Tactic-Proofs/Tactic-Reference/"
+      }
+    ],
+    "tags": [
+      "architecture",
+      "tactics"
+    ],
+    "keywords": [
+      "calc",
+      "conv",
+      "conv_lhs",
+      "nth_rw",
+      "enter",
+      "trans",
+      "rewrite occurrence"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://lean-lang.org/doc/reference/latest/Tactic-Proofs/Tactic-Reference/",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "obtain-rcases-set-with-patterns",
+    "title": "Destructure with obtain/rcases patterns and name subterms with set",
+    "problem": "Hypotheses are existentials, conjunctions or disjunctions, or a large subterm keeps reappearing and making goals unreadable.",
+    "method_md": "`obtain ⟨n, hn, hn'⟩ := h` destructures `∃ n, P n ∧ Q n`; `⟨h1 | h2⟩` splits disjunctions into two goals; `rfl` in a pattern substitutes an equation (`obtain ⟨k, rfl⟩ := hdvd` for `a ∣ b`); `-` discards a component; `⟨x, hx⟩ | ⟨y, hy⟩` nests. `rcases h with …` is the same with different syntax order, and `rintro` combines `intro` with patterns. `set s := expr with hs` introduces a local definition, replaces every occurrence of `expr` (goal and hypotheses) by `s`, and records `hs : s = expr`; this keeps goals small and stops `simp` from unfolding the expression. `generalize hs : expr = s` forgets the definition entirely when only abstract properties are needed.",
+    "lean": "example (a b : ℕ) (h : a ∣ b) (hb : b ∣ a) (ha : 0 < a) : a = b := by\n  obtain ⟨k, rfl⟩ := h\n  exact Nat.dvd_antisymm (Dvd.intro k rfl) hb\n\nexample (P Q : ℕ → Prop) (h : ∃ n, P n ∧ Q n) : ∃ n, Q n := by\n  obtain ⟨n, -, hq⟩ := h\n  exact ⟨n, hq⟩\n\nexample (f : ℕ → ℝ) (n : ℕ) (h : 0 ≤ ∑ i ∈ Finset.range n, f i) :\n    0 ≤ 2 * ∑ i ∈ Finset.range n, f i := by\n  set S := ∑ i ∈ Finset.range n, f i with hS\n  linarith",
+    "examples": [
+      {
+        "label": "rcases / obtain docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Basic.html"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "obtain",
+      "rcases",
+      "rintro",
+      "set",
+      "generalize",
+      "pattern",
+      "rfl pattern"
+    ],
+    "source": {
+      "name": "Mathematics in Lean (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathematics_in_lean/",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "by-contra-push-neg-contrapose",
+    "title": "Argue by contradiction with by_contra! and push_neg",
+    "problem": "A proof by contradiction or contrapositive leaves hypotheses like `¬ ∀ ε > 0, …` or `¬ a < b` that other tactics cannot use.",
+    "method_md": "`by_contra! h` replaces goal `p` with `False` and adds `h : ¬ p` already normalised by `push_neg` (so `¬ a < b` arrives as `b ≤ a`, `¬ ∀ x, P x` as `∃ x, ¬ P x`); it accepts rcases patterns, e.g. `by_contra! ⟨x, hx⟩`. `push_neg at h ⊢` normalises negations anywhere; in current Mathlib it is the special case `push Not` of the general `push` tactic, and `push_neg +distrib` gives `¬p ∨ ¬q` instead of `p → ¬q`. `contrapose! h` swaps goal and hypothesis with negations pushed. `by_cases h : p` (or `rcases lt_trichotomy a b with h | h | h`) for case splits. After the negation, the remaining work is usually `linarith`, `omega`, or an explicit witness.",
+    "lean": "example (x : ℝ) (h : ∀ ε > 0, x ≤ ε) : x ≤ 0 := by\n  by_contra! hx                 -- hx : 0 < x\n  have := h (x / 2) (by linarith)\n  linarith\n\nexample (f : ℕ → ℕ) (h : ¬ ∀ n, f n ≤ 5) : ∃ n, 5 < f n := by\n  push_neg at h\n  exact h\n\nexample (a b : ℕ) (h : a * b ≠ 0) : a ≠ 0 := by\n  contrapose! h\n  simp [h]",
+    "examples": [
+      {
+        "label": "by_contra! docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/ByContra.html"
+      },
+      {
+        "label": "push / push_neg docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Push.html"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "by_contra!",
+      "push_neg",
+      "push",
+      "contrapose!",
+      "by_cases",
+      "negation",
+      "contradiction"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/Push.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "simp-question-then-freeze-simp-only",
+    "title": "Run simp?, then freeze the result as simp only [...]",
+    "problem": "A proof using bare `simp` works today but is slow, or breaks after a Mathlib update because the simp set changed.",
+    "method_md": "Use `simp?` (also `simp_all?`, `simpa?`, `dsimp?`) to see which lemmas `simp` actually used, and paste the suggested `simp only [...]` in place. The frozen call is faster (smaller lemma set) and stable against new `@[simp]` lemmas. Bare `simp` is acceptable when it closes the goal (\"terminal simp\"); a non-terminal `simp` whose output feeds later tactics is the classic source of fragile proofs, so freeze those first. Add `at h` to simplify hypotheses, `simp [-lemma]` to remove a lemma, and `simp (config := …)` / `simp +arith`-style options sparingly. If `simp` loops or times out, `simp?` on a smaller goal, or `simp only` with the few needed lemmas, isolates the culprit.",
+    "lean": "example (l : List ℕ) : (l ++ []).length = l.length := by\n  simp?   -- Try this: simp only [List.append_nil]\n\nexample (l : List ℕ) : (l ++ []).length = l.length := by\n  simp only [List.append_nil]\n\nexample (a b : ℕ) (h : a + 0 = b * 1) : a = b := by\n  simpa only [add_zero, mul_one] using h",
+    "examples": [
+      {
+        "label": "Lean reference: simp",
+        "ref": "https://lean-lang.org/doc/reference/latest/Tactic-Proofs/Tactic-Reference/"
+      }
+    ],
+    "tags": [
+      "performance",
+      "tactics"
+    ],
+    "keywords": [
+      "simp?",
+      "simp only",
+      "simpa",
+      "simp_all",
+      "non-terminal simp",
+      "stability",
+      "simp set"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://lean-lang.org/doc/reference/latest/Tactic-Proofs/Tactic-Reference/",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "fun-prop-for-continuity-and-differentiability",
+    "title": "Discharge continuity, measurability and differentiability goals with fun_prop",
+    "problem": "Analytic side goals like `Continuous (fun x => …)`, `Differentiable ℝ f`, `Measurable f` pile up and proving them by composition lemmas is tedious.",
+    "method_md": "`fun_prop` decomposes the function into compositions, applications and lambdas and applies lemmas tagged `@[fun_prop]` (Continuous, ContinuousOn, Differentiable, DifferentiableAt, Measurable, AEMeasurable, …). It uses local hypotheses such as `hf : Continuous f`. For `…On`/`…At` goals with side conditions (e.g. `x ≠ 0` for `fun x => 1 / x`), give a discharger: `fun_prop (disch := assumption)` or `(disch := positivity)`. It replaces the older `continuity` (Aesop-based, slower) for most uses. If it fails, the trace tells which subterm has no registered lemma; prove that piece by hand as a `have` and rerun.",
+    "lean": "example : Continuous (fun x : ℝ => Real.exp (x ^ 2) + Real.sin x) := by\n  fun_prop\n\nexample : Differentiable ℝ (fun x : ℝ => x * Real.exp x + 3) := by\n  fun_prop\n\nexample (f : ℝ → ℝ) (hf : Continuous f) : Continuous (fun x => f x ^ 2 + f (2 * x)) := by\n  fun_prop\n\nexample (x : ℝ) (hx : x ≠ 0) : ContinuousAt (fun y : ℝ => 1 / y) x := by\n  fun_prop (disch := assumption)",
+    "examples": [
+      {
+        "label": "fun_prop docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/FunProp.html"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "fun_prop",
+      "continuous",
+      "differentiable",
+      "measurable",
+      "continuity",
+      "disch"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/FunProp.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "field-simp-then-ring",
+    "title": "Clear denominators with field_simp, then finish with ring",
+    "problem": "An identity or inequality over ℚ/ℝ has fractions, and `ring` alone fails because it cannot use `x ≠ 0`.",
+    "method_md": "`field_simp` puts both sides over a common denominator and cross-multiplies, producing a division-free goal; then `ring` (or `linarith`/`nlinarith` for inequalities) finishes. The `field` tactic is a shorthand for this pattern. It needs to know denominators are nonzero: keep hypotheses `hx : x ≠ 0` in context (it also tries order facts and `CharZero`), or pass them `field_simp [hx]`; customise with `field_simp (disch := positivity)`. If a denominator cannot be shown nonzero, that step is skipped silently, so inspect the result. For inequalities, cross-multiplication needs positivity; `rw [div_le_div_iff₀ hb hd]` or `rw [div_le_iff₀ hpos]` are more predictable. If `field_simp` already closes the goal, drop the trailing `ring`.",
+    "lean": "example (x y : ℝ) (hx : x ≠ 0) (hy : y ≠ 0) :\n    1 / x + 1 / y = (x + y) / (x * y) := by\n  field_simp\n  ring\n\nexample (a : ℝ) (ha : 0 < a) : (a ^ 2 + a) / a = a + 1 := by\n  field_simp\n  ring\n\nexample (x : ℝ) (hx : 0 < x) (h : 2 ≤ x) : 1 / x ≤ 1 / 2 := by\n  rw [div_le_div_iff₀ hx (by norm_num)]\n  linarith",
+    "examples": [
+      {
+        "label": "field_simp docs",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/FieldSimp.html"
+      }
+    ],
+    "tags": [
+      "tactics"
+    ],
+    "keywords": [
+      "field_simp",
+      "field",
+      "ring",
+      "denominator",
+      "ne_zero",
+      "div_le_div_iff"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Tactic/FieldSimp.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "strong-induction-and-le-induction",
+    "title": "Use Nat.strong_induction_on or Nat.le_induction for non-standard inductions",
+    "problem": "Plain `induction n` gives only the hypothesis for `n`, but the step needs all smaller values, or the claim only holds from some `n ≥ m`.",
+    "method_md": "For strong induction, `induction n using Nat.strong_induction_on with | ind n ih => …` gives `ih : ∀ m < n, P m` (the case is named after the lemma argument `ind`). For claims valid from a base point, `induction n, hn using Nat.le_induction with | base => … | succ k hk ih => …` with `hn : m ≤ n` gives `hk : m ≤ k` and `ih : P k`. Generalise variables that change in the recursion before inducting (`induction n generalizing x`), otherwise the hypothesis is too weak. For well-founded recursion on other measures, `termination_by`/`decreasing_by` on a recursive theorem or `WellFounded.induction` work. Also consider `Nat.twoStepInduction` or `Nat.decreasingInduction` for their specific shapes after checking their signatures with `#check`.",
+    "lean": "example (n : ℕ) (hn : 4 ≤ n) : n ^ 2 ≤ 2 ^ n := by\n  induction n, hn using Nat.le_induction with\n  | base => norm_num\n  | succ k hk ih =>\n    rw [pow_succ]\n    nlinarith\n\nexample (n : ℕ) (hn : 2 ≤ n) : ∃ p, p.Prime ∧ p ∣ n := by\n  induction n using Nat.strong_induction_on with\n  | ind n ih =>\n    exact ⟨n.minFac, Nat.minFac_prime (by omega), Nat.minFac_dvd n⟩",
+    "examples": [
+      {
+        "label": "Nat.le_induction / Nat.strong_induction_on",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Init.html"
+      }
+    ],
+    "tags": [
+      "tactics",
+      "architecture"
+    ],
+    "keywords": [
+      "nat.strong_induction_on",
+      "nat.le_induction",
+      "strong induction",
+      "induction using",
+      "generalizing",
+      "termination_by"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Nat/Init.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "extract-have-lemmas-and-scope-heartbeats",
+    "title": "Split big proofs into lemmas; raise maxHeartbeats only per declaration",
+    "problem": "A proof hits \"(deterministic) timeout ... maxHeartbeats 200000\" or elaborates very slowly.",
+    "method_md": "First reduce the work: move independent facts into separate top-level `lemma`s (each gets its own heartbeat budget and is elaborated once), state `have` steps with explicit types so unification does less guessing, freeze non-terminal `simp` calls to `simp only`, and replace `nlinarith`/`polyrith`-style searches with explicit `linear_combination` or `calc` steps. Locate the slow step with `count_heartbeats in` (Mathlib) before the declaration, or by bisecting with `sorry`. If a step is genuinely expensive, scope the increase: `set_option maxHeartbeats 400000 in` immediately before that one theorem. Never set it globally for a file, and avoid `0` (unlimited), which hides runaway tactics and may be rejected by checkers.",
+    "lean": "lemma key_bound (x : ℝ) (hx : 0 ≤ x) : x ^ 2 ≤ x ^ 2 + x := by\n  linarith\n\nset_option maxHeartbeats 400000 in\ntheorem main (x : ℝ) (hx : 0 ≤ x) : x ^ 2 ≤ x ^ 2 + x + 1 := by\n  have h := key_bound x hx\n  linarith\n\ncount_heartbeats in\ntheorem main' (x : ℝ) (hx : 0 ≤ x) : x ^ 2 ≤ x ^ 2 + x + 1 := by\n  linarith [key_bound x hx]",
+    "examples": [
+      {
+        "label": "count_heartbeats",
+        "ref": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Util/CountHeartbeats.html"
+      }
+    ],
+    "tags": [
+      "performance",
+      "architecture"
+    ],
+    "keywords": [
+      "maxheartbeats",
+      "set_option",
+      "timeout",
+      "count_heartbeats",
+      "have",
+      "lemma extraction",
+      "performance"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://leanprover-community.github.io/mathlib4_docs/Mathlib/Util/CountHeartbeats.html",
+      "licence": "original"
+    }
+  },
+  {
+    "slug": "final-check-print-axioms-and-statement",
+    "title": "Before submitting: #print axioms and compare the statement verbatim",
+    "problem": "A proof compiles but is rejected: it contains `sorry`, uses a non-standard axiom, or proves a modified statement.",
+    "method_md": "After the theorem, run `#print axioms thm`. An acceptable result lists only `propext`, `Classical.choice`, `Quot.sound` (or a subset). `sorryAx` means a `sorry` remains somewhere (possibly in a helper lemma); `Lean.ofReduceBool`/`Lean.trustCompiler` or generated `_native` axioms come from `native_decide`/`bv_decide`; any user `axiom` declaration also shows up. Then diff your theorem statement against the original formal-conjectures statement: same name, same binders, same hypotheses and types, no added assumptions, no weakened conclusion, and no changed definitions that the statement depends on. Also make sure the file has no `set_option` that weakens checking and builds from a clean state (`lake env lean File.lean`), not just in the editor.",
+    "lean": "theorem demo (a b : ℕ) (h : a < b) : a + 1 ≤ b := by omega\n\n#print axioms demo\n-- 'demo' does not depend on any axioms   (or a subset of\n-- [propext, Classical.choice, Quot.sound])\n\n-- red flags in the output:\n--   sorryAx                        -> unfinished proof\n--   Lean.ofReduceBool / *._native.* -> native_decide was used\n--   any custom axiom name          -> axiom declared in the file",
+    "examples": [
+      {
+        "label": "Lean reference: axioms",
+        "ref": "https://lean-lang.org/doc/reference/latest/Axioms/"
+      },
+      {
+        "label": "formal-conjectures repository",
+        "ref": "https://github.com/google-deepmind/formal-conjectures"
+      }
+    ],
+    "tags": [
+      "pitfalls",
+      "architecture"
+    ],
+    "keywords": [
+      "#print axioms",
+      "sorryax",
+      "axioms",
+      "verification",
+      "native_decide",
+      "statement check",
+      "formal-conjectures"
+    ],
+    "source": {
+      "name": "Lean 4 / Mathlib documentation (paraphrased)",
+      "url": "https://lean-lang.org/doc/reference/latest/Axioms/",
+      "licence": "original"
+    }
+  }
+]

@@ -47,6 +47,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Link href="/recent">Recent</Link>
             <Link href="/research">Research</Link>
             <Link href="/lemmas">Lemmas</Link>
+            <Link href="/book">Book</Link>
             <Link href="/leaderboard">Leaderboard</Link>
             <Link href="/queue">Verification queue</Link>
             <span className="sep">|</span>
