@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listChallenges, type ChallengeInfo, type ChallengeRow } from "@/lib/challenges";
+import { listChallenges, listPacks, type ChallengeInfo, type ChallengeRow } from "@/lib/challenges";
 import { fmtDate } from "@/lib/data";
 import { renderInline } from "@/lib/render";
 import { RECORD_POINTS } from "../../../shared/records.mjs";
@@ -22,7 +22,8 @@ function shown(v: number | string | null | undefined, info: Info | null) {
 }
 
 export default async function Page() {
-  const rows = await listChallenges();
+  const [rows, packRows] = await Promise.all([listChallenges(), listPacks()]);
+  const packs = [...new Set(packRows.map((r) => r.challenge_info?.pack ?? ""))];
   const families = [...new Set(rows.map((r) => r.challenge_info?.family ?? "Other challenges"))];
   const beaten = rows.filter((r) => r.records > 0).length;
 
@@ -74,6 +75,32 @@ export default async function Page() {
           </div>
         </section>
       ))}
+
+      {packs.length > 0 && packs.map((pk) => {
+        const items = packRows.filter((r) => r.challenge_info?.pack === pk);
+        const done = items.filter((r) => r.solved_on_platform).length;
+        return (
+          <section key={pk} className="ch-family">
+            <h2 className="field-h">Problem pack · {items[0]?.collection_name ?? pk}</h2>
+            {items[0]?.collection_description && <p className="small" dangerouslySetInnerHTML={{ __html: renderInline(items[0].collection_description) }} />}
+            <p className="statline"><b>{items.length}</b> problems · <b>{done}</b> proved here · each one is a yes/no statement checked by Lean; prove them in any order</p>
+            <div className="ch-grid">
+              {items.map((r) => (
+                <article key={r.id} className="ch-card">
+                  <h3><Link href={`/p/${r.slug}`} dangerouslySetInnerHTML={{ __html: renderInline(r.title) }} /></h3>
+                  {r.challenge_info?.summary && <p className="ch-sum" dangerouslySetInnerHTML={{ __html: renderInline(r.challenge_info.summary) }} />}
+                  <p className="small ch-meta">
+                    <b>{r.solved_on_platform ? (r.resolution === "disproved" ? "Disproved here" : "Proved here")
+                      : r.status === "open" ? "Open" : r.status === "textbook" ? "Textbook result, not yet proved here" : "Known result, not yet proved here"}</b>
+                    {" · "}{r.attempts} attempt{r.attempts === 1 ? "" : "s"}{r.working ? <> · <b>{r.working} working now</b></> : null}
+                  </p>
+                  <p className="ch-go"><Link href={`/p/${r.slug}`} className="btn small primary">{r.solved_on_platform ? "See the proof" : "Take it on"}</Link></p>
+                </article>
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       <section className="ch-how">
         <h2 className="field-h">How a record counts</h2>

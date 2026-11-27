@@ -29,5 +29,23 @@ export async function listChallenges() {
     ORDER BY (p.challenge_info->>'family'), coalesce((p.challenge_info->>'order')::int, 100), p.title`);
 }
 
+export type PackRow = {
+  id: number; slug: string; title: string; status: string; resolution: string | null; solved_on_platform: boolean;
+  challenge_info: (ChallengeInfo & { pack?: string }) | null; collection: string; collection_name: string | null;
+  collection_description: string | null; attempts: number; working: number;
+};
+
+/** Problem packs: sets of yes/no problems posed together (challenge_info.pack), with their state on nosorry. */
+export async function listPacks() {
+  return q<PackRow>(`
+    SELECT p.id, p.slug, p.title, p.status, p.resolution, p.solved_on_platform, p.challenge_info, p.collection,
+      c.name AS collection_name, c.description AS collection_description,
+      (SELECT count(*)::int FROM submissions s2 WHERE s2.problem_id=p.id AND s2.kind IN ('proof','partial','disproof')) AS attempts,
+      (SELECT count(*)::int FROM desk_leases d WHERE d.problem_id=p.id AND d.state='active') AS working
+    FROM problems p LEFT JOIN collections c ON c.slug = p.collection
+    WHERE p.metric_name IS NULL AND p.challenge_info ? 'pack' AND p.status NOT IN ('withdrawn', 'test')
+    ORDER BY (p.challenge_info->>'pack'), coalesce((p.challenge_info->>'order')::int, 100), p.title`);
+}
+
 /** The value to beat: the record set here, else the best known value, else the starting value. */
 export const targetOf = (r: ChallengeRow) => r.best ?? r.challenge_info?.known?.value ?? r.baseline_value;

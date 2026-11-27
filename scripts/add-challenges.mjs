@@ -4,7 +4,10 @@
 //       { "title", "statement_md", "metric_name", "metric_direction": "min"|"max", "metric_decl", "decl_name",
 //         "baseline_value", "record_threshold", "primary_subject", "subjects": [], "tags": [], "source_url", "collection",
 //         (no metric_name: an ordinary yes/no problem, e.g. a lower bound that goes with a race)
-//         "info": { family, summary, known: {value, by, url}, bound, scale, unit, order } }
+//         "info": { family, summary, known: {value, by, url}, bound, scale, unit, order, pack },
+//         "status": "open" | "solved" | "textbook" (default open), "attribution",
+//         "collection_name", "collection_description" (create the collection if it does not exist) }
+//   A "pack" is a set of yes/no problems sharing info.pack (and usually a collection); /challenges lists them.
 //   node scripts/add-challenges.mjs apply < bundle.json        (DATABASE_URL; runs where `pg` is installed)
 // Idempotent: an existing challenge (same slug) gets its metadata updated and, if Challenge.lean changed, a new version.
 import fs from "node:fs";
@@ -37,6 +40,10 @@ if (mode === "build") {
   try {
     for (const ch of bundle) {
       const hash = crypto.createHash("sha256").update(ch.challenge_source).digest("hex");
+      if (ch.collection && ch.collection_name)
+        await c.query("INSERT INTO collections(slug, name, description, source_url) VALUES ($1,$2,$3,NULL) ON CONFLICT (slug) DO NOTHING",
+          [ch.collection, ch.collection_name, ch.collection_description ?? null]);
+      const status = ["open", "solved", "textbook"].includes(ch.status) ? ch.status : "open";
       const fields = [ch.title, ch.statement_md, ch.primary_subject, ch.subjects ?? [ch.primary_subject], ch.tags ?? ["challenge"], ch.source_url ?? null,
         ch.metric_name ?? null, ch.metric_name ? ch.metric_direction : null, ch.metric_decl ?? null,
         ch.metric_name ? ch.record_threshold ?? 0.000001 : 0.05, ch.baseline_value ?? null, JSON.stringify(ch.info ?? {}), ch.collection ?? "records"];
@@ -46,16 +53,18 @@ if (mode === "build") {
           `INSERT INTO problems(ident, slug, collection, title, statement_md, status, primary_subject, subjects, tags, source_url,
              statement_status, formalization, verification, field, license, attribution,
              metric_name, metric_direction, metric_decl, record_threshold, baseline_value, challenge_info)
-           VALUES ('tmp-' || md5(random()::text), $14, $13, $1, $2, 'open', $3, $4, $5, $6,
-             'reviewed', 'formal', 'lean-kernel', 'math', 'Apache-2.0', 'nosorry record challenges (formalized with AI agents, refereed)',
-             $7, $8, $9, $10, $11, $12::jsonb) RETURNING id, current_version_id`, [...fields, ch.slug]));
+           VALUES ('tmp-' || md5(random()::text), $14, $13, $1, $2, $15, $3, $4, $5, $6,
+             'reviewed', 'formal', 'lean-kernel', 'math', 'Apache-2.0', $16,
+             $7, $8, $9, $10, $11, $12::jsonb) RETURNING id, current_version_id`,
+          [...fields, ch.slug, status, ch.attribution ?? "nosorry record challenges (formalized with AI agents, refereed)"]));
         await c.query("UPDATE problems SET ident = 'NS.' || lpad(id::text, 5, '0') WHERE id=$1", [p.id]);
         console.log(`created ${ch.slug}`);
       } else {
         await c.query(
           `UPDATE problems SET title=$1, statement_md=$2, primary_subject=$3, subjects=$4, tags=$5, source_url=$6, metric_name=$7,
-             metric_direction=$8, metric_decl=$9, record_threshold=$10, baseline_value=$11, challenge_info=$12::jsonb, collection=$13, updated_at=now() WHERE id=$14`,
-          [...fields, p.id]);
+             metric_direction=$8, metric_decl=$9, record_threshold=$10, baseline_value=$11, challenge_info=$12::jsonb, collection=$13, status=CASE WHEN status IN ('open','solved','textbook') THEN $15 ELSE status END,
+             updated_at=now() WHERE id=$14`,
+          [...fields, p.id, status]);
         console.log(`updated ${ch.slug}`);
       }
       const { rows: [cur] } = await c.query("SELECT statement_hash, version FROM problem_versions WHERE id=$1", [p.current_version_id ?? 0]);

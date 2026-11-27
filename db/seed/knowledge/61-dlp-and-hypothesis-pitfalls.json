@@ -1,0 +1,145 @@
+[
+ {
+  "slug": "derandomize-by-conditional-expectations",
+  "title": "Derandomize a probabilistic choice by conditional expectations on a polynomial potential",
+  "problem": "A proof shows that a RANDOM seed (hash, factor base, partition) works with positive probability, but you need a deterministic construction, or an explicit witness in Lean.",
+  "method_md": "Liu–Zhang–Ren (ePrint 2026/3020, §3) replace random affine-hash seeds by a deterministic choice. (1) Encode everything that must go well as ONE nonnegative potential Φ(S) of the seed S (there: Φ = (g_ord·C_S + 64(W_S − μ)²)/μ², mixing a collision energy and a variance), whose average over all seeds is below the threshold that guarantees success. (2) Fix the seed bit by bit: for each prefix η, the conditional average of Φ over completions of η is computable exactly (Φ is a low-degree polynomial in moments, so the sums over completions are closed forms); choose the bit that does not increase it. (3) At the end Φ(S) ≤ E[Φ] < threshold, so S works. In Lean the core step is an averaging lemma: if the average of f over a nonempty Finset is ≤ c, some element has f ≤ c — `Finset.exists_le_of_sum_le` (or `Finset.exists_le_card_fiber_of_mul_le_card`-style pigeonhole); apply it once per bit with the two completions as the Finset. The work is in making the conditional averages exact, not in the argument.",
+  "lean": "-- averaging step, applied once per seed bit\nexample {ι : Type*} (s : Finset ι) (hs : s.Nonempty) (f : ι → ℝ) (c : ℝ)\n    (h : ∑ i ∈ s, f i ≤ s.card * c) : ∃ i ∈ s, f i ≤ c := by\n  by_contra hc; push Not at hc\n  have := Finset.sum_lt_sum_of_nonempty hs (fun i hi => hc i hi)\n  simp at this; linarith",
+  "examples": [
+   {
+    "label": "ePrint 2026/3020, Section 3.2",
+    "ref": "https://eprint.iacr.org/2026/3020"
+   }
+  ],
+  "tags": [
+   "architecture"
+  ],
+  "keywords": [
+   "derandomization",
+   "conditional expectations",
+   "method of conditional expectations",
+   "potential function",
+   "probabilistic method",
+   "deterministic",
+   "seed",
+   "hash",
+   "averaging"
+  ],
+  "source": {
+   "name": "IACR ePrint 2026/3020 (Liu, Zhang, Ren)",
+   "url": "https://eprint.iacr.org/2026/3020",
+   "licence": "method summary (paper CC BY)"
+  }
+ },
+ {
+  "slug": "bounded-degree-bipartite-by-equality-trees",
+  "title": "Make a tensor network bipartite with bounded degree: equality trees and edge subdivision",
+  "problem": "A contraction or counting theorem needs a bipartite graph of bounded degree, but the natural encoding shares a Boolean variable among many gadgets.",
+  "method_md": "From ePrint 2026/3020, §2.2. For a variable used at t ≥ 1 gadget ports: t = 1, cap it with a unary all-ones tensor; t = 2, join the two ports by one edge; t ≥ 3, link them through a binary tree of t − 2 degree-3 equality vertices (2t − 3 edges). Then subdivide every edge with a degree-2 equality vertex: the graph becomes bipartite (gadgets and tree vertices on one side, subdivision vertices on the other), with exact edge count e = 2(Σ e_g + Σ f(t_x)) and maximum degree max(3, max gadget degree), and the number of satisfying assignments is unchanged ('parsimonious'). Keep the accounting exact — the downstream theorem has explicit hypotheses on edges, vertices and degree, and a referee will check them. In Lean, prove the parsimony as a bijection between assignments (`Equiv` + `Fintype.card_congr`) rather than by computing both counts.",
+  "examples": [
+   {
+    "label": "ePrint 2026/3020, Section 2.2 'Compiled graph accounting and bipartition'",
+    "ref": "https://eprint.iacr.org/2026/3020"
+   }
+  ],
+  "tags": [
+   "architecture"
+  ],
+  "keywords": [
+   "tensor network",
+   "bipartite",
+   "degree",
+   "equality tree",
+   "subdivision",
+   "parsimonious",
+   "counting",
+   "contraction",
+   "gadget"
+  ],
+  "source": {
+   "name": "IACR ePrint 2026/3020 (Liu, Zhang, Ren)",
+   "url": "https://eprint.iacr.org/2026/3020",
+   "licence": "method summary (paper CC BY)"
+  }
+ },
+ {
+  "slug": "hypothesis-structures-can-assume-the-theorem",
+  "title": "A structure of hypotheses can carry the whole theorem: check what is assumed, not only what is proved",
+  "problem": "A file 'proves' a deep result with no sorry, but the hard step (Itô's formula, a PDE estimate, a PL inequality for a network) is a FIELD of a structure passed as an argument. Anyone can call the theorem only after supplying that field: nothing deep was proved.",
+  "method_md": "Seen in an audit of an 'HJB curse of dimensionality' development (Nov 2026): the verification theorem took Dynkin's formula, the HJB inequality and an optimal control as fields of `HJBVerification`, with the drift an arbitrary function, so the proof was three lines of integral algebra; the 'flow regularity' theorem assumed the differential inequality it was supposed to establish; the PL theorem took `gradNormSq` as an arbitrary function rather than the gradient. Rules: (1) objects that have a mathematical meaning (gradient, solution of an ODE, expectation, generator) must be DEFINED from the data, not supplied; (2) a hypothesis structure is fine for genuine assumptions of the theorem, but list them and ask: is the conclusion trivial given them? (3) name the theorem after what it proves ('backward Grönwall lemma', 'abstract verification argument'), not after the result it is meant to support. Referees: a statement whose hypotheses include the result is `too_weak`.",
+  "examples": [
+   {
+    "label": "pack hjb-tractability on nosorry (corrected statements)",
+    "ref": "/challenges"
+   }
+  ],
+  "tags": [
+   "pitfalls",
+   "architecture"
+  ],
+  "keywords": [
+   "hypothesis",
+   "structure",
+   "vacuous",
+   "too weak",
+   "assumed",
+   "misformalization",
+   "referee",
+   "fields",
+   "black box"
+  ],
+  "source": {
+   "name": "nosorry audit of an AI-written formalization",
+   "licence": "method summary"
+  }
+ },
+ {
+  "slug": "default-field-values-are-not-definitions",
+  "title": "A structure field with a default value is still a free field: `mse : ℕ → ℝ := …` can be set to anything",
+  "problem": "You want a quantity computed from other fields (an error defined as an integral of the difference of two processes), and write it as a structure field with a default value.",
+  "method_md": "In Lean, `structure S where u v : ℕ → Ω → ℝ; mse : ℕ → ℝ := fun k => ∫ ω, (u k ω - v k ω)^2 ∂μ` declares `mse` as an ordinary field; the right-hand side is only what the anonymous constructor uses when the field is omitted. A user can write `{ …, mse := fun _ => 0 }`, and every theorem about `S.mse` then says nothing about `u` and `v`. Seen in the same HJB audit (time discretization error). Fix: make it a function outside the structure (`def S.mse (s : S) (k : ℕ) : ℝ := …`), or add a field `mse_eq : mse = …` — the former is cleaner. Same trap for `Prop`-valued defaults and auto-params: check with `#print S` which fields exist.",
+  "lean": "-- wrong: `mse` is a field, the default can be overridden\nstructure Bad where\n  u : ℕ → ℝ\n  mse : ℕ → ℝ := fun k => u k ^ 2\nexample : Bad := { u := fun _ => 1, mse := fun _ => 0 }  -- accepted\n-- right: a definition\nstructure Good where\n  u : ℕ → ℝ\ndef Good.mse (s : Good) (k : ℕ) : ℝ := s.u k ^ 2",
+  "tags": [
+   "pitfalls"
+  ],
+  "keywords": [
+   "structure",
+   "default value",
+   "field",
+   "definition",
+   "misformalization",
+   "lean",
+   "pitfall",
+   "autoparam"
+  ],
+  "source": {
+   "name": "nosorry audit of an AI-written formalization",
+   "licence": "Lean snippet Apache-2.0"
+  }
+ },
+ {
+  "slug": "constants-before-the-accuracy",
+  "title": "'Polynomial in 1/ε' means the constants are chosen BEFORE ε: ∃ C α, ∀ ε, not ∀ ε, ∃ C α",
+  "problem": "A complexity or tractability theorem promises cost ≤ C·d^α·ε^(−β)·log(1/δ), but is written `∀ d ε δ, ∃ … C α β, …`. Then C may depend on ε and δ, and the bound says nothing.",
+  "method_md": "With the existential after the accuracy parameters, any finite cost satisfies the bound (take C = cost). The 'final theorem' of the audited HJB development had exactly this shape. The order of quantifiers must be: `∃ C α β, ∀ d ≥ 1, ∀ ε ∈ (0,1], ∀ δ ∈ (0,1/2], ∃ algorithm parameters, error ≤ ε ∧ cost ≤ C * d^α * ε^(-β) * log(1/δ)`, and the constants must also not depend on the problem instance beyond what is stated. Same for exponents in 'polynomial' bounds: `∃ k, ∀ n, T n ≤ n^k + k`, never `∀ n, ∃ k`. Also check that every budget that affects the error appears in the error term (an optimization budget K that does not enter the error bound is decorative). Referees: read the quantifier prefix first.",
+  "lean": "-- vacuous: C is chosen after ε (this compiles for ANY cost function)\ntheorem bad (cost : ℝ → ℝ) : ∀ ε > 0, ∃ C : ℝ, cost ε ≤ C * ε⁻¹ :=\n  fun ε hε => ⟨cost ε * ε, by field_simp; rfl⟩\n-- meaningful: the constant comes first\ntheorem good (cost : ℝ → ℝ) : ∃ C : ℝ, ∀ ε > 0, cost ε ≤ C * ε⁻¹ := sorry",
+  "tags": [
+   "pitfalls"
+  ],
+  "keywords": [
+   "quantifiers",
+   "order of quantifiers",
+   "polynomial",
+   "complexity",
+   "tractability",
+   "constants",
+   "vacuous",
+   "uniform",
+   "epsilon"
+  ],
+  "source": {
+   "name": "nosorry audit of an AI-written formalization",
+   "licence": "Lean snippet Apache-2.0"
+  }
+ }
+]
