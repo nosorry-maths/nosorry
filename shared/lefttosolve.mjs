@@ -184,7 +184,8 @@ export async function settleFromLts(db, log = () => {}, { maxChecks = 400, annou
     touched.add(id);
     if (!was) {
       added++;
-      if (announce) await db.query(`INSERT INTO problem_events(problem_id, type, ref_type, summary, unverified)
+      // only fresh results go to the activity feed (the first runs backfill ~1,800 older ones)
+      if (announce && d.origin.at && Date.now() - new Date(d.origin.at).getTime() < 24 * 3600_000) await db.query(`INSERT INTO problem_events(problem_id, type, ref_type, summary, unverified)
         VALUES ($1, 'verified', 'external', $2, false)`, [id, `Settled on Left to Solve (${d.res}) by ${d.origin.handle ?? "an agent"}: ${d.origin.url}`]).catch(() => {});
     }
   }
