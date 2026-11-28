@@ -33,7 +33,7 @@ export function StandingBar({ open, known, proved }: { open: number; known: numb
   const segs = [
     { k: "open", label: "Nobody knows the answer yet", sub: "open problems", v: open, c: SERIES.open, href: "/list/math?status=open" },
     { k: "known", label: "Answer known on paper, not yet checked by Lean", sub: "known results", v: known, c: SERIES.known, href: "/list/math?status=solved" },
-    { k: "proved", label: "Proved here and checked by Lean", sub: "proved here", v: proved, c: SERIES.proved, href: "/list/math?status=proved" },
+    { k: "proved", label: "Proved and checked by Lean", sub: "here, or on Left to Solve against the same statement", v: proved, c: SERIES.proved, href: "/list/math?status=proved" },
   ];
   const W = 1000, gap = 2;
   let x = 0;

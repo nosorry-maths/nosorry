@@ -3,6 +3,7 @@ import type pg from "pg";
 import { one, q, tx, pool } from "./db";
 import { canSubmit, type User } from "./auth";
 import { aixivOf, aixivForAgents } from "./aixiv";
+import { ltsOf, ltsForAgents } from "./lefttosolve";
 
 // ───────────────────────── research feed ─────────────────────────
 // A typed, append-only event log per problem + the tables it points to (leads, notes, records, rounds).
@@ -246,6 +247,7 @@ export async function problemState(problemRef_: string) {
      WHERE l.parent_id=$1 AND l.status='lemma' AND l.lemma_state IN ('open','proved','checking')
      ORDER BY CASE l.lemma_state WHEN 'proved' THEN 0 WHEN 'open' THEN 1 ELSE 2 END, l.created_at LIMIT 50`, [p.id]);
   const aixiv = aixivForAgents(await aixivOf(p.id));
+  const lefttosolve = ltsForAgents(await ltsOf(p.id));
   return {
     problem: { slug: p.slug, title: p.title, status: p.status, formalization: p.formalization,
       metric: p.metric_name ? { name: p.metric_name, direction: p.metric_direction, threshold: Number(baseline?.record_threshold ?? 0.05), baseline: baseline?.baseline_value != null ? Number(baseline.baseline_value) : null } : null },
@@ -254,7 +256,7 @@ export async function problemState(problemRef_: string) {
     leads, ideas, dead_ends: deadEnds, verified, questions, round, lemmas,
     // Claims recorded by aiXiv (aixiv.online) about this problem: read them before working — it may already be claimed
     // solved elsewhere. They are NOT verified by nosorry; only a Lean proof submitted here counts.
-    external: aixiv.length ? { aixiv, note: "claims recorded by aiXiv (aixiv.online), not verified by nosorry" } : undefined,
+    external: aixiv.length || lefttosolve ? { aixiv: aixiv.length ? aixiv : undefined, lefttosolve, note: "recorded elsewhere (aixiv.online, lefttosolve.com), not verified by nosorry" } : undefined,
     cursor: cursor?.c ?? 0,
   };
 }

@@ -4,7 +4,7 @@ import { one, q } from "./db";
 export type Subject = { code: string; name: string; parent: string | null; level: number; description: string | null; n: number; open: number };
 export type ProblemRow = {
   id: number; ident: string; slug: string; title: string; statement_md: string | null; status: string; statement_status: string;
-  primary_subject: string; subjects: string[]; tags: string[]; collection: string; solved_on_platform: boolean; resolution: string | null;
+  primary_subject: string; subjects: string[]; tags: string[]; collection: string; solved_on_platform: boolean; resolution: string | null; external_resolution?: string | null;
   variant_of: number | null; updated_at: string; n_proofs?: number; n_threads?: number; formalization?: string; n_partial?: number; n_variants?: number; source_url?: string | null;
 };
 
@@ -87,7 +87,7 @@ export async function listProblems(f: ListFilter) {
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = await q<ProblemRow>(`
     SELECT p.id, p.ident, p.slug, p.title, left(p.statement_md, 1200) AS statement_md, p.status, p.statement_status, p.primary_subject,
-           p.subjects, p.tags, p.collection, p.solved_on_platform, p.resolution, p.variant_of, p.updated_at, p.formalization,
+           p.subjects, p.tags, p.collection, p.solved_on_platform, p.resolution, p.external_resolution, p.variant_of, p.updated_at, p.formalization,
            (SELECT count(*)::int FROM submissions s WHERE s.problem_id=p.id AND s.status IN ('verified','partial')) AS n_proofs,
            (SELECT count(*)::int FROM research_threads t WHERE t.problem_id=p.id AND t.status='active') AS n_threads
     FROM problems p ${w} ORDER BY ${order} LIMIT ${PAGE + 1} OFFSET ${(page - 1) * PAGE}`, args);
@@ -112,8 +112,8 @@ export async function siteStats() {
     SELECT (SELECT count(*)::int FROM problems p WHERE status = ANY('{open,solved}') AND variant_of IS NULL AND ${NOT_DEMO}) AS problems,
            (SELECT count(*)::int FROM problems p WHERE status='open' AND variant_of IS NULL AND ${NOT_DEMO}) AS open,
            (SELECT count(*)::int FROM problems p WHERE ${NOT_DEMO} AND p.status <> 'lemma') AS statements,
-           (SELECT count(*)::int FROM problems p WHERE solved_on_platform AND ${NOT_DEMO} AND p.status <> 'lemma') AS proved_here,
-           (SELECT count(*)::int FROM problems p WHERE solved_on_platform AND status='open' AND ${NOT_DEMO}) AS open_proved_here,
+           (SELECT count(*)::int FROM problems p WHERE solved_on_platform AND EXISTS (SELECT 1 FROM submissions x WHERE x.problem_id=p.id AND x.kind IN ('proof','disproof') AND x.status='verified') AND ${NOT_DEMO} AND p.status <> 'lemma') AS proved_here,
+           (SELECT count(*)::int FROM problems p WHERE solved_on_platform AND EXISTS (SELECT 1 FROM submissions x WHERE x.problem_id=p.id AND x.kind IN ('proof','disproof') AND x.status='verified') AND status='open' AND ${NOT_DEMO}) AS open_proved_here,
            (SELECT count(*)::int FROM submissions s JOIN problems p ON p.id=s.problem_id WHERE s.status='verified' AND ${NOT_DEMO}) AS verified,
            (SELECT count(*)::int FROM submissions s JOIN problems p ON p.id=s.problem_id WHERE s.status='partial' AND ${NOT_DEMO}) AS partial,
            (SELECT count(DISTINCT user_id)::int FROM submissions WHERE status IN ('verified','partial','accepted')) AS contributors,
@@ -138,7 +138,7 @@ export async function featuredProblems(kind: "short" | "partial" | "famous" | "k
   }[kind];
   return q<ProblemRow>(`
     SELECT p.id, p.ident, p.slug, p.title, left(p.statement_md, 600) AS statement_md, p.status, p.statement_status, p.primary_subject,
-           p.subjects, p.tags, p.collection, p.solved_on_platform, p.resolution, p.variant_of, p.updated_at, p.source_url,
+           p.subjects, p.tags, p.collection, p.solved_on_platform, p.resolution, p.external_resolution, p.variant_of, p.updated_at, p.source_url,
            (SELECT count(*)::int FROM submissions s WHERE s.problem_id=p.id AND s.status='partial') AS n_partial
     FROM problems p WHERE ${sql} LIMIT ${limit}`);
 }

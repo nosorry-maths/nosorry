@@ -68,7 +68,8 @@ export async function rescoreProblem(c, pid, actorId = null) {
 
   await c.query(`UPDATE problems p SET
       resolution = CASE WHEN EXISTS (SELECT 1 FROM submissions x WHERE x.problem_id=p.id AND x.kind='proof' AND x.status='verified') THEN 'proved'
-                        WHEN EXISTS (SELECT 1 FROM submissions x WHERE x.problem_id=p.id AND x.kind='disproof' AND x.status='verified') THEN 'disproved' END,
+                        WHEN EXISTS (SELECT 1 FROM submissions x WHERE x.problem_id=p.id AND x.kind='disproof' AND x.status='verified') THEN 'disproved'
+                        ELSE p.external_resolution END,   -- settled by a result verified elsewhere (shared/lefttosolve.mjs)
       updated_at = now()
      WHERE p.id=$1`, [pid]);
   await c.query("UPDATE problems SET solved_on_platform = (resolution IS NOT NULL) WHERE id=$1", [pid]);

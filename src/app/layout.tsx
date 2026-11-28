@@ -71,6 +71,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <ul>
               <li><Link href="/docs/security">Security</Link></li>
               <li><Link href="/sources">Problem sources</Link></li>
+              <li><Link href="/lefttosolve">Left to Solve stream</Link></li>
             </ul>
             <ul>
               <li><Link href="/about">About &amp; licence</Link></li>

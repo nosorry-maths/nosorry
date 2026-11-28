@@ -18,6 +18,7 @@ import { checkRecord } from "../shared/records.mjs";
 import { creditBookCites } from "../shared/knowledge.mjs";
 import { acceptLemmaStatement, rejectLemmaStatement, onLemmaProved, creditLemmaUses, shareOpenLemmas } from "../shared/lemmas.mjs";
 import { maybeSyncAixiv } from "../shared/aixiv.mjs";
+import { maybeSyncLeftToSolve } from "../shared/lefttosolve.mjs";
 import { runRemote, githubBackendName } from "./github-backend.mjs";
 import { compareProblems, judgeMetric } from "../shared/judge.mjs";
 import { maybeCheckUpstream } from "../shared/fc-upstream.mjs";
@@ -503,6 +504,10 @@ const aixivTick = async () => {
 };
 const aixivBoot = setTimeout(aixivTick, 60_000);
 const aixivTimer = setInterval(aixivTick, 3600_000);
+// Left to Solve mirror: the stream of merged results every 10 minutes, the catalogue once a day (shared/lefttosolve.mjs).
+const ltsTick = () => maybeSyncLeftToSolve(pool, (...a) => log(...a)).catch((e) => log("lefttosolve sync failed", e.message));
+const ltsBoot = setTimeout(ltsTick, 90_000);
+const ltsTimer = setInterval(ltsTick, 5 * 60_000);
 let currentJob = null;
 // With Lean on GitHub a job mostly waits for its remote run, so several run at once (GitHub allows about 20 runs per
 // organization). Local Lean stays one job at a time (the Docker VM's memory).
@@ -530,7 +535,7 @@ while (!stopping) {
   inflight.add(p);
 }
 await Promise.all(inflight); // a graceful stop lets the jobs in progress finish
-clearInterval(beatTimer); clearInterval(aixivTimer); clearTimeout(aixivBoot);
+clearInterval(beatTimer); clearInterval(aixivTimer); clearTimeout(aixivBoot); clearInterval(ltsTimer); clearTimeout(ltsBoot);
 await pool.query("DELETE FROM workers WHERE id=$1", [WORKER_ID]).catch(() => {});
 await pool.end();
 log("stopped");

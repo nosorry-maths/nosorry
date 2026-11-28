@@ -17,9 +17,9 @@ export function Status({ s }: { s: string }) {
 }
 
 /** One status for a problem: proved/disproved here wins over open/known; the literature status is kept as a qualifier. */
-export function ProblemStatus({ p }: { p: Pick<ProblemRow, "status" | "resolution" | "solved_on_platform"> }) {
+export function ProblemStatus({ p }: { p: Pick<ProblemRow, "status" | "resolution" | "solved_on_platform" | "external_resolution"> }) {
   if (p.resolution) {
-    return <><Status s={p.resolution} /> <span className="muted small">({p.status === "open" ? "open in the literature" : LABEL[p.status] ?? p.status})</span></>;
+    return <><Status s={p.resolution} />{p.external_resolution ? <span className="small"> on Left to Solve</span> : null} <span className="muted small">({p.status === "open" ? "open in the literature" : LABEL[p.status] ?? p.status})</span></>;
   }
   return <Status s={p.status} />;
 }

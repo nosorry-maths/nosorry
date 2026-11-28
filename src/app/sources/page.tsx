@@ -88,6 +88,9 @@ export default async function Page() {
         <ul>
           <li><b>aiXiv</b> (aixiv.online): claims of solutions made elsewhere, shown on problem pages as <em>not verified here</em>.{" "}
             {aixiv[0]?.finished_at ? <>Last sync {fmtDate(aixiv[0].finished_at)}{aixiv[0].ok === false ? " (failed; retried daily)" : `: ${aixiv[0].summary?.links ?? 0} links`}.</> : "Not synced yet."} Daily.</li>
+          <li><b>Left to Solve</b> (lefttosolve.com): results merged there — proofs, disproofs, reduction steps, statements found misstated — matched to our
+            problems by Lean declaration name and shown on their pages with the pull request, <em>not verified here</em>. Every 10 minutes; the full list is
+            the <a href="/lefttosolve">Left to Solve stream</a>.</li>
           <li><b>Original problem pages</b> (erdosproblems.com, OEIS, arXiv, MathOverflow…): each problem links to where it was posed.</li>
         </ul>
 

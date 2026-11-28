@@ -22,6 +22,8 @@ import { currentFocus, votesOf } from "@/lib/desk";
 import { VoteButton } from "@/components/focus";
 import { featureAction } from "@/app/actions-community";
 import { Elsewhere } from "@/components/elsewhere";
+import { LeftToSolve } from "@/components/lefttosolve";
+import { ltsOf } from "@/lib/lefttosolve";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,7 @@ type P = {
   id: number; ident: string; slug: string; title: string; statement_md: string | null; status: string; statement_status: string; metric_name: string | null;
   primary_subject: string; subjects: string[]; tags: string[]; collection: string; collection_name: string; source_url: string | null;
   source_path: string | null; solved_on_platform: boolean; resolution: string | null; variant_of: number | null; needs_answer: boolean;
+  external_resolution: string | null; external_origin: { site: string; url: string; problem_url?: string; handle?: string | null; model?: string | null; at?: string | null } | null;
   recheck_pending: boolean; version: number | null; decl_name: string | null; statement_lean: string | null; challenge_source: string | null;
   statement_hash: string | null; toolchain: string | null; upstream_commit: string | null; main_slug: string | null; main_title: string | null;
   parent_slug: string | null; parent_title: string | null; lemma_state: "checking" | "open" | "proved" | "invalid" | null; lemma_name: string | null;
@@ -71,8 +74,8 @@ export default async function Problem({ params, searchParams }: { params: Promis
   if (!p) notFound();
   const user = await currentUser();
   const isLemma = p.status === "lemma";
-  const [lemmas, snippet, elsewhere, vote, focusNow] = await Promise.all([lemmasOf(p.id), isLemma && p.lemma_state === "proved" ? lemmaSnippet(p.id) : Promise.resolve(null), aixivOf(p.id),
-    votesOf(p.id, user?.id), currentFocus()]);
+  const [lemmas, snippet, elsewhere, vote, focusNow, lts] = await Promise.all([lemmasOf(p.id), isLemma && p.lemma_state === "proved" ? lemmaSnippet(p.id) : Promise.resolve(null), aixivOf(p.id),
+    votesOf(p.id, user?.id), currentFocus(), isLemma ? Promise.resolve(null) : ltsOf(p.id)]);
   const featured = focusNow?.id != null && Number(focusNow.id) === Number(p.id);
   const [subs, board, stream, threads, variants, critiques, versions, html, fullHtml] = await Promise.all([
     recentSubmissions({ problemId: p.id, limit: 100 }),
@@ -140,6 +143,8 @@ export default async function Problem({ params, searchParams }: { params: Promis
               : { k: "plain", label: "Lemma · checking", text: "Lean is compiling its statement; it becomes provable as soon as the check passes." })
             : !formal ? { k: "informal", label: "Awaiting formalization", text: "Stated in words only. Write it in Lean to make it provable here." }
             : p.metric_name ? { k: "open", label: "Record race", text: "Scored by a number: every verified improvement on the record counts. See the Records tab for the current best." }
+            : p.resolution && !firstProof && p.external_origin ? { k: "proved", label: `${p.resolution === "disproved" ? "Disproved" : "Proved"} on ${p.external_origin.site}`,
+                text: `Settled by a Lean proof checked on ${p.external_origin.site} against the same statement (same formal-conjectures declaration, same fingerprint); counted as settled here.` }
             : p.resolution === "proved" ? { k: "proved", label: "Proved here", text: "A complete proof was checked by Lean on nosorry." }
             : p.resolution === "disproved" ? { k: "proved", label: "Disproved here", text: "A proof that the statement is false was checked by Lean on nosorry." }
             : p.status === "open" ? { k: "open", label: "Open problem", text: "Nobody knows the answer yet — neither on paper nor in Lean." }
@@ -154,6 +159,7 @@ export default async function Problem({ params, searchParams }: { params: Promis
                 <span className={`stamp stamp-${state.k}`}>{state.label}</span>{" "}
                 <span>{state.text}
                   {firstProof && !p.metric_name && <> <Link href={`/s/${firstProof.public_id}`}>See the proof</Link> by <Link href={`/u/${firstProof.handle}`}>{firstProof.handle}</Link>, {fmtDate(firstProof.verified_at ?? firstProof.created_at)}.</>}
+                  {!firstProof && p.external_origin && <> <a href={p.external_origin.url} rel="noopener" target="_blank">See the proof</a>{p.external_origin.handle ? <> by {p.external_origin.handle}</> : null}{p.external_origin.model ? <span className="muted small"> ({p.external_origin.model})</span> : null}{p.external_origin.at ? <>, {fmtDate(p.external_origin.at)}</> : null}.</>}
                   {pts != null && <> First verified proof: <b>+{pts} points</b>.</>}
                 </span>
               </div>
@@ -183,6 +189,7 @@ export default async function Problem({ params, searchParams }: { params: Promis
           <form action={featureAction} className="abs-line small"><input type="hidden" name="slug" value={p.slug} />
             <span className="descriptor">Moderator:</span><button className="linkbtn">Make this the featured problem now</button></form>
         )}
+        {lts && <LeftToSolve lts={lts} solvedHere={p.resolution === "proved" || p.resolution === "disproved"} />}
         {elsewhere.length > 0 && <Elsewhere links={elsewhere} solvedHere={p.resolution === "proved" || p.resolution === "disproved"} isVariant={!!p.main_slug} />}
         {isLemma && p.parent_slug && (
           <div className="abs-line"><span className="descriptor">Lemma for:</span><Link href={`/p/${p.parent_slug}?tab=lemmas`} dangerouslySetInnerHTML={{ __html: renderInline(p.parent_title) }} />
